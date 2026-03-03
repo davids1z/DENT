@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.6" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.412.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DENT.Application\DENT.Application.csproj" />
+    <ProjectReference Include="..\DENT.Domain\DENT.Domain.csproj" />
+    <ProjectReference Include="..\DENT.Shared\DENT.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

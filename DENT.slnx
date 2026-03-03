@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DENT.API/DENT.API.csproj" />
+    <Project Path="src/DENT.Application/DENT.Application.csproj" />
+    <Project Path="src/DENT.Domain/DENT.Domain.csproj" />
+    <Project Path="src/DENT.Infrastructure/DENT.Infrastructure.csproj" />
+    <Project Path="src/DENT.Shared/DENT.Shared.csproj" />
+  </Folder>
+</Solution>
