@@ -1,10 +1,19 @@
-using DENT.Domain.Entities;
-
 namespace DENT.Application.Interfaces;
 
 public interface IMlAnalysisService
 {
     Task<MlAnalysisResult> AnalyzeImageAsync(Stream imageStream, string fileName, CancellationToken ct = default);
+
+    Task<MlAnalysisResult> AnalyzeMultipleImagesAsync(
+        List<MlImageInput> images,
+        string? vehicleMake, string? vehicleModel, int? vehicleYear, int? mileage,
+        CancellationToken ct = default);
+}
+
+public record MlImageInput
+{
+    public required byte[] Data { get; init; }
+    public required string FileName { get; init; }
 }
 
 public record MlAnalysisResult
@@ -20,7 +29,13 @@ public record MlAnalysisResult
     public decimal? TotalEstimatedCostMax { get; init; }
     public bool? IsDriveable { get; init; }
     public string? UrgencyLevel { get; init; }
+    public string? StructuralIntegrity { get; init; }
     public List<MlDamageResult> Damages { get; init; } = [];
+    // Structured totals
+    public decimal? LaborTotal { get; init; }
+    public decimal? PartsTotal { get; init; }
+    public decimal? MaterialsTotal { get; init; }
+    public decimal? GrossTotal { get; init; }
 }
 
 public record MlDamageResult
@@ -35,4 +50,33 @@ public record MlDamageResult
     public decimal? EstimatedCostMax { get; init; }
     public double? LaborHours { get; init; }
     public string? PartsNeeded { get; init; }
+    public MlBoundingBox? BoundingBox { get; init; }
+    public string? DamageCause { get; init; }
+    public string? SafetyRating { get; init; }
+    public string? MaterialType { get; init; }
+    public string? RepairOperations { get; init; }
+    public string? RepairCategory { get; init; }
+    public List<MlRepairLineItem> RepairLineItems { get; init; } = [];
+}
+
+public record MlBoundingBox
+{
+    public double X { get; init; }
+    public double Y { get; init; }
+    public double W { get; init; }
+    public double H { get; init; }
+    public int ImageIndex { get; init; }
+}
+
+public record MlRepairLineItem
+{
+    public int LineNumber { get; init; }
+    public string PartName { get; init; } = string.Empty;
+    public string Operation { get; init; } = string.Empty;
+    public string LaborType { get; init; } = string.Empty;
+    public double LaborHours { get; init; }
+    public string PartType { get; init; } = "Existing";
+    public int Quantity { get; init; } = 1;
+    public decimal? UnitCost { get; init; }
+    public decimal? TotalCost { get; init; }
 }

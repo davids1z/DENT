@@ -48,8 +48,8 @@ services:
   ml-service:
     build: ./services/ml-service
     environment:
-      DENT_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      DENT_CLAUDE_MODEL: claude-sonnet-4-20250514
+      DENT_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DENT_MODEL: google/gemini-2.5-pro-preview
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -66,8 +66,8 @@ services:
       Storage__AccessKey: minioadmin
       Storage__SecretKey: minioadmin
       Storage__BucketName: dent-images
-      Storage__PublicUrl: "http://localhost:9000/dent-images"
-      Cors__Origins__0: "http://localhost:3000"
+      Storage__PublicUrl: "https://dent.xyler.ai/storage/dent-images"
+      Cors__Origins__0: "https://dent.xyler.ai"
     ports:
       - "8080:8080"
     depends_on:
@@ -83,7 +83,7 @@ services:
     build:
       context: ./clients/web
       args:
-        NEXT_PUBLIC_API_URL: "http://localhost:8080/api"
+        NEXT_PUBLIC_API_URL: "/api"
     ports:
       - "3000:3000"
     depends_on:

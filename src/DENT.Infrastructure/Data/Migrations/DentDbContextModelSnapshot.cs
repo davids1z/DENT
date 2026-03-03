@@ -28,11 +28,19 @@ namespace DENT.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BoundingBox")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int>("CarPart")
                         .HasColumnType("integer");
 
                     b.Property<double>("Confidence")
                         .HasColumnType("double precision");
+
+                    b.Property<string>("DamageCause")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("DamageType")
                         .HasColumnType("integer");
@@ -54,13 +62,33 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.Property<double?>("LaborHours")
                         .HasColumnType("double precision");
 
+                    b.Property<string>("MaterialType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("PartsNeeded")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("RepairCategory")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RepairLineItemsJson")
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
+
                     b.Property<string>("RepairMethod")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<string>("RepairOperations")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("SafetyRating")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<int>("Severity")
                         .HasColumnType("integer");
@@ -70,6 +98,45 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.HasIndex("InspectionId");
 
                     b.ToTable("DamageDetections");
+                });
+
+            modelBuilder.Entity("DENT.Domain.Entities.DecisionOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NewOutcome")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("OperatorName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("OriginalOutcome")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InspectionId");
+
+                    b.ToTable("DecisionOverrides");
                 });
 
             modelBuilder.Entity("DENT.Domain.Entities.Inspection", b =>
@@ -91,8 +158,23 @@ namespace DENT.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(10)")
                         .HasDefaultValue("EUR");
 
+                    b.Property<string>("DecisionOutcome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("DecisionReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("DecisionTraceJson")
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text");
+
+                    b.Property<decimal?>("GrossTotal")
+                        .HasColumnType("decimal(10,2)");
 
                     b.Property<string>("ImageUrl")
                         .IsRequired()
@@ -102,13 +184,29 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.Property<bool?>("IsDriveable")
                         .HasColumnType("boolean");
 
+                    b.Property<decimal?>("LaborTotal")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal?>("MaterialsTotal")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<int?>("Mileage")
+                        .HasColumnType("integer");
+
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<decimal?>("PartsTotal")
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("StructuralIntegrity")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("Summary")
                         .HasColumnType("text");
@@ -125,6 +223,17 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.Property<string>("UrgencyLevel")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("UserProvidedMake")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UserProvidedModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("UserProvidedYear")
+                        .HasColumnType("integer");
 
                     b.Property<string>("VehicleColor")
                         .HasMaxLength(50)
@@ -150,6 +259,38 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.ToTable("Inspections");
                 });
 
+            modelBuilder.Entity("DENT.Domain.Entities.InspectionImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InspectionId");
+
+                    b.ToTable("InspectionImages");
+                });
+
             modelBuilder.Entity("DENT.Domain.Entities.DamageDetection", b =>
                 {
                     b.HasOne("DENT.Domain.Entities.Inspection", "Inspection")
@@ -161,9 +302,35 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.Navigation("Inspection");
                 });
 
+            modelBuilder.Entity("DENT.Domain.Entities.DecisionOverride", b =>
+                {
+                    b.HasOne("DENT.Domain.Entities.Inspection", "Inspection")
+                        .WithMany("DecisionOverrides")
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Inspection");
+                });
+
+            modelBuilder.Entity("DENT.Domain.Entities.InspectionImage", b =>
+                {
+                    b.HasOne("DENT.Domain.Entities.Inspection", "Inspection")
+                        .WithMany("AdditionalImages")
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Inspection");
+                });
+
             modelBuilder.Entity("DENT.Domain.Entities.Inspection", b =>
                 {
+                    b.Navigation("AdditionalImages");
+
                     b.Navigation("Damages");
+
+                    b.Navigation("DecisionOverrides");
                 });
 #pragma warning restore 612, 618
         }

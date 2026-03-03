@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getInspections, type Inspection } from "@/lib/api";
+import { useEffect, useState, useMemo } from "react";
+import { getInspections, type Inspection, formatCurrency, formatDate, severityColor, severityLabel } from "@/lib/api";
 import { InspectionCard } from "@/components/InspectionCard";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { cn } from "@/lib/cn";
+import Link from "next/link";
 
 export default function InspectionsPage() {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"grid" | "table">("grid");
 
   useEffect(() => {
     setLoading(true);
@@ -17,54 +23,107 @@ export default function InspectionsPage() {
       .finally(() => setLoading(false));
   }, [filter]);
 
+  const filtered = useMemo(() => {
+    if (!search.trim()) return inspections;
+    const q = search.toLowerCase();
+    return inspections.filter(
+      (i) =>
+        i.originalFileName.toLowerCase().includes(q) ||
+        (i.vehicleMake && i.vehicleMake.toLowerCase().includes(q)) ||
+        (i.vehicleModel && i.vehicleModel.toLowerCase().includes(q))
+    );
+  }, [inspections, search]);
+
   const filters = [
     { value: "", label: "Sve" },
-    { value: "Completed", label: "Zavrseno" },
+    { value: "Completed", label: "Završeno" },
     { value: "Analyzing", label: "U obradi" },
     { value: "Failed", label: "Neuspjelo" },
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Inspekcije</h1>
-          <p className="text-muted">Pregled svih analiza ostecenja</p>
+          <h1 className="font-heading text-2xl font-bold mb-1">Inspekcije</h1>
+          <p className="text-muted text-sm">Pregled svih analiza oštećenja</p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2 mb-6">
-        {filters.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              filter === f.value
-                ? "bg-accent/10 text-accent border border-accent/20"
-                : "bg-card border border-border text-muted hover:text-foreground hover:border-accent/30"
-            }`}
-          >
-            {f.label}
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="flex-1"><SearchBar value={search} onChange={setSearch} placeholder="Pretraži po vozilu ili datoteci..." /></div>
+        <div className="hidden lg:flex items-center gap-1 bg-card border border-border rounded-lg p-1">
+          <button onClick={() => setView("grid")} className={cn("p-2 rounded-md transition-colors", view === "grid" ? "bg-accent/10 text-accent" : "text-muted hover:text-foreground")}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z" /></svg>
           </button>
+          <button onClick={() => setView("table")} className={cn("p-2 rounded-md transition-colors", view === "table" ? "bg-accent/10 text-accent" : "text-muted hover:text-foreground")}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+        {filters.map((f) => (
+          <button key={f.value} onClick={() => setFilter(f.value)} className={cn(
+            "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+            filter === f.value ? "bg-accent text-white" : "bg-card border border-border text-muted hover:text-foreground"
+          )}>{f.label}</button>
         ))}
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-72 rounded-2xl skeleton" />
-          ))}
+          {[...Array(6)].map((_, i) => <Skeleton key={i} variant="card" className="h-72" />)}
         </div>
-      ) : inspections.length === 0 ? (
-        <div className="bg-card rounded-2xl border border-border p-12 text-center">
-          <p className="text-muted">Nema inspekcija</p>
+      ) : filtered.length === 0 ? (
+        <div className="bg-card border border-border rounded-xl p-12 text-center">
+          <p className="text-muted">{search ? `Nema rezultata za "${search}"` : "Nema inspekcija"}</p>
+        </div>
+      ) : view === "table" ? (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Vozilo</th>
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Status</th>
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Ozbiljnost</th>
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Štete</th>
+                <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Trošak</th>
+                <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Datum</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((i) => {
+                const worst = i.damages.reduce((w, d) => {
+                  const order = ["Minor", "Moderate", "Severe", "Critical"];
+                  return order.indexOf(d.severity) > order.indexOf(w) ? d.severity : w;
+                }, "Minor");
+                return (
+                  <tr key={i.id} className="border-b border-border hover:bg-card-hover transition-colors cursor-pointer">
+                    <td className="px-4 py-3">
+                      <Link href={`/inspections/${i.id}`} className="flex items-center gap-3">
+                        <img src={i.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
+                        <span className="font-medium truncate">{i.vehicleMake && i.vehicleModel ? `${i.vehicleMake} ${i.vehicleModel}` : i.originalFileName}</span>
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium",
+                        i.status === "Completed" ? "bg-green-100 text-green-700" : i.status === "Failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      )}>{i.status === "Completed" ? "Završeno" : i.status === "Failed" ? "Greška" : "U obradi"}</span>
+                    </td>
+                    <td className="px-4 py-3">{i.damages.length > 0 && <span className={cn("text-xs font-medium", severityColor(worst))}>{severityLabel(worst)}</span>}</td>
+                    <td className="px-4 py-3 text-muted">{i.damages.length}</td>
+                    <td className="px-4 py-3 text-right">{i.totalEstimatedCostMin != null ? <span className="text-accent font-medium text-sm">{formatCurrency(i.totalEstimatedCostMin)}</span> : <span className="text-muted">-</span>}</td>
+                    <td className="px-4 py-3 text-right text-muted text-xs">{formatDate(i.createdAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {inspections.map((inspection) => (
-            <InspectionCard key={inspection.id} inspection={inspection} />
-          ))}
+          {filtered.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)}
         </div>
       )}
     </div>

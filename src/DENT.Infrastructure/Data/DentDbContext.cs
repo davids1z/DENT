@@ -10,6 +10,8 @@ public class DentDbContext : DbContext, IDentDbContext
 
     public DbSet<Inspection> Inspections => Set<Inspection>();
     public DbSet<DamageDetection> DamageDetections => Set<DamageDetection>();
+    public DbSet<InspectionImage> InspectionImages => Set<InspectionImage>();
+    public DbSet<DecisionOverride> DecisionOverrides => Set<DecisionOverride>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +29,23 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.VehicleModel).HasMaxLength(100);
             entity.Property(e => e.VehicleColor).HasMaxLength(50);
             entity.Property(e => e.UrgencyLevel).HasMaxLength(50);
+            entity.Property(e => e.StructuralIntegrity).HasMaxLength(2000);
+
+            // User-provided vehicle context
+            entity.Property(e => e.UserProvidedMake).HasMaxLength(100);
+            entity.Property(e => e.UserProvidedModel).HasMaxLength(100);
+
+            // Structured cost totals
+            entity.Property(e => e.LaborTotal).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.PartsTotal).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.MaterialsTotal).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.GrossTotal).HasColumnType("decimal(10,2)");
+
+            // Decision engine
+            entity.Property(e => e.DecisionOutcome).HasMaxLength(50);
+            entity.Property(e => e.DecisionReason).HasMaxLength(2000);
+            entity.Property(e => e.DecisionTraceJson).HasMaxLength(5000);
+
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.Status);
         });
@@ -39,10 +58,43 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.EstimatedCostMax).HasColumnType("decimal(10,2)");
             entity.Property(e => e.RepairMethod).HasMaxLength(500);
             entity.Property(e => e.PartsNeeded).HasMaxLength(1000);
+            entity.Property(e => e.BoundingBox).HasMaxLength(200);
+            entity.Property(e => e.DamageCause).HasMaxLength(500);
+            entity.Property(e => e.SafetyRating).HasMaxLength(50);
+            entity.Property(e => e.MaterialType).HasMaxLength(100);
+            entity.Property(e => e.RepairOperations).HasMaxLength(2000);
+            entity.Property(e => e.RepairCategory).HasMaxLength(50);
+            entity.Property(e => e.RepairLineItemsJson).HasMaxLength(10000);
             entity.HasOne(e => e.Inspection)
                 .WithMany(i => i.Damages)
                 .HasForeignKey(e => e.InspectionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InspectionImage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ImageUrl).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(500);
+            entity.HasOne(e => e.Inspection)
+                .WithMany(i => i.AdditionalImages)
+                .HasForeignKey(e => e.InspectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.InspectionId);
+        });
+
+        modelBuilder.Entity<DecisionOverride>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.OriginalOutcome).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.NewOutcome).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Reason).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.OperatorName).IsRequired().HasMaxLength(200);
+            entity.HasOne(e => e.Inspection)
+                .WithMany(i => i.DecisionOverrides)
+                .HasForeignKey(e => e.InspectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.InspectionId);
         });
     }
 }

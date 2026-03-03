@@ -1,21 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { DM_Sans, Outfit } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
+import { MobileNav } from "@/components/MobileNav";
+import { Footer } from "@/components/Footer";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "DENT - Vehicle Damage Analysis",
-  description: "AI-powered vehicle damage assessment and repair cost estimation",
+  title: "DENT - AI analiza šteta na vozilima",
+  description:
+    "AI platforma za detekciju oštećenja vozila, klasifikaciju ozbiljnosti i procjenu troškova popravka. Uploadajte fotografije i dobijte profesionalni izvještaj.",
 };
 
 export default function RootLayout({
@@ -26,10 +31,16 @@ export default function RootLayout({
   return (
     <html lang="hr">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${dmSans.variable} ${outfit.variable} antialiased bg-background text-foreground`}
       >
         <Navbar />
-        <main className="min-h-[calc(100vh-64px)]">{children}</main>
+        <main className="min-h-[calc(100vh-64px)] pb-20 md:pb-0">
+          {children}
+        </main>
+        <div className="hidden md:block">
+          <Footer />
+        </div>
+        <MobileNav />
       </body>
     </html>
   );

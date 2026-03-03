@@ -1,3 +1,4 @@
+using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Interfaces;
 using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
@@ -16,6 +17,8 @@ public class GetInspectionsHandler : IRequestHandler<GetInspectionsQuery, List<I
     {
         var query = _db.Inspections
             .Include(i => i.Damages)
+            .Include(i => i.AdditionalImages)
+            .Include(i => i.DecisionOverrides)
             .AsNoTracking()
             .OrderByDescending(i => i.CreatedAt)
             .AsQueryable();
@@ -28,40 +31,6 @@ public class GetInspectionsHandler : IRequestHandler<GetInspectionsQuery, List<I
             .Take(request.PageSize)
             .ToListAsync(ct);
 
-        return inspections.Select(i => new InspectionDto
-        {
-            Id = i.Id,
-            ImageUrl = i.ImageUrl,
-            OriginalFileName = i.OriginalFileName,
-            ThumbnailUrl = i.ThumbnailUrl,
-            Status = i.Status.ToString(),
-            CreatedAt = i.CreatedAt,
-            CompletedAt = i.CompletedAt,
-            VehicleMake = i.VehicleMake,
-            VehicleModel = i.VehicleModel,
-            VehicleYear = i.VehicleYear,
-            VehicleColor = i.VehicleColor,
-            Summary = i.Summary,
-            TotalEstimatedCostMin = i.TotalEstimatedCostMin,
-            TotalEstimatedCostMax = i.TotalEstimatedCostMax,
-            Currency = i.Currency,
-            IsDriveable = i.IsDriveable,
-            UrgencyLevel = i.UrgencyLevel,
-            ErrorMessage = i.ErrorMessage,
-            Damages = i.Damages.Select(d => new DamageDetectionDto
-            {
-                Id = d.Id,
-                DamageType = d.DamageType.ToString(),
-                CarPart = d.CarPart.ToString(),
-                Severity = d.Severity.ToString(),
-                Description = d.Description,
-                Confidence = d.Confidence,
-                RepairMethod = d.RepairMethod,
-                EstimatedCostMin = d.EstimatedCostMin,
-                EstimatedCostMax = d.EstimatedCostMax,
-                LaborHours = d.LaborHours,
-                PartsNeeded = d.PartsNeeded
-            }).ToList()
-        }).ToList();
+        return inspections.Select(CreateInspectionHandler.MapToDto).ToList();
     }
 }

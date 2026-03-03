@@ -1,18 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0f1117;
-  --foreground: #e4e4e7;
-  --card: #1a1b23;
-  --card-hover: #22232d;
-  --border: #2a2b35;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-glow: rgba(59, 130, 246, 0.15);
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --muted: #71717a;
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #f8fafc;
+  --card-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --accent-solid: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #eff6ff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --muted: #64748b;
+  --muted-light: #94a3b8;
 }
 
 @theme inline {
@@ -21,29 +22,74 @@
   --color-card: var(--card);
   --color-card-hover: var(--card-hover);
   --color-border: var(--border);
-  --color-accent: var(--accent);
+  --color-accent: var(--accent-solid);
   --color-accent-hover: var(--accent-hover);
-  --color-accent-glow: var(--accent-glow);
+  --color-accent-light: var(--accent-light);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-muted: var(--muted);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted-light: var(--muted-light);
+  --font-sans: var(--font-dm-sans);
+  --font-heading: var(--font-outfit);
+  --font-mono: ui-monospace, "Cascadia Code", "Fira Code", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading), var(--font-sans), system-ui, sans-serif;
+}
+
+/* ========== CARD ========== */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.glass {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.glass-strong {
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ========== BUTTONS ========== */
+.gradient-btn {
+  background: var(--accent-solid);
+  color: white;
+  transition: all 0.15s ease;
+}
+.gradient-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* ========== SKELETON ========== */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ========== SCROLLBAR ========== */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--background);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
@@ -53,31 +99,14 @@ body {
   background: var(--muted);
 }
 
-/* Upload zone animation */
-@keyframes pulse-border {
-  0%, 100% { border-color: var(--accent); opacity: 0.5; }
-  50% { border-color: var(--accent); opacity: 1; }
-}
-.upload-zone-active {
-  animation: pulse-border 1.5s ease-in-out infinite;
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--card);
+  }
 }
 
-/* Fade in animation */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
-}
-
-/* Skeleton loading */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.skeleton {
-  background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+/* ========== SECTION DIVIDER ========== */
+.section-alt {
+  background: var(--card);
 }

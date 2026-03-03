@@ -1,3 +1,4 @@
+using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Interfaces;
 using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
@@ -42,8 +43,16 @@ public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, 
             .Take(10)
             .ToDictionaryAsync(x => x.Part, x => x.Count, ct);
 
+        var decisionOutcomes = await _db.Inspections
+            .Where(i => i.DecisionOutcome != null)
+            .GroupBy(i => i.DecisionOutcome!)
+            .Select(g => new { Outcome = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Outcome, x => x.Count, ct);
+
         var recentInspections = await _db.Inspections
             .Include(i => i.Damages)
+            .Include(i => i.AdditionalImages)
+            .Include(i => i.DecisionOverrides)
             .AsNoTracking()
             .OrderByDescending(i => i.CreatedAt)
             .Take(5)
@@ -59,35 +68,8 @@ public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, 
             DamageTypeDistribution = damageTypes,
             SeverityDistribution = severities,
             CarPartDistribution = carParts,
-            RecentInspections = recentInspections.Select(i => new InspectionDto
-            {
-                Id = i.Id,
-                ImageUrl = i.ImageUrl,
-                OriginalFileName = i.OriginalFileName,
-                Status = i.Status.ToString(),
-                CreatedAt = i.CreatedAt,
-                CompletedAt = i.CompletedAt,
-                VehicleMake = i.VehicleMake,
-                VehicleModel = i.VehicleModel,
-                Summary = i.Summary,
-                TotalEstimatedCostMin = i.TotalEstimatedCostMin,
-                TotalEstimatedCostMax = i.TotalEstimatedCostMax,
-                Currency = i.Currency,
-                Damages = i.Damages.Select(d => new DamageDetectionDto
-                {
-                    Id = d.Id,
-                    DamageType = d.DamageType.ToString(),
-                    CarPart = d.CarPart.ToString(),
-                    Severity = d.Severity.ToString(),
-                    Description = d.Description,
-                    Confidence = d.Confidence,
-                    RepairMethod = d.RepairMethod,
-                    EstimatedCostMin = d.EstimatedCostMin,
-                    EstimatedCostMax = d.EstimatedCostMax,
-                    LaborHours = d.LaborHours,
-                    PartsNeeded = d.PartsNeeded
-                }).ToList()
-            }).ToList()
+            DecisionOutcomeDistribution = decisionOutcomes,
+            RecentInspections = recentInspections.Select(CreateInspectionHandler.MapToDto).ToList()
         };
     }
 }

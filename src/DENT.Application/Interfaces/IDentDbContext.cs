@@ -7,5 +7,7 @@ public interface IDentDbContext
 {
     DbSet<Inspection> Inspections { get; }
     DbSet<DamageDetection> DamageDetections { get; }
+    DbSet<InspectionImage> InspectionImages { get; }
+    DbSet<DecisionOverride> DecisionOverrides { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
