@@ -1,9 +1,27 @@
 FROM python:3.12-slim
 
+# System dependencies for Pillow, python-magic, pyexiftool, opencv
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 \
+    libimage-exiftool-perl \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
+# Install PyTorch CPU separately (large layer, cached independently)
+RUN pip install --no-cache-dir \
+    torch>=2.2.0 --index-url https://download.pytorch.org/whl/cpu
+
+# Install PhotoHolmes (depends on torch)
+RUN pip install --no-cache-dir photoholmes>=1.0.0
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Create model cache directory
+RUN mkdir -p /app/models
 
 COPY app/ app/
 

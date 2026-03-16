@@ -7,6 +7,10 @@ import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
+import { ForensicBadge } from "@/components/ForensicBadge";
+import { ForensicReport } from "@/components/ForensicReport";
+import { ElaHeatmapOverlay } from "@/components/ElaHeatmapOverlay";
+import { FftSpectrumOverlay } from "@/components/FftSpectrumOverlay";
 import { OverridePanel } from "@/components/OverridePanel";
 import { RepairEstimateTable } from "@/components/RepairEstimateTable";
 import { ImageGallery } from "@/components/ImageGallery";
@@ -116,6 +120,15 @@ export default function InspectionDetailPage() {
         </div>
       )}
 
+      {inspection.forensicResult && (
+        <div className="mb-6">
+          <ForensicBadge
+            riskScore={inspection.forensicResult.overallRiskScore}
+            riskLevel={inspection.forensicResult.overallRiskLevel}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
           <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} />
@@ -148,6 +161,23 @@ export default function InspectionDetailPage() {
       </div>
 
       <div className="mt-6"><RepairEstimateTable inspection={inspection} /></div>
+
+      {inspection.forensicResult && (
+        <div className="mt-6 space-y-4">
+          <ForensicReport result={inspection.forensicResult} />
+          {inspection.forensicResult.elaHeatmapUrl && (
+            <ElaHeatmapOverlay
+              originalImageUrl={activeImageUrl || inspection.imageUrl}
+              heatmapUrl={inspection.forensicResult.elaHeatmapUrl}
+            />
+          )}
+          {inspection.forensicResult.fftSpectrumUrl && (
+            <FftSpectrumOverlay
+              fftSpectrumUrl={inspection.forensicResult.fftSpectrumUrl}
+            />
+          )}
+        </div>
+      )}
 
       {inspection.decisionOutcome && (
         <div className="mt-6 space-y-4">

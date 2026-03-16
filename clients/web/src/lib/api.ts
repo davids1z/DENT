@@ -65,6 +65,33 @@ export interface DecisionOverride {
   createdAt: string;
 }
 
+export interface ForensicFinding {
+  code: string;
+  title: string;
+  description: string;
+  riskScore: number;
+  confidence: number;
+}
+
+export interface ForensicModuleResult {
+  moduleName: string;
+  moduleLabel: string;
+  riskScore: number;
+  riskLevel: string;
+  findings: ForensicFinding[];
+  processingTimeMs: number;
+  error: string | null;
+}
+
+export interface ForensicResult {
+  overallRiskScore: number;
+  overallRiskLevel: string;
+  modules: ForensicModuleResult[];
+  elaHeatmapUrl: string | null;
+  fftSpectrumUrl: string | null;
+  totalProcessingTimeMs: number;
+}
+
 export interface Inspection {
   id: string;
   imageUrl: string;
@@ -101,6 +128,10 @@ export interface Inspection {
   decisionReason: string | null;
   decisionTraces: DecisionTraceEntry[];
   decisionOverrides: DecisionOverride[];
+  // Fraud detection
+  fraudRiskScore: number | null;
+  fraudRiskLevel: string | null;
+  forensicResult: ForensicResult | null;
   // Multi-image
   additionalImages: InspectionImage[];
   damages: DamageDetection[];
@@ -403,4 +434,47 @@ export function laborTypeLabel(type: string): string {
     Glass: "Staklo",
   };
   return labels[type] || type;
+}
+
+// Forensic helpers
+export function fraudRiskLabel(level: string): string {
+  const labels: Record<string, string> = {
+    Low: "Nizak rizik",
+    Medium: "Srednji rizik",
+    High: "Visok rizik",
+    Critical: "Kritican rizik",
+  };
+  return labels[level] || level;
+}
+
+export function fraudRiskColor(level: string): string {
+  switch (level) {
+    case "Low": return "text-green-600";
+    case "Medium": return "text-amber-600";
+    case "High": return "text-orange-600";
+    case "Critical": return "text-red-600";
+    default: return "text-gray-500";
+  }
+}
+
+export function fraudRiskBg(level: string): string {
+  switch (level) {
+    case "Low": return "bg-green-50 border-green-200";
+    case "Medium": return "bg-amber-50 border-amber-200";
+    case "High": return "bg-orange-50 border-orange-200";
+    case "Critical": return "bg-red-50 border-red-200";
+    default: return "bg-gray-50 border-gray-200";
+  }
+}
+
+export function forensicModuleLabel(moduleName: string): string {
+  const labels: Record<string, string> = {
+    metadata_analysis: "Analiza metapodataka",
+    modification_detection: "Detekcija modifikacija",
+    deep_modification_detection: "Duboka analiza modifikacija (CNN)",
+    optical_forensics: "Opticka forenzika",
+    semantic_forensics: "Semanticka forenzika",
+    document_forensics: "Forenzika dokumenata",
+  };
+  return labels[moduleName] || moduleName;
 }
