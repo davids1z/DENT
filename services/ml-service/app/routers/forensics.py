@@ -44,6 +44,11 @@ async def analyze_forensics(
         ela_scale=settings.forensics_ela_scale,
         cnn_enabled=settings.forensics_cnn_enabled,
         optical_enabled=settings.forensics_optical_enabled,
+        semantic_enabled=settings.forensics_semantic_enabled,
+        semantic_face_enabled=settings.forensics_semantic_face_enabled,
+        semantic_vlm_enabled=settings.forensics_semantic_vlm_enabled,
+        semantic_vlm_model=settings.forensics_semantic_vlm_model,
+        openrouter_api_key=settings.openrouter_api_key,
     )
     report = await pipeline.analyze(contents, filename, skip)
 

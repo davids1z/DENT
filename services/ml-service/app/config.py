@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Optical forensics (Moire / screen recapture detection)
     forensics_optical_enabled: bool = True
 
+    # Semantic forensics (AI detection, face liveness, VLM analysis)
+    forensics_semantic_enabled: bool = True
+    forensics_semantic_face_enabled: bool = True
+    forensics_semantic_vlm_enabled: bool = True
+    forensics_semantic_vlm_model: str = "google/gemini-2.5-pro-preview"
+
     class Config:
         env_file = ".env"
         env_prefix = "DENT_"

@@ -4,6 +4,7 @@ from .analyzers.cnn_forensics import CnnForensicsAnalyzer
 from .analyzers.metadata import MetadataAnalyzer
 from .analyzers.modification import ModificationAnalyzer
 from .analyzers.optical import OpticalForensicsAnalyzer
+from .analyzers.semantic import SemanticForensicsAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
 
@@ -17,6 +18,11 @@ class ForensicPipeline:
         ela_scale: int = 20,
         cnn_enabled: bool = True,
         optical_enabled: bool = True,
+        semantic_enabled: bool = True,
+        semantic_face_enabled: bool = True,
+        semantic_vlm_enabled: bool = True,
+        semantic_vlm_model: str = "google/gemini-2.5-pro-preview",
+        openrouter_api_key: str = "",
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -27,6 +33,16 @@ class ForensicPipeline:
         )
         self._optical: OpticalForensicsAnalyzer | None = (
             OpticalForensicsAnalyzer() if optical_enabled else None
+        )
+        self._semantic: SemanticForensicsAnalyzer | None = (
+            SemanticForensicsAnalyzer(
+                face_enabled=semantic_face_enabled,
+                vlm_enabled=semantic_vlm_enabled,
+                vlm_model=semantic_vlm_model,
+                openrouter_api_key=openrouter_api_key,
+            )
+            if semantic_enabled
+            else None
         )
 
     async def analyze(
@@ -57,6 +73,10 @@ class ForensicPipeline:
 
             if self._optical and self._optical.MODULE_NAME not in skip:
                 result = await self._optical.analyze_image(file_bytes, filename)
+                modules.append(result)
+
+            if self._semantic and self._semantic.MODULE_NAME not in skip:
+                result = await self._semantic.analyze_image(file_bytes, filename)
                 modules.append(result)
 
         overall_score, overall_level = fuse_scores(modules)
