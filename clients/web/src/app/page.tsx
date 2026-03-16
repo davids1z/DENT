@@ -10,11 +10,29 @@ const features = [
   {
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+      </svg>
+    ),
+    title: "Detekcija prijevara",
+    desc: "Forenzička analiza slika: ELA, FFT spektar, CNN detekcija manipulacija, analiza metapodataka i provjera autentičnosti.",
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75H6A2.25 2.25 0 003.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0120.25 6v1.5m0 9V18A2.25 2.25 0 0118 20.25h-1.5m-9 0H6A2.25 2.25 0 013.75 18v-1.5M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     ),
     title: "Detekcija šteta",
     desc: "AI prepoznaje ogrebotine, udubljenja, pukotine, oštećenja boje, slomljeno staklo i deformacije karoserije.",
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+      </svg>
+    ),
+    title: "AI agent evaluacija",
+    desc: "LLM agent analizira cijeli predmet: štete, forenziku, vremenske uvjete i autonomno donosi odluku o odobrenju.",
   },
   {
     icon: (
@@ -28,20 +46,11 @@ const features = [
   {
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
       </svg>
     ),
-    title: "Klasifikacija ozbiljnosti",
-    desc: "Svaka šteta se klasificira po ozbiljnosti: manja, umjerena, ozbiljna ili kritična, za brže odluke.",
-  },
-  {
-    icon: (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
-      </svg>
-    ),
-    title: "Prepoznavanje vozila",
-    desc: "AI automatski prepoznaje marku, model, godinu i boju vozila iz fotografije bez ručnog unosa.",
+    title: "Sudska admisibilnost",
+    desc: "SHA-256 hash, RFC 3161 vremenski pečat, lanac skrbništva (ISO 27037) i PDF/XML izvještaji za sud.",
   },
   {
     icon: (
@@ -49,17 +58,8 @@ const features = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
       </svg>
     ),
-    title: "Odluka u realnom vremenu",
-    desc: "Automatski sustav odlučivanja: odobri, pregledaj ili eskaliraj - na temelju pravila i pragova troškova.",
-  },
-  {
-    icon: (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
-      </svg>
-    ),
-    title: "Više slika odjednom",
-    desc: "Uploadajte do 8 fotografija iz različitih kutova za sveobuhvatnu analizu cijelog vozila.",
+    title: "Automatska odluka",
+    desc: "STP (Straight-Through Processing): automatsko odobrenje, eskalacija ili pregled - s punim traceom odluke.",
   },
 ];
 
@@ -67,17 +67,17 @@ const steps = [
   {
     num: "01",
     title: "Uploadajte fotografije",
-    desc: "Dodajte do 8 fotografija oštećenog vozila iz različitih kutova. Podržani formati: JPG, PNG, WebP, HEIC.",
+    desc: "Dodajte do 8 fotografija oštećenog vozila. Sustav hvata GPS, uređaj i metadata za kompletnu evidenciju.",
   },
   {
     num: "02",
-    title: "AI analizira",
-    desc: "Napredni vizijski model detektira, klasificira i mapira svako oštećenje. Analiza traje 30-90 sekundi.",
+    title: "AI analizira i verificira",
+    desc: "Gemini 2.5 Pro detektira štete, 6 forenzičkih modula provjerava autentičnost, AI agent donosi odluku.",
   },
   {
     num: "03",
-    title: "Preuzmite izvještaj",
-    desc: "Dobijte detaljan izvještaj sa svim otkrivenim štetama, procjenama troškova i preporukom za djelovanje.",
+    title: "Zapečaćen izvještaj",
+    desc: "Dobijte kriptografski potpisan izvještaj s SHA-256 hashevima, RFC 3161 pečatom i lancem skrbništva.",
   },
 ];
 
@@ -105,13 +105,13 @@ export default function Dashboard() {
               Pogonjeno Gemini 2.5 Pro AI modelom
             </div>
             <h1 className="font-heading text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6">
-              Analizirajte štete na vozilu{" "}
-              <span className="text-accent">u sekundama</span>
+              Detekcija prijevara{" "}
+              <span className="text-accent">u osiguranju vozila</span>
             </h1>
             <p className="text-lg sm:text-xl text-muted leading-relaxed mb-10 max-w-2xl mx-auto">
-              Uploadajte fotografiju oštećenog vozila i dobijte profesionalni
-              AI izvještaj s detekcijom šteta, klasifikacijom ozbiljnosti i
-              procjenom troškova popravka.
+              AI platforma za analizu šteta, forenzičku verifikaciju fotografija,
+              detekciju manipulacija i automatsko donošenje odluka
+              s kriptografskim dokazima za sud.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
@@ -143,7 +143,7 @@ export default function Dashboard() {
               Kako funkcionira
             </p>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight">
-              Tri koraka do izvještaja
+              Tri koraka do odluke
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
@@ -172,7 +172,7 @@ export default function Dashboard() {
               Mogućnosti
             </p>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight">
-              Sve što vam treba za procjenu šteta
+              Kompletna platforma za osiguranje
             </h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -192,42 +192,47 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* ===== WHAT AI DETECTS ===== */}
+      {/* ===== FORENSIC PIPELINE ===== */}
       <section className="section-alt border-y border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
-              AI detekcija
+              Forenzički pipeline
             </p>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-4">
-              Što AI prepoznaje na vašem vozilu
+              6 modula forenzičke analize
             </h2>
             <p className="text-muted max-w-2xl mx-auto">
-              Napredni vizijski model analizira svaki piksel fotografije i detektira
-              različite vrste oštećenja na svim dijelovima vozila.
+              Svaka fotografija prolazi kroz višeslojnu provjeru autentičnosti
+              koja detektira Photoshop manipulacije, AI-generirane slike i lažne metapodatke.
             </p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4">
             {[
-              "Ogrebotine",
-              "Udubljenja",
-              "Pukotine",
-              "Oštećenja boje",
-              "Slomljeno staklo",
-              "Hrđa",
-              "Deformacije karoserije",
-              "Oštećenja branika",
-            ].map((label) => (
+              { label: "Analiza metapodataka", desc: "EXIF, GPS, kamera, softver" },
+              { label: "Detekcija modifikacija", desc: "ELA, FFT spektar, JPEG artefakti" },
+              { label: "CNN duboka analiza", desc: "CatNet, TruFor neuralne mreže" },
+              { label: "Optička forenzika", desc: "Razina šuma, CFA uzorci" },
+              { label: "Semantička forenzika", desc: "AI detekcija, VLM provjera" },
+              { label: "Forenzika dokumenata", desc: "PDF struktura, potpisi, fontovi" },
+            ].map((item) => (
               <div
-                key={label}
-                className="flex items-center gap-3 px-4 py-3.5 bg-white rounded-xl border border-border"
+                key={item.label}
+                className="flex flex-col px-4 py-4 bg-white rounded-xl border border-border"
               >
-                <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
-                <span className="text-sm font-medium">{label}</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </div>
+                <span className="text-xs text-muted pl-4">{item.desc}</span>
               </div>
             ))}
           </div>
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
+            <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
+              <div className="font-heading text-3xl font-bold text-accent mb-1">6</div>
+              <div className="text-xs text-muted">Forenzičkih modula</div>
+            </div>
             <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">12+</div>
               <div className="text-xs text-muted">Tipova šteta</div>
@@ -237,8 +242,8 @@ export default function Dashboard() {
               <div className="text-xs text-muted">Dijelova vozila</div>
             </div>
             <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
-              <div className="font-heading text-3xl font-bold text-accent mb-1">&lt;90s</div>
-              <div className="text-xs text-muted">Vrijeme analize</div>
+              <div className="font-heading text-3xl font-bold text-accent mb-1">RFC 3161</div>
+              <div className="text-xs text-muted">Vremenski pečat</div>
             </div>
           </div>
         </div>
@@ -292,8 +297,8 @@ export default function Dashboard() {
               Spremni za analizu?
             </h2>
             <p className="text-muted mb-8">
-              Uploadajte fotografije oštećenog vozila i dobijte detaljan AI
-              izvještaj za manje od 2 minute.
+              Uploadajte fotografije i dobijte forenzički verificiran
+              izvještaj s kriptografskim dokazima za manje od 2 minute.
             </p>
             <Link
               href="/inspect"
@@ -302,7 +307,7 @@ export default function Dashboard() {
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
-              Pokreni novu inspekciju
+              Pokreni novu analizu
             </Link>
           </div>
         </div>
