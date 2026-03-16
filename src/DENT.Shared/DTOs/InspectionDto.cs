@@ -43,6 +43,11 @@ public record InspectionDto
     public List<DecisionTraceEntryDto> DecisionTraces { get; init; } = [];
     public List<DecisionOverrideDto> DecisionOverrides { get; init; } = [];
 
+    // Fraud detection
+    public double? FraudRiskScore { get; init; }
+    public string? FraudRiskLevel { get; init; }
+    public ForensicResultDto? ForensicResult { get; init; }
+
     // Multi-image
     public List<InspectionImageDto> AdditionalImages { get; init; } = [];
 
@@ -109,6 +114,36 @@ public record DecisionOverrideDto
     public string Reason { get; init; } = string.Empty;
     public string OperatorName { get; init; } = string.Empty;
     public DateTime CreatedAt { get; init; }
+}
+
+public record ForensicResultDto
+{
+    public double OverallRiskScore { get; init; }
+    public string OverallRiskLevel { get; init; } = "Low";
+    public List<ForensicModuleResultDto> Modules { get; init; } = [];
+    public string? ElaHeatmapUrl { get; init; }
+    public string? FftSpectrumUrl { get; init; }
+    public int TotalProcessingTimeMs { get; init; }
+}
+
+public record ForensicModuleResultDto
+{
+    public string ModuleName { get; init; } = string.Empty;
+    public string ModuleLabel { get; init; } = string.Empty;
+    public double RiskScore { get; init; }
+    public string RiskLevel { get; init; } = "Low";
+    public List<ForensicFindingDto> Findings { get; init; } = [];
+    public int ProcessingTimeMs { get; init; }
+    public string? Error { get; init; }
+}
+
+public record ForensicFindingDto
+{
+    public string Code { get; init; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public double RiskScore { get; init; }
+    public double Confidence { get; init; }
 }
 
 public record DashboardStatsDto

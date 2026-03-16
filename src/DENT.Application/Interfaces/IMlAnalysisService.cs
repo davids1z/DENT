@@ -8,6 +8,8 @@ public interface IMlAnalysisService
         List<MlImageInput> images,
         string? vehicleMake, string? vehicleModel, int? vehicleYear, int? mileage,
         CancellationToken ct = default);
+
+    Task<MlForensicResult> RunForensicsAsync(byte[] fileBytes, string fileName, CancellationToken ct = default);
 }
 
 public record MlImageInput
@@ -79,4 +81,35 @@ public record MlRepairLineItem
     public int Quantity { get; init; } = 1;
     public decimal? UnitCost { get; init; }
     public decimal? TotalCost { get; init; }
+}
+
+// Forensic analysis results
+public record MlForensicResult
+{
+    public double OverallRiskScore { get; init; }
+    public string OverallRiskLevel { get; init; } = "Low";
+    public List<MlForensicModule> Modules { get; init; } = [];
+    public string? ElaHeatmapB64 { get; init; }
+    public string? FftSpectrumB64 { get; init; }
+    public int TotalProcessingTimeMs { get; init; }
+}
+
+public record MlForensicModule
+{
+    public string ModuleName { get; init; } = string.Empty;
+    public string ModuleLabel { get; init; } = string.Empty;
+    public double RiskScore { get; init; }
+    public string RiskLevel { get; init; } = "Low";
+    public List<MlForensicFinding> Findings { get; init; } = [];
+    public int ProcessingTimeMs { get; init; }
+    public string? Error { get; init; }
+}
+
+public record MlForensicFinding
+{
+    public string Code { get; init; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public double RiskScore { get; init; }
+    public double Confidence { get; init; }
 }

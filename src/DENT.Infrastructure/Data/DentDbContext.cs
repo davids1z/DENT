@@ -12,6 +12,7 @@ public class DentDbContext : DbContext, IDentDbContext
     public DbSet<DamageDetection> DamageDetections => Set<DamageDetection>();
     public DbSet<InspectionImage> InspectionImages => Set<InspectionImage>();
     public DbSet<DecisionOverride> DecisionOverrides => Set<DecisionOverride>();
+    public DbSet<ForensicResult> ForensicResults => Set<ForensicResult>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,8 +47,25 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.DecisionReason).HasMaxLength(2000);
             entity.Property(e => e.DecisionTraceJson).HasMaxLength(5000);
 
+            // Fraud detection
+            entity.Property(e => e.FraudRiskLevel).HasMaxLength(50);
+
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<ForensicResult>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.OverallRiskLevel).HasMaxLength(50);
+            entity.Property(e => e.ModuleResultsJson).HasMaxLength(50000);
+            entity.Property(e => e.ElaHeatmapUrl).HasMaxLength(1000);
+            entity.Property(e => e.FftSpectrumUrl).HasMaxLength(1000);
+            entity.HasOne(e => e.Inspection)
+                .WithOne(i => i.ForensicResult)
+                .HasForeignKey<ForensicResult>(e => e.InspectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.InspectionId).IsUnique();
         });
 
         modelBuilder.Entity<DamageDetection>(entity =>

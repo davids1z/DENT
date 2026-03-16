@@ -45,8 +45,13 @@ public class Inspection
     public string? DecisionReason { get; set; }
     public string? DecisionTraceJson { get; set; } // JSON array of rule evaluations
 
+    // Fraud detection
+    public double? FraudRiskScore { get; set; }
+    public string? FraudRiskLevel { get; set; }
+
     // Navigation
     public List<DamageDetection> Damages { get; set; } = [];
     public List<InspectionImage> AdditionalImages { get; set; } = [];
     public List<DecisionOverride> DecisionOverrides { get; set; } = [];
+    public ForensicResult? ForensicResult { get; set; }
 }

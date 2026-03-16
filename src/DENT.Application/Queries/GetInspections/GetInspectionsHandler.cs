@@ -19,6 +19,7 @@ public class GetInspectionsHandler : IRequestHandler<GetInspectionsQuery, List<I
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)
+            .Include(i => i.ForensicResult)
             .AsNoTracking()
             .OrderByDescending(i => i.CreatedAt)
             .AsQueryable();

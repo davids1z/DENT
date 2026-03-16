@@ -30,8 +30,8 @@
   --color-danger: var(--danger);
   --color-muted: var(--muted);
   --color-muted-light: var(--muted-light);
-  --font-sans: var(--font-dm-sans);
-  --font-heading: var(--font-outfit);
+  --font-sans: var(--font-plus-jakarta);
+  --font-heading: var(--font-space-grotesk);
   --font-mono: ui-monospace, "Cascadia Code", "Fira Code", monospace;
 }
 
@@ -45,7 +45,12 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading), var(--font-sans), system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
+
+h1 { font-weight: 700; }
+h2 { font-weight: 700; }
+h3 { font-weight: 600; }
 
 /* ========== CARD ========== */
 .card {

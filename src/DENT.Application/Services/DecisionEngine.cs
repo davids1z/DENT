@@ -95,11 +95,25 @@ public static class DecisionEngine
             EvaluationOrder = 7
         });
 
+        // Rule 8: Fraud risk
+        var fraudRiskScore = inspection.FraudRiskScore ?? 0;
+        var hasCriticalFraud = fraudRiskScore >= 0.75;
+        var hasFraudRisk = fraudRiskScore >= 0.50;
+        traces.Add(new DecisionTraceEntryDto
+        {
+            RuleName = "Rizik prijevare",
+            RuleDescription = "Forenzicka analiza indicira moguce manipulacije slika ili dokumenata",
+            Triggered = hasFraudRisk,
+            ThresholdValue = "< 50% rizik",
+            ActualValue = $"{fraudRiskScore:P0} rizik ({inspection.FraudRiskLevel ?? "N/A"})",
+            EvaluationOrder = 8
+        });
+
         // Determine outcome
         string outcome;
         string reason;
 
-        if (totalCostMax > 3000 || hasCriticalDamage || hasSafetyCritical || hasStructuralIssue)
+        if (totalCostMax > 3000 || hasCriticalDamage || hasSafetyCritical || hasStructuralIssue || hasCriticalFraud)
         {
             outcome = "Escalate";
             var reasons = new List<string>();
@@ -107,15 +121,17 @@ public static class DecisionEngine
             if (hasCriticalDamage) reasons.Add("kriticna ostecenja");
             if (hasSafetyCritical) reasons.Add("sigurnosno kriticno");
             if (hasStructuralIssue) reasons.Add("strukturno ostecenje");
+            if (hasCriticalFraud) reasons.Add("kriticna sumnja na manipulaciju");
             reason = $"Eskalirano: {string.Join(", ", reasons)}";
         }
-        else if (totalCostMax >= 500 || hasSevereDamage || damageCount > 5)
+        else if (totalCostMax >= 500 || hasSevereDamage || damageCount > 5 || hasFraudRisk)
         {
             outcome = "HumanReview";
             var reasons = new List<string>();
             if (totalCostMax >= 500) reasons.Add($"srednji trosak ({totalCostMax:N0} EUR)");
             if (hasSevereDamage) reasons.Add("ozbiljna ostecenja");
             if (damageCount > 5) reasons.Add($"{damageCount} ostecenja");
+            if (hasFraudRisk) reasons.Add("povisen rizik prijevare");
             reason = $"Potreban pregled: {string.Join(", ", reasons)}";
         }
         else

@@ -86,6 +86,29 @@ public class MlAnalysisService : IMlAnalysisService
         }
     }
 
+    public async Task<MlForensicResult> RunForensicsAsync(byte[] fileBytes, string fileName, CancellationToken ct = default)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            using var byteContent = new ByteArrayContent(fileBytes);
+            byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                GetContentType(fileName));
+            content.Add(byteContent, "file", fileName);
+
+            var response = await _httpClient.PostAsync("/forensics", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<MlForensicResult>(SnakeCaseOptions, ct);
+            return result ?? new MlForensicResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling forensics service for {FileName}", fileName);
+            throw;
+        }
+    }
+
     private static string GetContentType(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();

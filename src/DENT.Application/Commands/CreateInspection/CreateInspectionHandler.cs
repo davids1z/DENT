@@ -162,7 +162,46 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     });
                 }
 
-                // Run decision engine
+                // Run forensic fraud detection (non-blocking)
+                try
+                {
+                    var forensicResult = await _mlService.RunForensicsAsync(
+                        firstImage.Data, firstImage.FileName, ct);
+
+                    // Store ELA heatmap in MinIO if present
+                    string? elaUrl = null;
+                    if (forensicResult.ElaHeatmapB64 is not null)
+                    {
+                        var elaBytes = Convert.FromBase64String(forensicResult.ElaHeatmapB64);
+                        using var elaStream = new MemoryStream(elaBytes);
+                        var elaKey = await _storage.UploadAsync(
+                            elaStream, $"ela_{inspection.Id}.png", "image/png", ct);
+                        elaUrl = _storage.GetPublicUrl(elaKey);
+                    }
+
+                    inspection.FraudRiskScore = forensicResult.OverallRiskScore;
+                    inspection.FraudRiskLevel = forensicResult.OverallRiskLevel;
+                    inspection.ForensicResult = new ForensicResult
+                    {
+                        Id = Guid.NewGuid(),
+                        InspectionId = inspection.Id,
+                        OverallRiskScore = forensicResult.OverallRiskScore,
+                        OverallRiskLevel = forensicResult.OverallRiskLevel,
+                        ModuleResultsJson = JsonSerializer.Serialize(forensicResult.Modules,
+                            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
+                        ElaHeatmapUrl = elaUrl,
+                        FftSpectrumUrl = null,
+                        TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
+                    };
+                }
+                catch (Exception fex)
+                {
+                    _logger.LogWarning(fex,
+                        "Forensic analysis failed for inspection {Id}, continuing without",
+                        inspection.Id);
+                }
+
+                // Run decision engine (after forensics so fraud risk is available)
                 var (outcome, reason, traceJson) = DecisionEngine.Evaluate(inspection);
                 inspection.DecisionOutcome = outcome;
                 inspection.DecisionReason = reason;
@@ -218,6 +257,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         DecisionOutcome = i.DecisionOutcome,
         DecisionReason = i.DecisionReason,
         DecisionTraces = ParseDecisionTraces(i.DecisionTraceJson),
+        FraudRiskScore = i.FraudRiskScore,
+        FraudRiskLevel = i.FraudRiskLevel,
+        ForensicResult = MapForensicResult(i.ForensicResult),
         DecisionOverrides = i.DecisionOverrides.Select(o => new DecisionOverrideDto
         {
             OriginalOutcome = o.OriginalOutcome,
@@ -264,6 +306,33 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             return JsonSerializer.Deserialize<List<DecisionTraceEntryDto>>(json, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true,
+            }) ?? [];
+        }
+        catch { return []; }
+    }
+
+    private static ForensicResultDto? MapForensicResult(ForensicResult? fr)
+    {
+        if (fr == null) return null;
+        return new ForensicResultDto
+        {
+            OverallRiskScore = fr.OverallRiskScore,
+            OverallRiskLevel = fr.OverallRiskLevel,
+            Modules = ParseForensicModules(fr.ModuleResultsJson),
+            ElaHeatmapUrl = fr.ElaHeatmapUrl,
+            FftSpectrumUrl = fr.FftSpectrumUrl,
+            TotalProcessingTimeMs = fr.TotalProcessingTimeMs,
+        };
+    }
+
+    private static List<ForensicModuleResultDto> ParseForensicModules(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<ForensicModuleResultDto>>(json, new JsonSerializerOptions
+            {
                 PropertyNameCaseInsensitive = true,
             }) ?? [];
         }
