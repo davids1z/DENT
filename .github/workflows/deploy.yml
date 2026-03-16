@@ -16,8 +16,24 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd ${{ secrets.DEPLOY_PATH || '/opt/dent' }}
-            git pull origin main
-            docker compose build --parallel
-            docker compose up -d --remove-orphans
+            set -e
+            DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
+
+            # Init git repo if needed
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              cd /tmp
+              rm -rf dent-clone
+              git clone https://github.com/${{ github.repository }}.git dent-clone
+              mv dent-clone/.git "$DEPLOY_DIR/.git"
+              rm -rf dent-clone
+              cd "$DEPLOY_DIR"
+              git reset --hard origin/main
+            else
+              cd "$DEPLOY_DIR"
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+
+            docker compose -f docker-compose.server.yml build --parallel
+            docker compose -f docker-compose.server.yml up -d --remove-orphans
             docker image prune -f

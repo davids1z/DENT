@@ -47,6 +47,29 @@ services:
     environment:
       DENT_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       DENT_MODEL: google/gemini-2.5-pro-preview
+      DENT_FORENSICS_ENABLED: "true"
+      DENT_FORENSICS_ELA_QUALITY: "95"
+      DENT_FORENSICS_ELA_SCALE: "20"
+      DENT_FORENSICS_C2PA_ENABLED: "true"
+      DENT_FORENSICS_CNN_ENABLED: "true"
+      DENT_FORENSICS_CNN_METHODS: "catnet,trufor"
+      DENT_FORENSICS_OPTICAL_ENABLED: "true"
+      DENT_FORENSICS_SEMANTIC_ENABLED: "true"
+      DENT_FORENSICS_SEMANTIC_FACE_ENABLED: "true"
+      DENT_FORENSICS_SEMANTIC_VLM_ENABLED: "true"
+      DENT_FORENSICS_SEMANTIC_VLM_MODEL: "google/gemini-2.5-pro-preview"
+      DENT_FORENSICS_DOCUMENT_ENABLED: "true"
+      DENT_FORENSICS_DOCUMENT_SIGNATURE_VERIFICATION: "true"
+      DENT_AGENT_ENABLED: "true"
+      DENT_AGENT_MODEL: ""
+      DENT_AGENT_STP_COST_THRESHOLD: "500"
+      DENT_AGENT_ESCALATION_COST_THRESHOLD: "3000"
+      DENT_AGENT_STP_MAX_FORENSIC_RISK: "0.25"
+      DENT_AGENT_ESCALATION_FORENSIC_RISK: "0.75"
+      DENT_EVIDENCE_ENABLED: "true"
+      DENT_EVIDENCE_TSA_URL: "https://freetsa.org/tsr"
+    volumes:
+      - ml_models:/app/models
     restart: unless-stopped
 
   api:
@@ -97,3 +120,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  ml_models:
