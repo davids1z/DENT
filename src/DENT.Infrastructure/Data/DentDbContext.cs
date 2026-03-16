@@ -36,6 +36,10 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.UserProvidedMake).HasMaxLength(100);
             entity.Property(e => e.UserProvidedModel).HasMaxLength(100);
 
+            // Capture metadata (Phase 6)
+            entity.Property(e => e.CaptureDeviceInfo).HasMaxLength(2000);
+            entity.Property(e => e.CaptureSource).HasMaxLength(20);
+
             // Structured cost totals
             entity.Property(e => e.LaborTotal).HasColumnType("decimal(10,2)");
             entity.Property(e => e.PartsTotal).HasColumnType("decimal(10,2)");

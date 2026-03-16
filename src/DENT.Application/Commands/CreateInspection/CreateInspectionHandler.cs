@@ -54,6 +54,42 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             Mileage = request.Mileage,
         };
 
+        // Parse capture metadata (Phase 6)
+        if (!string.IsNullOrEmpty(request.CaptureMetadataJson))
+        {
+            try
+            {
+                var meta = JsonSerializer.Deserialize<List<CaptureMetaItem>>(
+                    request.CaptureMetadataJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (meta is { Count: > 0 })
+                {
+                    inspection.CaptureSource = "camera";
+                    var first = meta[0];
+                    if (first.Gps is not null)
+                    {
+                        inspection.CaptureLatitude = first.Gps.Latitude;
+                        inspection.CaptureLongitude = first.Gps.Longitude;
+                        inspection.CaptureGpsAccuracy = first.Gps.Accuracy;
+                    }
+                    if (first.Device is not null)
+                    {
+                        inspection.CaptureDeviceInfo = JsonSerializer.Serialize(first.Device,
+                            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse capture metadata, continuing without");
+            }
+        }
+        else
+        {
+            inspection.CaptureSource = "upload";
+        }
+
         // Upload additional images
         for (int i = 1; i < request.Images.Count; i++)
         {
@@ -238,6 +274,11 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         UserProvidedModel = i.UserProvidedModel,
         UserProvidedYear = i.UserProvidedYear,
         Mileage = i.Mileage,
+        CaptureLatitude = i.CaptureLatitude,
+        CaptureLongitude = i.CaptureLongitude,
+        CaptureGpsAccuracy = i.CaptureGpsAccuracy,
+        CaptureDeviceInfo = i.CaptureDeviceInfo,
+        CaptureSource = i.CaptureSource,
         VehicleMake = i.VehicleMake,
         VehicleModel = i.VehicleModel,
         VehicleYear = i.VehicleYear,
@@ -351,4 +392,28 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         }
         catch { return []; }
     }
+}
+
+// Capture metadata DTOs (Phase 6)
+internal record CaptureMetaItem
+{
+    public GpsData? Gps { get; init; }
+    public DeviceData? Device { get; init; }
+    public string? CapturedAt { get; init; }
+}
+
+internal record GpsData
+{
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public double Accuracy { get; init; }
+}
+
+internal record DeviceData
+{
+    public string? UserAgent { get; init; }
+    public string? CameraLabel { get; init; }
+    public int ScreenWidth { get; init; }
+    public int ScreenHeight { get; init; }
+    public string? CaptureTimestamp { get; init; }
 }

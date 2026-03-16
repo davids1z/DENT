@@ -10,6 +10,7 @@ public record CreateInspectionCommand : IRequest<InspectionDto>
     public string? VehicleModel { get; init; }
     public int? VehicleYear { get; init; }
     public int? Mileage { get; init; }
+    public string? CaptureMetadataJson { get; init; }
 }
 
 public record ImageInput

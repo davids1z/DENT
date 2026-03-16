@@ -24,6 +24,7 @@ public class InspectionsController : ControllerBase
         [FromForm] string? vehicleModel,
         [FromForm] int? vehicleYear,
         [FromForm] int? mileage,
+        [FromForm] string? captureMetadata,
         CancellationToken ct)
     {
         if (images is null || images.Count == 0)
@@ -61,6 +62,7 @@ public class InspectionsController : ControllerBase
             VehicleModel = vehicleModel,
             VehicleYear = vehicleYear,
             Mileage = mileage,
+            CaptureMetadataJson = captureMetadata,
         }, ct);
 
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);

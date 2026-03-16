@@ -18,6 +18,13 @@ public class Inspection
     public int? UserProvidedYear { get; set; }
     public int? Mileage { get; set; }
 
+    // Capture metadata (Phase 6)
+    public double? CaptureLatitude { get; set; }
+    public double? CaptureLongitude { get; set; }
+    public double? CaptureGpsAccuracy { get; set; }
+    public string? CaptureDeviceInfo { get; set; }
+    public string? CaptureSource { get; set; }
+
     // Vehicle info (detected by AI)
     public string? VehicleMake { get; set; }
     public string? VehicleModel { get; set; }

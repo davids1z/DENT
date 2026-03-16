@@ -132,9 +132,27 @@ export interface Inspection {
   fraudRiskScore: number | null;
   fraudRiskLevel: string | null;
   forensicResult: ForensicResult | null;
+  // Capture metadata (Phase 6)
+  captureLatitude: number | null;
+  captureLongitude: number | null;
+  captureGpsAccuracy: number | null;
+  captureDeviceInfo: string | null;
+  captureSource: string | null;
   // Multi-image
   additionalImages: InspectionImage[];
   damages: DamageDetection[];
+}
+
+export interface CaptureMetadata {
+  gps: { latitude: number; longitude: number; accuracy: number } | null;
+  device: {
+    userAgent: string;
+    cameraLabel: string;
+    screenWidth: number;
+    screenHeight: number;
+    captureTimestamp: string;
+  };
+  capturedAt: string;
 }
 
 export interface DashboardStats {
@@ -155,6 +173,32 @@ export interface VehicleContext {
   vehicleModel?: string;
   vehicleYear?: number;
   mileage?: number;
+}
+
+export async function uploadInspectionWithMetadata(
+  files: File[],
+  captureMetadata: CaptureMetadata[],
+  vehicle?: VehicleContext,
+): Promise<Inspection> {
+  const formData = new FormData();
+  files.forEach((f) => formData.append("images", f));
+  if (vehicle?.vehicleMake) formData.append("vehicleMake", vehicle.vehicleMake);
+  if (vehicle?.vehicleModel) formData.append("vehicleModel", vehicle.vehicleModel);
+  if (vehicle?.vehicleYear) formData.append("vehicleYear", String(vehicle.vehicleYear));
+  if (vehicle?.mileage) formData.append("mileage", String(vehicle.mileage));
+  formData.append("captureMetadata", JSON.stringify(captureMetadata));
+
+  const res = await fetch(`${API_BASE}/inspections`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error(err.error || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
 }
 
 export async function uploadInspection(

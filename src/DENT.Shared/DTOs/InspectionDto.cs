@@ -16,6 +16,13 @@ public record InspectionDto
     public int? UserProvidedYear { get; init; }
     public int? Mileage { get; init; }
 
+    // Capture metadata (Phase 6)
+    public double? CaptureLatitude { get; init; }
+    public double? CaptureLongitude { get; init; }
+    public double? CaptureGpsAccuracy { get; init; }
+    public string? CaptureDeviceInfo { get; init; }
+    public string? CaptureSource { get; init; }
+
     // AI-detected vehicle info
     public string? VehicleMake { get; init; }
     public string? VehicleModel { get; init; }
