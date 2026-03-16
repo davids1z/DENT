@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     forensics_semantic_vlm_enabled: bool = True
     forensics_semantic_vlm_model: str = "google/gemini-2.5-pro-preview"
 
+    # Document forensics (PDF analysis)
+    forensics_document_enabled: bool = True
+    forensics_document_signature_verification: bool = True
+
     class Config:
         env_file = ".env"
         env_prefix = "DENT_"

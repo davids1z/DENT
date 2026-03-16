@@ -16,5 +16,9 @@ opencv-python-headless>=4.9.0
 scipy>=1.12.0
 # Phase 3: Optical forensics (Moire / wavelet analysis)
 PyWavelets>=1.5.0
+# Phase 5: Document forensics (PDF analysis)
+pypdf>=4.0.0
+pyhanko>=0.25.0
+cryptography>=42.0.0
 # CNN deep learning (optional — graceful degradation if missing)
 # torch and photoholmes are installed separately in Dockerfile for layer caching

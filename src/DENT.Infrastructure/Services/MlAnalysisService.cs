@@ -118,6 +118,7 @@ public class MlAnalysisService : IMlAnalysisService
             ".png" => "image/png",
             ".webp" => "image/webp",
             ".heic" => "image/heic",
+            ".pdf" => "application/pdf",
             _ => "application/octet-stream"
         };
     }

@@ -1,6 +1,7 @@
 import logging
 
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
+from .analyzers.document import DocumentForensicsAnalyzer
 from .analyzers.metadata import MetadataAnalyzer
 from .analyzers.modification import ModificationAnalyzer
 from .analyzers.optical import OpticalForensicsAnalyzer
@@ -23,6 +24,8 @@ class ForensicPipeline:
         semantic_vlm_enabled: bool = True,
         semantic_vlm_model: str = "google/gemini-2.5-pro-preview",
         openrouter_api_key: str = "",
+        document_enabled: bool = True,
+        document_signature_verification: bool = True,
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -44,6 +47,13 @@ class ForensicPipeline:
             if semantic_enabled
             else None
         )
+        self._document: DocumentForensicsAnalyzer | None = (
+            DocumentForensicsAnalyzer(
+                signature_verification=document_signature_verification,
+            )
+            if document_enabled
+            else None
+        )
 
     async def analyze(
         self,
@@ -56,7 +66,9 @@ class ForensicPipeline:
         is_pdf = filename.lower().endswith(".pdf")
 
         if is_pdf:
-            logger.info("PDF forensics not yet implemented, skipping")
+            if self._document and self._document.MODULE_NAME not in skip:
+                result = await self._document.analyze_document(file_bytes, filename)
+                modules.append(result)
         else:
             # Run image analyzers sequentially to avoid memory pressure
             if self._metadata.MODULE_NAME not in skip:

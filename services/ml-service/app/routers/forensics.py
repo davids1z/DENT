@@ -49,6 +49,8 @@ async def analyze_forensics(
         semantic_vlm_enabled=settings.forensics_semantic_vlm_enabled,
         semantic_vlm_model=settings.forensics_semantic_vlm_model,
         openrouter_api_key=settings.openrouter_api_key,
+        document_enabled=settings.forensics_document_enabled,
+        document_signature_verification=settings.forensics_document_signature_verification,
     )
     report = await pipeline.analyze(contents, filename, skip)
 
