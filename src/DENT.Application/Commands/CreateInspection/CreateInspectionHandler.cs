@@ -266,7 +266,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         FftSpectrumUrl = null,
                         TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                     };
-                }
+
                     // Hash forensic results
                     var forensicJson = inspection.ForensicResult?.ModuleResultsJson ?? "[]";
                     inspection.ForensicResultHash = ComputeSha256(forensicJson);
