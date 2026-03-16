@@ -12,6 +12,11 @@ public interface IMlAnalysisService
     Task<MlForensicResult> RunForensicsAsync(byte[] fileBytes, string fileName, CancellationToken ct = default);
 
     Task<MlAgentDecision?> RunAgentEvaluationAsync(MlAgentEvaluateRequest request, CancellationToken ct = default);
+
+    // Evidence (Phase 8)
+    Task<MlTimestampResult> ObtainTimestampAsync(string evidenceHash, CancellationToken ct = default);
+    Task<byte[]?> GenerateReportAsync(object payload, CancellationToken ct = default);
+    Task<byte[]?> GenerateCertificateAsync(object payload, CancellationToken ct = default);
 }
 
 public record MlImageInput
@@ -176,5 +181,15 @@ public record MlAgentDecision
     public int ProcessingTimeMs { get; init; }
     public MlAgentWeatherVerification? WeatherVerification { get; init; }
     public bool FallbackUsed { get; init; }
+    public string? Error { get; init; }
+}
+
+// Evidence timestamp (Phase 8)
+public record MlTimestampResult
+{
+    public bool Success { get; init; }
+    public string? TimestampToken { get; init; }
+    public string? TimestampedAt { get; init; }
+    public string? TsaUrl { get; init; }
     public string? Error { get; init; }
 }

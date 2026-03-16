@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     agent_stp_max_forensic_risk: float = 0.25
     agent_escalation_forensic_risk: float = 0.75
 
+    # Evidence / timestamp settings (Phase 8)
+    evidence_enabled: bool = True
+    evidence_tsa_url: str = "https://freetsa.org/tsr"
+
     class Config:
         env_file = ".env"
         env_prefix = "DENT_"

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using DENT.Application.Interfaces;
 using DENT.Application.Services;
@@ -32,6 +34,10 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
     {
         var firstImage = request.Images[0];
 
+        // Evidence tracking (Phase 8)
+        var imageHashes = new List<object>();
+        var custodyLog = new List<EvidenceCustodyEvent>();
+
         // Upload all images to storage
         string primaryImageUrl;
         using (var stream = new MemoryStream(firstImage.Data))
@@ -39,6 +45,17 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             var key = await _storage.UploadAsync(stream, firstImage.FileName, firstImage.ContentType, ct);
             primaryImageUrl = _storage.GetPublicUrl(key);
         }
+
+        // Hash primary image
+        var primaryHash = ComputeSha256(firstImage.Data);
+        imageHashes.Add(new { fileName = firstImage.FileName, sha256 = primaryHash });
+        custodyLog.Add(new EvidenceCustodyEvent
+        {
+            Event = "image_received",
+            Timestamp = DateTime.UtcNow,
+            Hash = primaryHash,
+            Details = firstImage.FileName,
+        });
 
         // Create inspection record
         var inspection = new Inspection
@@ -106,7 +123,20 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 SortOrder = i,
                 CreatedAt = DateTime.UtcNow,
             });
+
+            // Hash additional image
+            var imgHash = ComputeSha256(img.Data);
+            imageHashes.Add(new { fileName = img.FileName, sha256 = imgHash });
+            custodyLog.Add(new EvidenceCustodyEvent
+            {
+                Event = "image_received",
+                Timestamp = DateTime.UtcNow,
+                Hash = imgHash,
+                Details = img.FileName,
+            });
         }
+
+        inspection.ImageHashesJson = JsonSerializer.Serialize(imageHashes);
 
         _db.Inspections.Add(inspection);
         await _db.SaveChangesAsync(ct);
@@ -198,6 +228,13 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     });
                 }
 
+                custodyLog.Add(new EvidenceCustodyEvent
+                {
+                    Event = "analysis_complete",
+                    Timestamp = DateTime.UtcNow,
+                    Details = $"{inspection.Damages.Count} damages detected",
+                });
+
                 // Run forensic fraud detection (non-blocking)
                 try
                 {
@@ -229,6 +266,17 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         FftSpectrumUrl = null,
                         TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                     };
+                }
+                    // Hash forensic results
+                    var forensicJson = inspection.ForensicResult?.ModuleResultsJson ?? "[]";
+                    inspection.ForensicResultHash = ComputeSha256(forensicJson);
+                    custodyLog.Add(new EvidenceCustodyEvent
+                    {
+                        Event = "forensics_complete",
+                        Timestamp = DateTime.UtcNow,
+                        Hash = inspection.ForensicResultHash,
+                        Details = $"risk={inspection.FraudRiskScore:F2}",
+                    });
                 }
                 catch (Exception fex)
                 {
@@ -328,6 +376,69 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 inspection.DecisionOutcome = decOutcome;
                 inspection.DecisionReason = decReason;
                 inspection.DecisionTraceJson = decTraceJson;
+
+                // Hash agent decision (Phase 8)
+                if (inspection.AgentDecisionJson != null)
+                    inspection.AgentDecisionHash = ComputeSha256(inspection.AgentDecisionJson);
+                custodyLog.Add(new EvidenceCustodyEvent
+                {
+                    Event = "decision_complete",
+                    Timestamp = DateTime.UtcNow,
+                    Hash = inspection.AgentDecisionHash,
+                    Details = inspection.DecisionOutcome,
+                });
+
+                // Compute combined evidence hash (Phase 8)
+                var allHashes = imageHashes
+                    .Select(h => (string)((dynamic)h).sha256)
+                    .ToList();
+                if (inspection.ForensicResultHash != null) allHashes.Add(inspection.ForensicResultHash);
+                if (inspection.AgentDecisionHash != null) allHashes.Add(inspection.AgentDecisionHash);
+                allHashes.Sort();
+                inspection.EvidenceHash = ComputeSha256(string.Join(":", allHashes));
+
+                // Obtain RFC 3161 timestamp
+                try
+                {
+                    var tsResult = await _mlService.ObtainTimestampAsync(inspection.EvidenceHash, ct);
+                    if (tsResult.Success)
+                    {
+                        inspection.TimestampToken = tsResult.TimestampToken;
+                        inspection.TimestampedAt = DateTime.TryParse(tsResult.TimestampedAt, out var tsAt)
+                            ? tsAt.ToUniversalTime() : DateTime.UtcNow;
+                        inspection.TimestampAuthority = tsResult.TsaUrl;
+                        custodyLog.Add(new EvidenceCustodyEvent
+                        {
+                            Event = "evidence_sealed",
+                            Timestamp = DateTime.UtcNow,
+                            Hash = inspection.EvidenceHash,
+                            Details = $"TSA: {tsResult.TsaUrl}",
+                        });
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Timestamp failed: {Error}", tsResult.Error);
+                        custodyLog.Add(new EvidenceCustodyEvent
+                        {
+                            Event = "timestamp_failed",
+                            Timestamp = DateTime.UtcNow,
+                            Details = tsResult.Error,
+                        });
+                    }
+                }
+                catch (Exception tsEx)
+                {
+                    _logger.LogWarning(tsEx, "Timestamp call failed for inspection {Id}", inspection.Id);
+                    custodyLog.Add(new EvidenceCustodyEvent
+                    {
+                        Event = "timestamp_failed",
+                        Timestamp = DateTime.UtcNow,
+                        Details = tsEx.Message,
+                    });
+                }
+
+                inspection.ChainOfCustodyJson = JsonSerializer.Serialize(custodyLog,
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             }
             else
             {
@@ -392,6 +503,14 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         FraudRiskScore = i.FraudRiskScore,
         FraudRiskLevel = i.FraudRiskLevel,
         ForensicResult = MapForensicResult(i.ForensicResult),
+        EvidenceHash = i.EvidenceHash,
+        ImageHashes = ParseImageHashes(i.ImageHashesJson),
+        ForensicResultHash = i.ForensicResultHash,
+        AgentDecisionHash = i.AgentDecisionHash,
+        ChainOfCustody = ParseChainOfCustody(i.ChainOfCustodyJson),
+        HasTimestamp = i.TimestampToken != null,
+        TimestampedAt = i.TimestampedAt?.ToString("o"),
+        TimestampAuthority = i.TimestampAuthority,
         DecisionOverrides = i.DecisionOverrides.Select(o => new DecisionOverrideDto
         {
             OriginalOutcome = o.OriginalOutcome,
@@ -496,6 +615,43 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         }
         catch { return []; }
     }
+
+    internal static List<ImageHashDto>? ParseImageHashes(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<List<ImageHashDto>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            });
+        }
+        catch { return null; }
+    }
+
+    internal static List<CustodyEventDto>? ParseChainOfCustody(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<List<CustodyEventDto>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            });
+        }
+        catch { return null; }
+    }
+
+    private static string ComputeSha256(byte[] data)
+    {
+        var hash = SHA256.HashData(data);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string ComputeSha256(string text)
+    {
+        return ComputeSha256(Encoding.UTF8.GetBytes(text));
+    }
 }
 
 // Capture metadata DTOs (Phase 6)
@@ -520,4 +676,13 @@ internal record DeviceData
     public int ScreenWidth { get; init; }
     public int ScreenHeight { get; init; }
     public string? CaptureTimestamp { get; init; }
+}
+
+// Evidence chain of custody (Phase 8)
+internal record EvidenceCustodyEvent
+{
+    public string Event { get; init; } = "";
+    public DateTime Timestamp { get; init; }
+    public string? Hash { get; init; }
+    public string? Details { get; init; }
 }

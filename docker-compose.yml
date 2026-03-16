@@ -69,6 +69,8 @@ services:
       DENT_AGENT_ESCALATION_COST_THRESHOLD: "3000"
       DENT_AGENT_STP_MAX_FORENSIC_RISK: "0.25"
       DENT_AGENT_ESCALATION_FORENSIC_RISK: "0.75"
+      DENT_EVIDENCE_ENABLED: "true"
+      DENT_EVIDENCE_TSA_URL: "https://freetsa.org/tsr"
     volumes:
       - ml_models:/app/models
     ports:

@@ -12,6 +12,7 @@ import { ForensicReport } from "@/components/ForensicReport";
 import { ElaHeatmapOverlay } from "@/components/ElaHeatmapOverlay";
 import { FftSpectrumOverlay } from "@/components/FftSpectrumOverlay";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
+import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
 import { RepairEstimateTable } from "@/components/RepairEstimateTable";
 import { ImageGallery } from "@/components/ImageGallery";
@@ -177,6 +178,12 @@ export default function InspectionDetailPage() {
               fftSpectrumUrl={inspection.forensicResult.fftSpectrumUrl}
             />
           )}
+        </div>
+      )}
+
+      {inspection.evidenceHash && (
+        <div className="mt-6">
+          <EvidenceIntegrity inspection={inspection} />
         </div>
       )}
 

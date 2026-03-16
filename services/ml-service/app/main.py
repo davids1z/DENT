@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import agent, analyze, forensics, health
+from .routers import agent, analyze, evidence, forensics, health
 
 logging.basicConfig(level=settings.log_level)
 
@@ -26,3 +26,4 @@ app.include_router(health.router, tags=["Health"])
 app.include_router(analyze.router, tags=["Analysis"])
 app.include_router(forensics.router, tags=["Forensics"])
 app.include_router(agent.router, tags=["Agent"])
+app.include_router(evidence.router, tags=["Evidence"])

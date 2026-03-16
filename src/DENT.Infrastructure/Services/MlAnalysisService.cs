@@ -129,6 +129,64 @@ public class MlAnalysisService : IMlAnalysisService
         }
     }
 
+    public async Task<MlTimestampResult> ObtainTimestampAsync(string evidenceHash, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new { evidence_hash = evidenceHash });
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("/evidence/timestamp", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<MlTimestampResult>(SnakeCaseOptions, ct);
+            return result ?? new MlTimestampResult { Success = false, Error = "Empty response" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to obtain RFC 3161 timestamp");
+            return new MlTimestampResult { Success = false, Error = ex.Message };
+        }
+    }
+
+    public async Task<byte[]?> GenerateReportAsync(object payload, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(payload, SnakeCaseOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("/evidence/report", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            return await response.Content.ReadAsByteArrayAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate evidence report");
+            return null;
+        }
+    }
+
+    public async Task<byte[]?> GenerateCertificateAsync(object payload, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(payload, SnakeCaseOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("/evidence/certificate", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            return await response.Content.ReadAsByteArrayAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate evidence certificate");
+            return null;
+        }
+    }
+
     private static string GetContentType(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();

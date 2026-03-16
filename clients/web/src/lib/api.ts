@@ -125,6 +125,18 @@ export interface ForensicResult {
   totalProcessingTimeMs: number;
 }
 
+export interface ImageHash {
+  fileName: string;
+  sha256: string;
+}
+
+export interface CustodyEvent {
+  event: string;
+  timestamp: string;
+  hash: string | null;
+  details: string | null;
+}
+
 export interface Inspection {
   id: string;
   imageUrl: string;
@@ -177,6 +189,15 @@ export interface Inspection {
   captureGpsAccuracy: number | null;
   captureDeviceInfo: string | null;
   captureSource: string | null;
+  // Evidence integrity (Phase 8)
+  evidenceHash: string | null;
+  imageHashes: ImageHash[] | null;
+  forensicResultHash: string | null;
+  agentDecisionHash: string | null;
+  chainOfCustody: CustodyEvent[] | null;
+  hasTimestamp: boolean;
+  timestampedAt: string | null;
+  timestampAuthority: string | null;
   // Multi-image
   additionalImages: InspectionImage[];
   damages: DamageDetection[];
@@ -560,4 +581,25 @@ export function forensicModuleLabel(moduleName: string): string {
     document_forensics: "Forenzika dokumenata",
   };
   return labels[moduleName] || moduleName;
+}
+
+// Evidence integrity helpers (Phase 8)
+export function getReportUrl(inspectionId: string): string {
+  return `${API_BASE}/inspections/${inspectionId}/report`;
+}
+
+export function getCertificateUrl(inspectionId: string): string {
+  return `${API_BASE}/inspections/${inspectionId}/certificate`;
+}
+
+export function custodyEventLabel(event: string): string {
+  const labels: Record<string, string> = {
+    image_received: "Slika zaprimljena",
+    analysis_complete: "Analiza dovršena",
+    forensics_complete: "Forenzika dovršena",
+    decision_complete: "Odluka donesena",
+    evidence_sealed: "Dokazi zapečaćeni",
+    timestamp_failed: "Vremenski pečat neuspješan",
+  };
+  return labels[event] || event;
 }

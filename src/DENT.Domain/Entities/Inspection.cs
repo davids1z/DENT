@@ -64,6 +64,16 @@ public class Inspection
     public double? FraudRiskScore { get; set; }
     public string? FraudRiskLevel { get; set; }
 
+    // Evidence integrity (Phase 8)
+    public string? EvidenceHash { get; set; }
+    public string? ImageHashesJson { get; set; }
+    public string? ForensicResultHash { get; set; }
+    public string? AgentDecisionHash { get; set; }
+    public string? ChainOfCustodyJson { get; set; }
+    public string? TimestampToken { get; set; }
+    public DateTime? TimestampedAt { get; set; }
+    public string? TimestampAuthority { get; set; }
+
     // Navigation
     public List<DamageDetection> Damages { get; set; } = [];
     public List<InspectionImage> AdditionalImages { get; set; } = [];

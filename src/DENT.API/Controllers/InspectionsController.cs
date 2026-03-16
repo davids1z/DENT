@@ -1,6 +1,8 @@
 using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Commands.DeleteInspection;
 using DENT.Application.Commands.OverrideDecision;
+using DENT.Application.Queries.GetEvidenceCertificate;
+using DENT.Application.Queries.GetEvidenceReport;
 using DENT.Application.Queries.GetInspection;
 using DENT.Application.Queries.GetInspections;
 using MediatR;
@@ -109,6 +111,22 @@ public class InspectionsController : ControllerBase
         var deleted = await _mediator.Send(new DeleteInspectionCommand(id), ct);
         if (!deleted) return NotFound();
         return NoContent();
+    }
+
+    [HttpGet("{id:guid}/report")]
+    public async Task<IActionResult> GetReport(Guid id, CancellationToken ct)
+    {
+        var pdf = await _mediator.Send(new GetEvidenceReportQuery(id), ct);
+        if (pdf is null) return NotFound();
+        return File(pdf, "application/pdf", $"dent-izvjestaj-{id.ToString()[..8]}.pdf");
+    }
+
+    [HttpGet("{id:guid}/certificate")]
+    public async Task<IActionResult> GetCertificate(Guid id, CancellationToken ct)
+    {
+        var xml = await _mediator.Send(new GetEvidenceCertificateQuery(id), ct);
+        if (xml is null) return NotFound();
+        return File(xml, "application/xml", $"dent-certifikat-{id.ToString()[..8]}.xml");
     }
 }
 

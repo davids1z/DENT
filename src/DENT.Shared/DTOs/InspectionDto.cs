@@ -62,6 +62,16 @@ public record InspectionDto
     public string? FraudRiskLevel { get; init; }
     public ForensicResultDto? ForensicResult { get; init; }
 
+    // Evidence integrity (Phase 8)
+    public string? EvidenceHash { get; init; }
+    public List<ImageHashDto>? ImageHashes { get; init; }
+    public string? ForensicResultHash { get; init; }
+    public string? AgentDecisionHash { get; init; }
+    public List<CustodyEventDto>? ChainOfCustody { get; init; }
+    public bool HasTimestamp { get; init; }
+    public string? TimestampedAt { get; init; }
+    public string? TimestampAuthority { get; init; }
+
     // Multi-image
     public List<InspectionImageDto> AdditionalImages { get; init; } = [];
 
@@ -194,6 +204,20 @@ public record AgentWeatherVerificationDto
     public bool? CorroboratesClaim { get; init; }
     public string? DiscrepancyNote { get; init; }
     public string? WeatherDescription { get; init; }
+}
+
+public record ImageHashDto
+{
+    public string FileName { get; init; } = "";
+    public string Sha256 { get; init; } = "";
+}
+
+public record CustodyEventDto
+{
+    public string Event { get; init; } = "";
+    public string Timestamp { get; init; } = "";
+    public string? Hash { get; init; }
+    public string? Details { get; init; }
 }
 
 public record DashboardStatsDto

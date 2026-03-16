@@ -58,6 +58,15 @@ public class DentDbContext : DbContext, IDentDbContext
             // Fraud detection
             entity.Property(e => e.FraudRiskLevel).HasMaxLength(50);
 
+            // Evidence integrity (Phase 8)
+            entity.Property(e => e.EvidenceHash).HasMaxLength(128);
+            entity.Property(e => e.ImageHashesJson).HasMaxLength(10000);
+            entity.Property(e => e.ForensicResultHash).HasMaxLength(128);
+            entity.Property(e => e.AgentDecisionHash).HasMaxLength(128);
+            entity.Property(e => e.ChainOfCustodyJson).HasMaxLength(50000);
+            entity.Property(e => e.TimestampToken).HasMaxLength(10000);
+            entity.Property(e => e.TimestampAuthority).HasMaxLength(500);
+
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.Status);
         });

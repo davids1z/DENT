@@ -20,5 +20,7 @@ PyWavelets>=1.5.0
 pypdf>=4.0.0
 pyhanko>=0.25.0
 cryptography>=42.0.0
+# Phase 8: Evidence standardization (PDF report generation)
+fpdf2>=2.8.0
 # CNN deep learning (optional — graceful degradation if missing)
 # torch and photoholmes are installed separately in Dockerfile for layer caching
