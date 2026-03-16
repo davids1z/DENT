@@ -10,6 +10,8 @@ public interface IMlAnalysisService
         CancellationToken ct = default);
 
     Task<MlForensicResult> RunForensicsAsync(byte[] fileBytes, string fileName, CancellationToken ct = default);
+
+    Task<MlAgentDecision?> RunAgentEvaluationAsync(MlAgentEvaluateRequest request, CancellationToken ct = default);
 }
 
 public record MlImageInput
@@ -112,4 +114,67 @@ public record MlForensicFinding
     public string Description { get; init; } = string.Empty;
     public double RiskScore { get; init; }
     public double Confidence { get; init; }
+}
+
+// Agent evaluation (Phase 7)
+public record MlAgentEvaluateRequest
+{
+    public List<Dictionary<string, object>> Damages { get; init; } = [];
+    public List<Dictionary<string, object>> ForensicModules { get; init; } = [];
+    public double OverallForensicRiskScore { get; init; }
+    public string OverallForensicRiskLevel { get; init; } = "Low";
+    public decimal CostMin { get; init; }
+    public decimal CostMax { get; init; }
+    public decimal? GrossTotal { get; init; }
+    public string? VehicleMake { get; init; }
+    public string? VehicleModel { get; init; }
+    public int? VehicleYear { get; init; }
+    public string? VehicleColor { get; init; }
+    public string? StructuralIntegrity { get; init; }
+    public string? UrgencyLevel { get; init; }
+    public bool? IsDriveable { get; init; }
+    public double? Latitude { get; init; }
+    public double? Longitude { get; init; }
+    public string? CaptureTimestamp { get; init; }
+    public string? CaptureSource { get; init; }
+    public List<string> DamageCauses { get; init; } = [];
+}
+
+public record MlAgentReasoningStep
+{
+    public int Step { get; init; }
+    public string Category { get; init; } = "";
+    public string Observation { get; init; } = "";
+    public string Assessment { get; init; } = "";
+    public string Impact { get; init; } = "";
+}
+
+public record MlAgentWeatherVerification
+{
+    public bool Queried { get; init; }
+    public bool HadHail { get; init; }
+    public bool HadPrecipitation { get; init; }
+    public double PrecipitationMm { get; init; }
+    public bool? CorroboratesClaim { get; init; }
+    public string? DiscrepancyNote { get; init; }
+    public string? WeatherDescription { get; init; }
+    public string? Error { get; init; }
+}
+
+public record MlAgentDecision
+{
+    public string Outcome { get; init; } = "HumanReview";
+    public double Confidence { get; init; }
+    public List<MlAgentReasoningStep> ReasoningSteps { get; init; } = [];
+    public string? WeatherAssessment { get; init; }
+    public List<string> FraudIndicators { get; init; } = [];
+    public List<string> RecommendedActions { get; init; } = [];
+    public string SummaryHr { get; init; } = "";
+    public bool StpEligible { get; init; }
+    public List<string> StpBlockers { get; init; } = [];
+    public string ModelUsed { get; init; } = "";
+    public int ProcessingTimeMs { get; init; }
+    public MlAgentWeatherVerification? WeatherVerification { get; init; }
+    public bool FallbackUsed { get; init; }
+    public string? Error { get; init; }
 }

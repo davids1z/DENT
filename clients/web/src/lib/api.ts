@@ -65,6 +65,39 @@ export interface DecisionOverride {
   createdAt: string;
 }
 
+export interface AgentReasoningStep {
+  step: number;
+  category: string;
+  observation: string;
+  assessment: string;
+  impact: string;
+}
+
+export interface AgentWeatherVerification {
+  queried: boolean;
+  hadHail: boolean;
+  hadPrecipitation: boolean;
+  precipitationMm: number;
+  corroboratesClaim: boolean | null;
+  discrepancyNote: string | null;
+  weatherDescription: string | null;
+}
+
+export interface AgentDecision {
+  outcome: string;
+  confidence: number;
+  reasoningSteps: AgentReasoningStep[];
+  weatherAssessment: string | null;
+  fraudIndicators: string[];
+  recommendedActions: string[];
+  summaryHr: string;
+  stpEligible: boolean;
+  stpBlockers: string[];
+  modelUsed: string;
+  processingTimeMs: number;
+  weatherVerification: AgentWeatherVerification | null;
+}
+
 export interface ForensicFinding {
   code: string;
   title: string;
@@ -128,6 +161,12 @@ export interface Inspection {
   decisionReason: string | null;
   decisionTraces: DecisionTraceEntry[];
   decisionOverrides: DecisionOverride[];
+  // Agent decision (Phase 7)
+  agentDecision: AgentDecision | null;
+  agentConfidence: number | null;
+  agentStpEligible: boolean;
+  agentFallbackUsed: boolean;
+  agentProcessingTimeMs: number;
   // Fraud detection
   fraudRiskScore: number | null;
   fraudRiskLevel: string | null;

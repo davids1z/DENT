@@ -237,11 +237,97 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         inspection.Id);
                 }
 
-                // Run decision engine (after forensics so fraud risk is available)
-                var (outcome, reason, traceJson) = DecisionEngine.Evaluate(inspection);
-                inspection.DecisionOutcome = outcome;
-                inspection.DecisionReason = reason;
-                inspection.DecisionTraceJson = traceJson;
+                // Run AI agent evaluation (Phase 7 - replaces rule-based as primary)
+                string decOutcome;
+                string decReason;
+                string decTraceJson;
+                try
+                {
+                    var agentRequest = new MlAgentEvaluateRequest
+                    {
+                        Damages = inspection.Damages.Select(d => new Dictionary<string, object>
+                        {
+                            ["damageType"] = d.DamageType.ToString(),
+                            ["carPart"] = d.CarPart.ToString(),
+                            ["severity"] = d.Severity.ToString(),
+                            ["description"] = d.Description,
+                            ["confidence"] = d.Confidence,
+                            ["estimatedCostMin"] = (object)(d.EstimatedCostMin ?? 0m),
+                            ["estimatedCostMax"] = (object)(d.EstimatedCostMax ?? 0m),
+                            ["safetyRating"] = (object)(d.SafetyRating ?? ""),
+                            ["damageCause"] = (object)(d.DamageCause ?? ""),
+                            ["repairMethod"] = (object)(d.RepairMethod ?? ""),
+                        }).ToList(),
+                        ForensicModules = inspection.ForensicResult != null
+                            ? JsonSerializer.Deserialize<List<Dictionary<string, object>>>(
+                                inspection.ForensicResult.ModuleResultsJson ?? "[]",
+                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []
+                            : [],
+                        OverallForensicRiskScore = inspection.FraudRiskScore ?? 0,
+                        OverallForensicRiskLevel = inspection.FraudRiskLevel ?? "Low",
+                        CostMin = inspection.TotalEstimatedCostMin ?? 0,
+                        CostMax = inspection.TotalEstimatedCostMax ?? inspection.GrossTotal ?? 0,
+                        GrossTotal = inspection.GrossTotal,
+                        VehicleMake = inspection.VehicleMake,
+                        VehicleModel = inspection.VehicleModel,
+                        VehicleYear = inspection.VehicleYear,
+                        VehicleColor = inspection.VehicleColor,
+                        StructuralIntegrity = inspection.StructuralIntegrity,
+                        UrgencyLevel = inspection.UrgencyLevel,
+                        IsDriveable = inspection.IsDriveable,
+                        Latitude = inspection.CaptureLatitude,
+                        Longitude = inspection.CaptureLongitude,
+                        CaptureTimestamp = inspection.CreatedAt.ToString("o"),
+                        CaptureSource = inspection.CaptureSource,
+                        DamageCauses = inspection.Damages
+                            .Where(d => !string.IsNullOrEmpty(d.DamageCause))
+                            .Select(d => d.DamageCause!)
+                            .Distinct()
+                            .ToList(),
+                    };
+
+                    var agentResult = await _mlService.RunAgentEvaluationAsync(agentRequest, ct);
+
+                    if (agentResult != null && !agentResult.FallbackUsed)
+                    {
+                        decOutcome = agentResult.Outcome;
+                        decReason = agentResult.SummaryHr;
+
+                        inspection.AgentDecisionJson = JsonSerializer.Serialize(agentResult,
+                            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                        inspection.AgentConfidence = agentResult.Confidence;
+                        inspection.AgentWeatherAssessment = agentResult.WeatherAssessment;
+                        inspection.AgentStpEligible = agentResult.StpEligible;
+                        inspection.AgentFallbackUsed = false;
+                        inspection.AgentProcessingTimeMs = agentResult.ProcessingTimeMs;
+
+                        // Still run rule engine for audit trail
+                        var (_, _, ruleTrace) = DecisionEngine.Evaluate(inspection);
+                        decTraceJson = ruleTrace;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Agent returned fallback for inspection {Id}", inspection.Id);
+                        var (rO, rR, rT) = DecisionEngine.Evaluate(inspection);
+                        decOutcome = rO;
+                        decReason = rR;
+                        decTraceJson = rT;
+                        inspection.AgentFallbackUsed = true;
+                    }
+                }
+                catch (Exception agentEx)
+                {
+                    _logger.LogWarning(agentEx, "Agent failed for inspection {Id}, falling back to rules", inspection.Id);
+                    var (rO, rR, rT) = DecisionEngine.Evaluate(inspection);
+                    decOutcome = rO;
+                    decReason = rR;
+                    decTraceJson = rT;
+                    inspection.AgentFallbackUsed = true;
+                }
+
+                inspection.DecisionOutcome = decOutcome;
+                inspection.DecisionReason = decReason;
+                inspection.DecisionTraceJson = decTraceJson;
             }
             else
             {
@@ -298,6 +384,11 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         DecisionOutcome = i.DecisionOutcome,
         DecisionReason = i.DecisionReason,
         DecisionTraces = ParseDecisionTraces(i.DecisionTraceJson),
+        AgentDecision = ParseAgentDecision(i.AgentDecisionJson),
+        AgentConfidence = i.AgentConfidence,
+        AgentStpEligible = i.AgentStpEligible,
+        AgentFallbackUsed = i.AgentFallbackUsed,
+        AgentProcessingTimeMs = i.AgentProcessingTimeMs,
         FraudRiskScore = i.FraudRiskScore,
         FraudRiskLevel = i.FraudRiskLevel,
         ForensicResult = MapForensicResult(i.ForensicResult),
@@ -365,6 +456,19 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             FftSpectrumUrl = fr.FftSpectrumUrl,
             TotalProcessingTimeMs = fr.TotalProcessingTimeMs,
         };
+    }
+
+    private static AgentDecisionDto? ParseAgentDecision(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<AgentDecisionDto>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            });
+        }
+        catch { return null; }
     }
 
     private static List<ForensicModuleResultDto> ParseForensicModules(string? json)

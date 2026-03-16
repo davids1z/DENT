@@ -50,6 +50,13 @@ public record InspectionDto
     public List<DecisionTraceEntryDto> DecisionTraces { get; init; } = [];
     public List<DecisionOverrideDto> DecisionOverrides { get; init; } = [];
 
+    // Agent decision (Phase 7)
+    public AgentDecisionDto? AgentDecision { get; init; }
+    public double? AgentConfidence { get; init; }
+    public bool AgentStpEligible { get; init; }
+    public bool AgentFallbackUsed { get; init; }
+    public int AgentProcessingTimeMs { get; init; }
+
     // Fraud detection
     public double? FraudRiskScore { get; init; }
     public string? FraudRiskLevel { get; init; }
@@ -151,6 +158,42 @@ public record ForensicFindingDto
     public string Description { get; init; } = string.Empty;
     public double RiskScore { get; init; }
     public double Confidence { get; init; }
+}
+
+public record AgentDecisionDto
+{
+    public string Outcome { get; init; } = "";
+    public double Confidence { get; init; }
+    public List<AgentReasoningStepDto> ReasoningSteps { get; init; } = [];
+    public string? WeatherAssessment { get; init; }
+    public List<string> FraudIndicators { get; init; } = [];
+    public List<string> RecommendedActions { get; init; } = [];
+    public string SummaryHr { get; init; } = "";
+    public bool StpEligible { get; init; }
+    public List<string> StpBlockers { get; init; } = [];
+    public string ModelUsed { get; init; } = "";
+    public int ProcessingTimeMs { get; init; }
+    public AgentWeatherVerificationDto? WeatherVerification { get; init; }
+}
+
+public record AgentReasoningStepDto
+{
+    public int Step { get; init; }
+    public string Category { get; init; } = "";
+    public string Observation { get; init; } = "";
+    public string Assessment { get; init; } = "";
+    public string Impact { get; init; } = "";
+}
+
+public record AgentWeatherVerificationDto
+{
+    public bool Queried { get; init; }
+    public bool HadHail { get; init; }
+    public bool HadPrecipitation { get; init; }
+    public double PrecipitationMm { get; init; }
+    public bool? CorroboratesClaim { get; init; }
+    public string? DiscrepancyNote { get; init; }
+    public string? WeatherDescription { get; init; }
 }
 
 public record DashboardStatsDto

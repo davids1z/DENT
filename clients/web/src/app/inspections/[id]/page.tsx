@@ -11,6 +11,7 @@ import { ForensicBadge } from "@/components/ForensicBadge";
 import { ForensicReport } from "@/components/ForensicReport";
 import { ElaHeatmapOverlay } from "@/components/ElaHeatmapOverlay";
 import { FftSpectrumOverlay } from "@/components/FftSpectrumOverlay";
+import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { OverridePanel } from "@/components/OverridePanel";
 import { RepairEstimateTable } from "@/components/RepairEstimateTable";
 import { ImageGallery } from "@/components/ImageGallery";
@@ -176,6 +177,16 @@ export default function InspectionDetailPage() {
               fftSpectrumUrl={inspection.forensicResult.fftSpectrumUrl}
             />
           )}
+        </div>
+      )}
+
+      {inspection.agentDecision && (
+        <div className="mt-6">
+          <AgentReasoningTrace
+            decision={inspection.agentDecision}
+            fallbackUsed={inspection.agentFallbackUsed}
+            processingTimeMs={inspection.agentProcessingTimeMs}
+          />
         </div>
       )}
 

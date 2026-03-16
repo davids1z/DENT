@@ -52,6 +52,14 @@ public class Inspection
     public string? DecisionReason { get; set; }
     public string? DecisionTraceJson { get; set; } // JSON array of rule evaluations
 
+    // Agent decision (Phase 7)
+    public string? AgentDecisionJson { get; set; }
+    public double? AgentConfidence { get; set; }
+    public string? AgentWeatherAssessment { get; set; }
+    public bool AgentStpEligible { get; set; }
+    public bool AgentFallbackUsed { get; set; }
+    public int AgentProcessingTimeMs { get; set; }
+
     // Fraud detection
     public double? FraudRiskScore { get; set; }
     public string? FraudRiskLevel { get; set; }

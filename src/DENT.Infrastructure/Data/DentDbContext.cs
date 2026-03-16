@@ -51,6 +51,10 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.DecisionReason).HasMaxLength(2000);
             entity.Property(e => e.DecisionTraceJson).HasMaxLength(5000);
 
+            // Agent decision (Phase 7)
+            entity.Property(e => e.AgentDecisionJson).HasMaxLength(50000);
+            entity.Property(e => e.AgentWeatherAssessment).HasMaxLength(2000);
+
             // Fraud detection
             entity.Property(e => e.FraudRiskLevel).HasMaxLength(50);
 

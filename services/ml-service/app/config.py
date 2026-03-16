@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     forensics_document_enabled: bool = True
     forensics_document_signature_verification: bool = True
 
+    # Agent settings (Phase 7)
+    agent_enabled: bool = True
+    agent_model: str = ""
+    agent_stp_cost_threshold: float = 500.0
+    agent_escalation_cost_threshold: float = 3000.0
+    agent_stp_max_forensic_risk: float = 0.25
+    agent_escalation_forensic_risk: float = 0.75
+
     class Config:
         env_file = ".env"
         env_prefix = "DENT_"

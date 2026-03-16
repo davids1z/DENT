@@ -109,6 +109,26 @@ public class MlAnalysisService : IMlAnalysisService
         }
     }
 
+    public async Task<MlAgentDecision?> RunAgentEvaluationAsync(MlAgentEvaluateRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(request, SnakeCaseOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("/agent/evaluate", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<MlAgentDecision>(SnakeCaseOptions, ct);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Agent evaluation failed, will fall back to rule engine");
+            return null;
+        }
+    }
+
     private static string GetContentType(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
