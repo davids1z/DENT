@@ -15,8 +15,8 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     torch>=2.2.0 --index-url https://download.pytorch.org/whl/cpu
 
-# Install PhotoHolmes (depends on torch)
-RUN pip install --no-cache-dir photoholmes>=1.0.0
+# Install PhotoHolmes (depends on torch, may not be available on all platforms)
+RUN pip install --no-cache-dir photoholmes>=1.0.0 || true
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
