@@ -24,3 +24,5 @@ cryptography>=42.0.0
 fpdf2>=2.8.0
 # CNN deep learning (optional — graceful degradation if missing)
 # torch and photoholmes are installed separately in Dockerfile for layer caching
+# AI generation detection (optional — transformers installed in Dockerfile for layer caching)
+# Models: Organika/sdxl-detector, umm-maybe/AI-image-detector

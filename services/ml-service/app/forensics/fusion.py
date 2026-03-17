@@ -1,12 +1,13 @@
 from .base import ModuleResult, RiskLevel
 
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "metadata_analysis": 0.20,
-    "modification_detection": 0.20,
-    "deep_modification_detection": 0.25,
-    "optical_forensics": 0.10,
-    "semantic_forensics": 0.15,
+    "metadata_analysis": 0.15,
+    "modification_detection": 0.15,
+    "deep_modification_detection": 0.20,
+    "optical_forensics": 0.05,
+    "semantic_forensics": 0.10,
     "document_forensics": 0.10,
+    "ai_generation_detection": 0.25,
 }
 
 
@@ -71,6 +72,13 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, RiskLevel]:
         high_risk_count = sum(1 for m in active_modules if m.risk_score >= 0.50)
         if high_risk_count >= 2 and overall < 0.60:
             overall = max(overall, 0.60)
+
+        # ── AI generation detection override ─────────────────────────
+        # Trained classifiers for AI content are authoritative — a single
+        # high signal from this module should dominate the overall score.
+        aigen = [m for m in active_modules if m.module_name == "ai_generation_detection"]
+        if aigen and aigen[0].risk_score >= 0.60:
+            overall = max(overall, aigen[0].risk_score * 0.85)
 
     overall = max(0.0, min(1.0, overall))
     return overall, _risk_level(overall)

@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir \
 # Install PhotoHolmes (depends on torch, may not be available on all platforms)
 RUN pip install --no-cache-dir photoholmes>=1.0.0 || true
 
+# Install Transformers for AI-generated image detection (Swin Transformer classifiers)
+RUN pip install --no-cache-dir transformers>=4.36.0 || true
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

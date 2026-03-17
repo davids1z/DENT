@@ -51,6 +51,7 @@ async def analyze_forensics(
         openrouter_api_key=settings.openrouter_api_key,
         document_enabled=settings.forensics_document_enabled,
         document_signature_verification=settings.forensics_document_signature_verification,
+        aigen_enabled=settings.forensics_aigen_enabled,
     )
     report = await pipeline.analyze(contents, filename, skip)
 

@@ -1,5 +1,6 @@
 import logging
 
+from .analyzers.ai_generation import AiGenerationAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
 from .analyzers.document import DocumentForensicsAnalyzer
 from .analyzers.metadata import MetadataAnalyzer
@@ -26,6 +27,7 @@ class ForensicPipeline:
         openrouter_api_key: str = "",
         document_enabled: bool = True,
         document_signature_verification: bool = True,
+        aigen_enabled: bool = True,
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -53,6 +55,9 @@ class ForensicPipeline:
             )
             if document_enabled
             else None
+        )
+        self._aigen: AiGenerationAnalyzer | None = (
+            AiGenerationAnalyzer() if aigen_enabled else None
         )
 
     async def analyze(
@@ -89,6 +94,11 @@ class ForensicPipeline:
 
             if self._semantic and self._semantic.MODULE_NAME not in skip:
                 result = await self._semantic.analyze_image(file_bytes, filename)
+                modules.append(result)
+
+            # AI generation detection — run last (heaviest models, most memory)
+            if self._aigen and self._aigen.MODULE_NAME not in skip:
+                result = await self._aigen.analyze_image(file_bytes, filename)
                 modules.append(result)
 
         overall_score, overall_level = fuse_scores(modules)
