@@ -524,6 +524,7 @@ export function findingCategoryLabel(cause: string | null): string {
     "Deepfake indikator": "Deepfake indikator",
     "Sumnjiva tekstura": "Sumnjiva tekstura",
     "Perspektivna anomalija": "Perspektivna anomalija",
+    "Spektralna anomalija": "Spektralna anomalija",
     "Autenticno": "Autenticno",
   };
   return labels[cause] || cause;

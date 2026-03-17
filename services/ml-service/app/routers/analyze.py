@@ -114,12 +114,36 @@ Ako forenzicki moduli pokazuju VISOK ili KRITICAN rizik — MORAS to odraziti u 
 NE SMIJES proglasiti sliku autenticnom ako forenzicki moduli ukazuju na manipulaciju ili AI generiranje.
 
 Konkretno:
-- Ako modul za detekciju AI-generiranog sadrzaja (ai_generation_detection) pokazuje visok rizik (>= 0.60),
-  ovo je NAJJACI dokaz da je slika umjetno generirana. MORAS prijaviti nalaz kao Severe ili Critical.
-  Ovaj modul koristi neuronske mreze (Swin Transformer) OBUCENE specificno za prepoznavanje AI slika.
-- Ako spektralna forenzika (spectral_forensics) pokazuje visok rizik (>= 0.50),
-  frekvencijska domena otkriva artefakte AI generatora nevidljive ljudskom oku.
-  Ovo je jak signal — prijavi kao Moderate/Severe.
+
+=== PRIORITET 1: AI DETEKCIJA (neuronske mreze) ===
+- Ako ai_generation_detection >= 0.60: Swin Transformer mreze obucene na 500k+ parova
+  real/fake slika detektirale su statisticke obrasce tipicne za AI generatore.
+  Ovo je NAJJACI pojedinacni signal. Severity MORA biti Severe ili Critical.
+
+=== PRIORITET 2: SPEKTRALNA FORENZIKA (frekvencijska domena) ===
+- Ako spectral_forensics >= 0.50: Frekvencijsko-fazna analiza otkriva:
+  * Nisku faznu koherenciju izmedju R/G/B kanala (difuzijski modeli generiraju kanale neovisno)
+  * Deficit visokih frekvencija (AI ne reproducira fine detalje pravilno)
+  * Plosnati spektar (Wiener entropija visa od prirodnih fotografija)
+  * Anomalije u blok-baziranoj frekvencijskoj mapi
+  Ovi artefakti su NEVIDLJIVI ljudskom oku ali NEDVOJBENI u frekvencijskoj domeni.
+  Severity Moderate/Severe. Koristi damage_cause "Spektralna anomalija".
+
+=== PRIORITET 3: CROSS-VALIDATION (dva nezavisna pristupa) ===
+- Ako OBOJE ai_generation_detection >= 0.50 I spectral_forensics >= 0.40:
+  Dva NEZAVISNA pristupa (neuronska mreza + frekvencijska analiza) potvrdjuju
+  AI generiranje. Ovo je gotovo siguran dokaz. Severity MORA biti Critical.
+- Ako spectral_forensics >= 0.40 ALI ai_generation_detection < 0.40:
+  Frekvencijske anomalije postoje ali neuronska mreza nije sigurna.
+  Moguce noviji/nepoznati AI generator. Prijavi kao Moderate s damage_cause
+  "Spektralna anomalija", navedi specificne anomalije kao dokaz.
+
+=== PRIORITET 4: C2PA KRIPTOGRAFSKI PECAT ===
+- Ako C2PA manifest (META_C2PA_AI_GENERATED) detektiran u metadata modulu:
+  Slika SAMA SEBE deklarira kao AI-generiranu putem kriptografski potpisanog
+  C2PA manifesta. Ovo je nepobitni dokaz. Severity Critical.
+
+=== OSTALI MODULI ===
 - Ako je CNN modul (deep_modification_detection) detektirao manipulaciju → OBAVEZNO prijavi kao Severe/Critical
 - Ako semanticka analiza (SEM_AI_GENERATED_*) ukazuje na AI → OBAVEZNO prijavi kao Severe/Critical
 - Ako ELA analiza pokazuje sumnjive regije → prijavi kao Moderate/Severe
@@ -156,6 +180,7 @@ Za svaki nalaz:
 - "Deepfake indikator" - znakovi deepfake generiranja ili zamjene lica
 - "Sumnjiva tekstura" - neprirodne teksture tipicne za AI ili obradu
 - "Perspektivna anomalija" - nekonzistentna perspektiva ili geometrija
+- "Spektralna anomalija" - frekvencijsko-fazne anomalije u DCT/FFT domeni tipicne za AI generiranje
 - "Autenticno" - aspekt koji potvrduje autenticnost (koristi za autenticne elemente)
 
 === OBAVEZAN JSON FORMAT ===

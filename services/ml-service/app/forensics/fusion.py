@@ -81,5 +81,21 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, RiskLevel]:
         if aigen and aigen[0].risk_score >= 0.60:
             overall = max(overall, aigen[0].risk_score * 0.85)
 
+        # ── Spectral + AI generation cross-validation ─────────────
+        # When two INDEPENDENT approaches (trained NN + frequency analysis)
+        # both detect AI content, boost confidence significantly.
+        spectral = [m for m in active_modules if m.module_name == "spectral_forensics"]
+        aigen_score = aigen[0].risk_score if aigen else 0.0
+        spectral_score = spectral[0].risk_score if spectral else 0.0
+
+        if aigen_score >= 0.50 and spectral_score >= 0.40:
+            # Cross-validated AI detection — two independent methods agree
+            cross_score = aigen_score * 0.60 + spectral_score * 0.40
+            overall = max(overall, cross_score * 0.95)
+        elif spectral_score >= 0.60 and aigen_score < 0.40:
+            # Spectral-only strong signal — novel AI generators may evade NN
+            # but leave frequency artifacts.  Don't let it be diluted.
+            overall = max(overall, spectral_score * 0.75)
+
     overall = max(0.0, min(1.0, overall))
     return overall, _risk_level(overall)
