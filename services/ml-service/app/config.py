@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     forensics_document_enabled: bool = True
     forensics_document_signature_verification: bool = True
 
+    # Office document forensics (DOCX/XLSX analysis)
+    forensics_office_enabled: bool = True
+
     # Agent settings (Phase 7)
     agent_enabled: bool = True
     agent_model: str = ""

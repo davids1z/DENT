@@ -598,6 +598,7 @@ export function forensicModuleLabel(moduleName: string): string {
     optical_forensics: "Opticka forenzika",
     semantic_forensics: "Semanticka forenzika",
     document_forensics: "Forenzika dokumenata",
+    office_forensics: "Office dokument forenzika",
     ai_generation_detection: "Detekcija AI generiranja",
     spectral_forensics: "Spektralna forenzika",
   };

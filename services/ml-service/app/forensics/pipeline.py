@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from collections.abc import Callable
 
 from .analyzers.ai_generation import AiGenerationAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
@@ -6,12 +8,17 @@ from .analyzers.spectral_forensics import SpectralForensicsAnalyzer
 from .analyzers.document import DocumentForensicsAnalyzer
 from .analyzers.metadata import MetadataAnalyzer
 from .analyzers.modification import ModificationAnalyzer
+from .analyzers.office import OfficeForensicsAnalyzer
 from .analyzers.optical import OpticalForensicsAnalyzer
 from .analyzers.semantic import SemanticForensicsAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
+from .triage import triage_file
 
 logger = logging.getLogger(__name__)
+
+# Type alias for progress callbacks: (module_name, cumulative_progress_pct)
+ProgressCallback = Callable[[str, float], None] | None
 
 
 class ForensicPipeline:
@@ -30,6 +37,7 @@ class ForensicPipeline:
         document_signature_verification: bool = True,
         aigen_enabled: bool = True,
         spectral_enabled: bool = True,
+        office_enabled: bool = True,
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -64,6 +72,35 @@ class ForensicPipeline:
         self._aigen: AiGenerationAnalyzer | None = (
             AiGenerationAnalyzer() if aigen_enabled else None
         )
+        self._office: OfficeForensicsAnalyzer | None = (
+            OfficeForensicsAnalyzer() if office_enabled else None
+        )
+
+    def _count_active_modules(self, skip: set, file_category: str) -> int:
+        """Count how many modules will actually run (for progress tracking)."""
+        if file_category == "pdf":
+            return 1 if (self._document and self._document.MODULE_NAME not in skip) else 0
+        if file_category in ("docx", "xlsx"):
+            return 1 if (self._office and self._office.MODULE_NAME not in skip) else 0
+        # Image modules
+        count = 0
+        # Group 1 (parallel)
+        if self._metadata.MODULE_NAME not in skip:
+            count += 1
+        if self._modification.MODULE_NAME not in skip:
+            count += 1
+        if self._optical and self._optical.MODULE_NAME not in skip:
+            count += 1
+        if self._spectral and self._spectral.MODULE_NAME not in skip:
+            count += 1
+        # Group 2 (sequential)
+        if self._cnn and self._cnn.MODULE_NAME not in skip:
+            count += 1
+        if self._semantic and self._semantic.MODULE_NAME not in skip:
+            count += 1
+        if self._aigen and self._aigen.MODULE_NAME not in skip:
+            count += 1
+        return count
 
     def warmup_models(self) -> None:
         """Pre-load all ML models into memory at startup.
@@ -82,46 +119,106 @@ class ForensicPipeline:
         file_bytes: bytes,
         filename: str,
         skip_modules: list[str] | None = None,
+        progress_callback: ProgressCallback = None,
     ) -> ForensicReport:
         skip = set(skip_modules or [])
         modules: list[ModuleResult] = []
-        is_pdf = filename.lower().endswith(".pdf")
 
-        if is_pdf:
+        # ── Universal file triage (magic bytes) ──────────────────
+        file_category, detected_mime = triage_file(file_bytes, filename)
+        logger.info("File triage: %s → category=%s mime=%s", filename, file_category, detected_mime)
+
+        # Count total modules to run (for progress tracking)
+        total_steps = self._count_active_modules(skip, file_category)
+        completed_steps = 0
+
+        def _report_progress(module_name: str) -> None:
+            nonlocal completed_steps
+            completed_steps += 1
+            if progress_callback:
+                pct = completed_steps / max(total_steps, 1)
+                progress_callback(module_name, round(pct, 2))
+
+        if file_category == "pdf":
             if self._document and self._document.MODULE_NAME not in skip:
                 result = await self._document.analyze_document(file_bytes, filename)
                 modules.append(result)
-        else:
-            # Run image analyzers sequentially to avoid memory pressure
+                _report_progress(self._document.MODULE_NAME)
+
+        elif file_category in ("docx", "xlsx"):
+            if self._office and self._office.MODULE_NAME not in skip:
+                result = await self._office.analyze_document(file_bytes, filename)
+                modules.append(result)
+                _report_progress(self._office.MODULE_NAME)
+
+        else:  # image (default)
+            # ── Group 1: Lightweight modules — run in PARALLEL ────────
+            # These are CPU-light/medium and independent of each other.
+            group1_tasks: list[tuple[str, asyncio.Task]] = []
+
             if self._metadata.MODULE_NAME not in skip:
-                result = await self._metadata.analyze_image(file_bytes, filename)
-                modules.append(result)
-
+                group1_tasks.append((
+                    self._metadata.MODULE_NAME,
+                    asyncio.ensure_future(self._metadata.analyze_image(file_bytes, filename)),
+                ))
             if self._modification.MODULE_NAME not in skip:
-                result = await self._modification.analyze_image(file_bytes, filename)
-                modules.append(result)
+                group1_tasks.append((
+                    self._modification.MODULE_NAME,
+                    asyncio.ensure_future(self._modification.analyze_image(file_bytes, filename)),
+                ))
+            if self._optical and self._optical.MODULE_NAME not in skip:
+                group1_tasks.append((
+                    self._optical.MODULE_NAME,
+                    asyncio.ensure_future(self._optical.analyze_image(file_bytes, filename)),
+                ))
+            if self._spectral and self._spectral.MODULE_NAME not in skip:
+                group1_tasks.append((
+                    self._spectral.MODULE_NAME,
+                    asyncio.ensure_future(self._spectral.analyze_image(file_bytes, filename)),
+                ))
 
+            # Await all Group 1 tasks concurrently
+            if group1_tasks:
+                task_objects = [t for _, t in group1_tasks]
+                results = await asyncio.gather(*task_objects, return_exceptions=True)
+
+                for (mod_name, _task), result in zip(group1_tasks, results):
+                    if isinstance(result, Exception):
+                        logger.error("Module %s failed: %s", mod_name, result)
+                        modules.append(ModuleResult(
+                            module_name=mod_name,
+                            module_label=mod_name,
+                            risk_score=0.0,
+                            risk_level="Low",
+                            error=str(result),
+                        ))
+                    else:
+                        modules.append(result)
+                    _report_progress(mod_name)
+
+                logger.info(
+                    "Group 1 (parallel) complete: %d modules in parallel",
+                    len(group1_tasks),
+                )
+
+            # ── Group 2: Heavy ML modules — run SEQUENTIALLY ─────────
+            # These consume significant memory; running them in parallel
+            # would risk OOM on the CPU-only server.
             if self._cnn and self._cnn.MODULE_NAME not in skip:
                 result = await self._cnn.analyze_image(file_bytes, filename)
                 modules.append(result)
-
-            if self._optical and self._optical.MODULE_NAME not in skip:
-                result = await self._optical.analyze_image(file_bytes, filename)
-                modules.append(result)
+                _report_progress(self._cnn.MODULE_NAME)
 
             if self._semantic and self._semantic.MODULE_NAME not in skip:
                 result = await self._semantic.analyze_image(file_bytes, filename)
                 modules.append(result)
+                _report_progress(self._semantic.MODULE_NAME)
 
-            # Spectral forensics — frequency-domain AI detection (F2D-Net approach)
-            if self._spectral and self._spectral.MODULE_NAME not in skip:
-                result = await self._spectral.analyze_image(file_bytes, filename)
-                modules.append(result)
-
-            # AI generation detection — run last (heaviest models, most memory)
+            # AI generation detection — heaviest models, run last
             if self._aigen and self._aigen.MODULE_NAME not in skip:
                 result = await self._aigen.analyze_image(file_bytes, filename)
                 modules.append(result)
+                _report_progress(self._aigen.MODULE_NAME)
 
         overall_score, overall_level = fuse_scores(modules)
         total_time = sum(m.processing_time_ms for m in modules)

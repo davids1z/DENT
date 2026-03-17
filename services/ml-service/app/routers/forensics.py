@@ -1,6 +1,9 @@
+import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from ..config import settings
 from ..forensics.base import ForensicReport
@@ -35,6 +38,7 @@ def get_pipeline() -> ForensicPipeline:
             document_signature_verification=settings.forensics_document_signature_verification,
             aigen_enabled=settings.forensics_aigen_enabled,
             spectral_enabled=settings.forensics_spectral_enabled,
+            office_enabled=settings.forensics_office_enabled,
         )
     return _pipeline
 
@@ -79,3 +83,87 @@ async def analyze_forensics(
     )
 
     return report
+
+
+@router.post("/forensics/stream")
+async def analyze_forensics_stream(
+    file: UploadFile = File(...),
+    skip_modules: str | None = Query(
+        None, description="Comma-separated module names to skip"
+    ),
+):
+    """SSE streaming forensic analysis — sends progress events per module."""
+    if not settings.forensics_enabled:
+        async def _disabled():
+            report = ForensicReport(
+                overall_risk_score=0.0,
+                overall_risk_level="Low",
+            )
+            yield f"data: {json.dumps({'type': 'complete', 'report': report.model_dump()})}\n\n"
+
+        return StreamingResponse(_disabled(), media_type="text/event-stream")
+
+    contents = await file.read()
+    filename = file.filename or "unknown"
+
+    max_size = settings.max_image_size_mb * 1024 * 1024
+    if len(contents) > max_size:
+        async def _too_large():
+            report = ForensicReport(
+                overall_risk_score=0.0,
+                overall_risk_level="Low",
+                modules=[],
+                total_processing_time_ms=0,
+            )
+            yield f"data: {json.dumps({'type': 'complete', 'report': report.model_dump()})}\n\n"
+
+        return StreamingResponse(_too_large(), media_type="text/event-stream")
+
+    skip = skip_modules.split(",") if skip_modules else None
+
+    # Queue for progress events from the pipeline callback
+    progress_queue: asyncio.Queue = asyncio.Queue()
+
+    def on_progress(module_name: str, pct: float) -> None:
+        progress_queue.put_nowait({
+            "type": "progress",
+            "module": module_name,
+            "progress": pct,
+        })
+
+    async def _stream():
+        pipeline = get_pipeline()
+
+        # Run pipeline in a task so we can yield progress events as they arrive
+        analysis_task = asyncio.ensure_future(
+            pipeline.analyze(contents, filename, skip, progress_callback=on_progress)
+        )
+
+        # Yield progress events while pipeline runs
+        while not analysis_task.done():
+            try:
+                event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                yield f"data: {json.dumps(event)}\n\n"
+            except asyncio.TimeoutError:
+                # Send keepalive to prevent connection drop
+                yield ": keepalive\n\n"
+
+        # Drain any remaining progress events
+        while not progress_queue.empty():
+            event = progress_queue.get_nowait()
+            yield f"data: {json.dumps(event)}\n\n"
+
+        # Get the final report
+        report = analysis_task.result()
+
+        logger.info(
+            "Forensic stream complete: %s risk=%.2f level=%s time=%dms",
+            filename,
+            report.overall_risk_score,
+            report.overall_risk_level,
+            report.total_processing_time_ms,
+        )
+
+        yield f"data: {json.dumps({'type': 'complete', 'report': report.model_dump()})}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")

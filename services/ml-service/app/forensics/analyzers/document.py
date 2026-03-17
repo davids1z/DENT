@@ -28,6 +28,14 @@ try:
 except ImportError:
     logger.info("pyhanko not installed, PDF signature verification disabled")
 
+_PYMUPDF_AVAILABLE = False
+try:
+    import fitz  # PyMuPDF
+
+    _PYMUPDF_AVAILABLE = True
+except ImportError:
+    logger.info("PyMuPDF not installed, advanced PDF forensics (fake redaction/shadow) disabled")
+
 # Known PDF editing software (keyword_lower, risk_score, display_name)
 PDF_EDITING_SOFTWARE: list[tuple[str, float, str]] = [
     ("pdftk", 0.45, "PDFtk"),
@@ -579,6 +587,222 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                 continue
 
     # ------------------------------------------------------------------
+    # E. Fake Redaction Detection (PyMuPDF)
+    # ------------------------------------------------------------------
+
+    def _check_fake_redactions(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect fake redactions: rectangles covering extractable text."""
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("PyMuPDF could not open PDF: %s", e)
+            return
+
+        fake_redactions: list[dict] = []
+        max_pages = min(len(doc), 20)
+
+        try:
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+
+                # Get all drawings (rectangles) on the page
+                drawings = page.get_drawings()
+                # Also get annotations of type Redact or FreeText
+                annots = list(page.annots()) if page.annots() else []
+
+                # Collect all dark/opaque rectangles
+                cover_rects: list[fitz.Rect] = []
+
+                for d in drawings:
+                    # Look for filled rectangles (black, white, or any opaque fill)
+                    if d.get("fill") is not None and d.get("rect"):
+                        rect = fitz.Rect(d["rect"])
+                        # Only consider rectangles of reasonable size (not tiny)
+                        if rect.width > 5 and rect.height > 3:
+                            cover_rects.append(rect)
+
+                for annot in annots:
+                    # Redact annotations and FreeText with fill color
+                    if annot.type[0] in (12, 2):  # Redact=12, FreeText=2
+                        cover_rects.append(annot.rect)
+
+                if not cover_rects:
+                    continue
+
+                # Get full text dict (with positions) for this page
+                text_dict = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+                text_blocks = text_dict.get("blocks", [])
+
+                for rect in cover_rects:
+                    # Check if any text spans fall under this rectangle
+                    hidden_chars = 0
+                    hidden_texts: list[str] = []
+
+                    for block in text_blocks:
+                        if block.get("type") != 0:  # 0 = text block
+                            continue
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                span_rect = fitz.Rect(span["bbox"])
+                                # Check if rectangle covers this text span
+                                if rect.contains(span_rect) or rect.intersects(span_rect):
+                                    overlap = rect & span_rect  # intersection
+                                    if overlap.width > span_rect.width * 0.5:
+                                        text = span.get("text", "").strip()
+                                        if text:
+                                            hidden_chars += len(text)
+                                            if len(hidden_texts) < 3:
+                                                hidden_texts.append(text[:50])
+
+                    if hidden_chars > 2:
+                        fake_redactions.append({
+                            "page": page_idx + 1,
+                            "rect": [round(rect.x0, 1), round(rect.y0, 1),
+                                     round(rect.x1, 1), round(rect.y1, 1)],
+                            "hidden_chars": hidden_chars,
+                            "sample_text": hidden_texts[:2],
+                        })
+        except Exception as e:
+            logger.debug("Error during fake redaction check: %s", e)
+        finally:
+            doc.close()
+
+        if fake_redactions:
+            total_hidden = sum(r["hidden_chars"] for r in fake_redactions)
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_FAKE_REDACTION",
+                    title="Otkrivena lazna redakcija",
+                    description=(
+                        f"Pronadeno {len(fake_redactions)} pravokutnika koji prekrivaju citljiv tekst "
+                        f"({total_hidden} skrivenih znakova). Tekst ispod 'redakcija' je jos uvijek "
+                        f"ekstrahibilan — ovo je LAZNA redakcija koja skriva ali ne uklanja sadrzaj."
+                    ),
+                    risk_score=0.85,
+                    confidence=0.90,
+                    evidence={
+                        "fake_redactions": fake_redactions[:10],
+                        "total_hidden_chars": total_hidden,
+                        "pages_analyzed": max_pages,
+                    },
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # F. Shadow Attack Detection (PyMuPDF)
+    # ------------------------------------------------------------------
+
+    def _check_shadow_attacks(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect shadow attacks: hidden layers, orphaned content, OCG manipulation."""
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("PyMuPDF could not open PDF for shadow check: %s", e)
+            return
+
+        shadow_indicators: list[dict] = []
+
+        try:
+            # 1. Check Optional Content Groups (OCG) — layer visibility manipulation
+            ocgs = doc.get_ocgs()
+            if ocgs:
+                hidden_layers = []
+                for xref, info in ocgs.items():
+                    # OCGs with "OFF" initial state hide content by default
+                    if info.get("on") is False or info.get("intent") == "Design":
+                        hidden_layers.append({
+                            "name": info.get("name", "unnamed"),
+                            "xref": xref,
+                            "on": info.get("on"),
+                        })
+
+                if hidden_layers:
+                    shadow_indicators.append({
+                        "type": "hidden_ocg_layers",
+                        "count": len(hidden_layers),
+                        "layers": hidden_layers[:5],
+                    })
+
+            # 2. Check for overlapping annotations (high z-order content)
+            max_pages = min(len(doc), 20)
+            suspicious_annots: list[dict] = []
+
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+                annots = list(page.annots()) if page.annots() else []
+
+                # Look for FreeText or Stamp annotations that cover large areas
+                page_rect = page.rect
+                page_area = page_rect.width * page_rect.height
+
+                for annot in annots:
+                    annot_area = annot.rect.width * annot.rect.height
+                    # Annotation covering > 20% of page is suspicious
+                    if page_area > 0 and annot_area / page_area > 0.20:
+                        suspicious_annots.append({
+                            "page": page_idx + 1,
+                            "type": annot.type[1],  # type name
+                            "coverage_pct": round(annot_area / page_area * 100, 1),
+                        })
+
+            if suspicious_annots:
+                shadow_indicators.append({
+                    "type": "large_overlay_annotations",
+                    "count": len(suspicious_annots),
+                    "annotations": suspicious_annots[:5],
+                })
+
+            # 3. Check for Form XObjects referenced in page but not rendered
+            #    (orphaned content that could be swapped in by editing)
+            orphan_xobjects: list[dict] = []
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+                xobjects = page.get_xobjects()
+                if len(xobjects) > 5:  # Unusual number of XObjects
+                    orphan_xobjects.append({
+                        "page": page_idx + 1,
+                        "xobject_count": len(xobjects),
+                    })
+
+            if orphan_xobjects:
+                shadow_indicators.append({
+                    "type": "excessive_xobjects",
+                    "pages": orphan_xobjects[:5],
+                })
+
+        except Exception as e:
+            logger.debug("Error during shadow attack check: %s", e)
+        finally:
+            doc.close()
+
+        if shadow_indicators:
+            indicator_types = [s["type"] for s in shadow_indicators]
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_SHADOW_ATTACK",
+                    title="Indikatori shadow napada",
+                    description=(
+                        f"Detektirano {len(shadow_indicators)} indikatora moguceg shadow napada: "
+                        f"{', '.join(indicator_types)}. Shadow napadi koriste skrivene slojeve ili "
+                        f"overlay sadrzaj za maskiranje pravog teksta dokumenta."
+                    ),
+                    risk_score=0.70,
+                    confidence=0.75,
+                    evidence={"indicators": shadow_indicators},
+                )
+            )
+
+    # ------------------------------------------------------------------
     # Main analysis
     # ------------------------------------------------------------------
 
@@ -607,6 +831,12 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
 
             # D. Digital signature verification
             self._check_digital_signatures(doc_bytes, findings)
+
+            # E. Fake redaction detection (PyMuPDF)
+            self._check_fake_redactions(doc_bytes, findings)
+
+            # F. Shadow attack detection (PyMuPDF)
+            self._check_shadow_attacks(doc_bytes, findings)
 
         except Exception as e:
             logger.error("Document forensics failed: %s", e, exc_info=True)

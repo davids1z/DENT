@@ -11,6 +11,7 @@ import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
 import { ImageGallery } from "@/components/ImageGallery";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
+import { ForensicProgress, useForensicProgress } from "@/components/ForensicProgress";
 
 export default function InspectPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -20,6 +21,7 @@ export default function InspectPage() {
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
+  const forensicProgress = useForensicProgress(isLoading);
 
   const currentStep = result ? 2 : isLoading ? 1 : 0;
 
@@ -38,6 +40,7 @@ export default function InspectPage() {
       }));
 
       const inspection = await uploadInspectionWithMetadata(files, metadata);
+      forensicProgress.complete();
       setResult(inspection);
       setActiveImageUrl(inspection.imageUrl);
     } catch (e) {
@@ -56,6 +59,7 @@ export default function InspectPage() {
     try {
       // No captureMetadata → backend sets captureSource = "upload"
       const inspection = await uploadInspection(files);
+      forensicProgress.complete();
       setResult(inspection);
       setActiveImageUrl(inspection.imageUrl);
     } catch (e) {
@@ -172,20 +176,18 @@ export default function InspectPage() {
         </div>
       )}
 
-      {/* Analyzing state */}
+      {/* Analyzing state — real-time forensic progress */}
       {isLoading && (
-        <div className="bg-card border border-border rounded-2xl p-8 max-w-lg mx-auto text-center">
-          <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h3 className="font-heading font-semibold text-lg mb-2">Forenzicka analiza u tijeku</h3>
-          <p className="text-sm text-muted mb-6">
-            8 forenzickih modula provjerava autenticnost, detektira manipulacije i AI-generirani sadrzaj.
+        <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 max-w-lg mx-auto">
+          <h3 className="font-heading font-semibold text-lg mb-1 text-center">Forenzicka analiza u tijeku</h3>
+          <p className="text-sm text-muted mb-6 text-center">
+            10 forenzickih modula provjerava autenticnost, detektira manipulacije i AI-generirani sadrzaj.
           </p>
-          <div className="space-y-2 max-w-xs mx-auto">
-            <div className="h-2 skeleton rounded-full w-3/4 mx-auto" />
-            <div className="h-2 skeleton rounded-full w-1/2 mx-auto" />
-            <div className="h-2 skeleton rounded-full w-2/3 mx-auto" />
-          </div>
-          <p className="text-xs text-muted mt-6">Ovo moze potrajati do 2 minute za vise slika</p>
+          <ForensicProgress
+            steps={forensicProgress.steps}
+            progress={forensicProgress.progress}
+          />
+          <p className="text-xs text-muted mt-5 text-center">Ovo moze potrajati do 2 minute za vise datoteka</p>
         </div>
       )}
 

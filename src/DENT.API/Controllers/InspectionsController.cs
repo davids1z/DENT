@@ -35,13 +35,18 @@ public class InspectionsController : ControllerBase
         if (images.Count > 8)
             return BadRequest(new { error = "Maximum 8 images allowed" });
 
-        var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp", "image/heic" };
+        var allowedTypes = new[] {
+            "image/jpeg", "image/png", "image/webp", "image/heic",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        };
         foreach (var image in images)
         {
             if (image.Length == 0)
                 return BadRequest(new { error = "Empty image file" });
             if (!allowedTypes.Contains(image.ContentType.ToLower()))
-                return BadRequest(new { error = $"Invalid image type: {image.ContentType}. Supported: JPEG, PNG, WebP, HEIC" });
+                return BadRequest(new { error = $"Invalid file type: {image.ContentType}. Supported: JPEG, PNG, WebP, HEIC, PDF, DOCX, XLSX" });
         }
 
         var imageInputs = new List<ImageInput>();

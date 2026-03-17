@@ -1,9 +1,11 @@
+import asyncio
 import base64
 import json
 import logging
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from ..config import settings
@@ -260,6 +262,9 @@ def get_media_type(filename: str) -> str:
         "png": "image/png",
         "webp": "image/webp",
         "gif": "image/gif",
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }.get(ext, "image/jpeg")
 
 
@@ -855,12 +860,145 @@ async def _call_openrouter_with_prompt(
         return _parse_response(data)
 
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse AI response: {e}")
+        logger.error(f"Failed to parse AI response (with_prompt): {e}")
         logger.error(f"Raw response: {response_text[:500]}")
         return AnalysisResponse(success=False, error_message=f"Failed to parse AI response: {e}")
     except httpx.HTTPStatusError as e:
-        logger.error(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
+        logger.error(f"OpenRouter API error (with_prompt): {e.response.status_code} - {e.response.text}")
         return AnalysisResponse(success=False, error_message=f"AI service error: {e.response.status_code}")
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error (with_prompt): {e}")
         return AnalysisResponse(success=False, error_message=str(e))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# SSE Streaming endpoint: forensics + Gemini in one stream
+# ──────────────────────────────────────────────────────────────────────
+
+@router.post("/analyze-with-context/stream")
+async def analyze_with_context_stream(
+    file: UploadFile = File(...),
+    forensic_context: str = Form("{}"),
+    capture_source: str = Form(""),
+):
+    """SSE streaming analysis: forensics progress + Gemini analysis in one stream.
+
+    Events emitted:
+      {"type": "progress", "phase": "forensics", "module": "...", "progress": 0.xx}
+      {"type": "progress", "phase": "gemini", "progress": 0.xx}
+      {"type": "complete", "result": <AnalysisResponse dict>}
+    """
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+
+    if size_mb > settings.max_image_size_mb:
+        async def _too_large():
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Image too large: {size_mb:.1f}MB'})}\n\n"
+        return StreamingResponse(_too_large(), media_type="text/event-stream")
+
+    # Parse forensic context
+    try:
+        forensic_data = json.loads(forensic_context)
+    except json.JSONDecodeError:
+        forensic_data = {}
+
+    image_b64 = base64.b64encode(contents).decode("utf-8")
+    media_type_str = get_media_type(file.filename or "image.jpg")
+
+    progress_queue: asyncio.Queue = asyncio.Queue()
+
+    def on_forensic_progress(module_name: str, pct: float) -> None:
+        """Forensic pipeline progress: scale to 0-0.70 (forensics = 70% of total)."""
+        progress_queue.put_nowait({
+            "type": "progress",
+            "phase": "forensics",
+            "module": module_name,
+            "progress": round(pct * 0.70, 2),
+        })
+
+    async def _stream():
+        # ── Phase 1: Run forensics if no context provided ──────────
+        if not forensic_data or not forensic_data.get("modules"):
+            from .forensics import get_pipeline
+            pipeline = get_pipeline()
+            report = await pipeline.analyze(
+                contents,
+                file.filename or "unknown",
+                None,
+                progress_callback=on_forensic_progress,
+            )
+            effective_forensic = report.model_dump()
+        else:
+            effective_forensic = forensic_data
+            progress_queue.put_nowait({
+                "type": "progress",
+                "phase": "forensics",
+                "module": "pre-computed",
+                "progress": 0.70,
+            })
+
+        forensic_text = _format_forensic_context(effective_forensic)
+
+        # ── Phase 2: Gemini context-aware analysis ─────────────────
+        yield f"data: {json.dumps({'type': 'progress', 'phase': 'gemini', 'progress': 0.75})}\n\n"
+
+        prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
+        system = CONTEXT_SYSTEM_PROMPT
+
+        if capture_source == "upload":
+            upload_warning = (
+                "\n=== IZVOR SLIKE: UPLOAD ===\n"
+                "Ova slika je UPLOADANA iz galerije, NE slikana live kamerom.\n"
+                "MORAS biti POSEBNO OPREZAN i strozi u procjeni autenticnosti.\n"
+                "=== KRAJ UPLOAD UPOZORENJA ===\n\n"
+            )
+            prompt_text = upload_warning + prompt_text
+
+        overall_risk = effective_forensic.get("overall_risk_score", 0)
+        if overall_risk >= 0.50:
+            fraud_header = (
+                "\n=== FRAUD REPORT MODE ===\n"
+                f"Ukupni forenzicki rizik: {overall_risk:.2f}.\n"
+                "ZABRANJENO koristiti damage_cause Autenticno ili severity Minor.\n"
+                "=== KRAJ FRAUD REPORT MODE ===\n\n"
+            )
+            prompt_text = fraud_header + prompt_text
+
+        result = await _call_openrouter_with_prompt(
+            [(image_b64, media_type_str)],
+            system_prompt=system,
+            analysis_prompt=prompt_text,
+        )
+
+        yield f"data: {json.dumps({'type': 'progress', 'phase': 'gemini', 'progress': 0.95})}\n\n"
+
+        if result.success and effective_forensic.get("overall_risk_score", 0) > 0:
+            result = _enforce_forensic_severity(
+                result, effective_forensic, capture_source=capture_source or None
+            )
+
+        yield f"data: {json.dumps({'type': 'complete', 'result': result.model_dump()})}\n\n"
+
+    async def _stream_with_progress():
+        """Merge progress queue events with the analysis stream."""
+        stream_gen = _stream()
+        stream_done = False
+
+        while not stream_done:
+            while not progress_queue.empty():
+                event = progress_queue.get_nowait()
+                yield f"data: {json.dumps(event)}\n\n"
+
+            try:
+                chunk = await asyncio.wait_for(stream_gen.__anext__(), timeout=0.5)
+                yield chunk
+            except StopAsyncIteration:
+                stream_done = True
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+
+        while not progress_queue.empty():
+            event = progress_queue.get_nowait()
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(_stream_with_progress(), media_type="text/event-stream")

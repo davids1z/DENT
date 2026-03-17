@@ -40,8 +40,8 @@ export function UploadFallback({ onUpload, isLoading }: UploadFallbackProps) {
             </span>
           </div>
           <p className="text-xs text-amber-800 max-w-xs mx-auto">
-            Uploadane slike podlijezu strozoj forenzickoj analizi.
-            Za najbolju tocnost koristite kameru mobilnog telefona.
+            Uploadane datoteke podlijezu strozoj forenzickoj analizi.
+            Podrzani formati: slike, PDF, Word i Excel dokumenti.
           </p>
         </div>
       </div>
