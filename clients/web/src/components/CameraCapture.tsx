@@ -29,7 +29,6 @@ export interface CapturedImage {
 
 interface CameraCaptureProps {
   onCapture: (images: CapturedImage[]) => void;
-  onCameraError?: () => void;
   isLoading: boolean;
 }
 
@@ -56,7 +55,6 @@ function acquireGps(): Promise<GpsCoordinates | null> {
 
 export function CameraCapture({
   onCapture,
-  onCameraError,
   isLoading,
 }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -105,17 +103,15 @@ export function CameraCapture({
         } else {
           setCameraError("Greska pri pokretanju kamere.");
         }
-        onCameraError?.();
       }
     },
-    [onCameraError]
+    []
   );
 
   // Init camera + probe GPS
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Vas preglednik ne podrzava pristup kameri.");
-      onCameraError?.();
+      setCameraError("Vas preglednik ne podrzava pristup kameri. Koristite moderan preglednik (Chrome, Safari, Firefox).");
       return;
     }
 
@@ -218,13 +214,20 @@ export function CameraCapture({
     if (captures.length > 0) onCapture(captures);
   };
 
-  // Error state
+  // Retry camera
+  const handleRetry = useCallback(() => {
+    setCameraError(null);
+    setCameraReady(false);
+    startStream(facingMode);
+  }, [facingMode, startStream]);
+
+  // Error state — camera is mandatory, no upload fallback
   if (cameraError) {
     return (
-      <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center space-y-3">
-        <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center mx-auto">
+      <div className="border-2 border-dashed border-amber-300 bg-amber-50/50 rounded-xl p-8 text-center space-y-4">
+        <div className="w-14 h-14 rounded-xl bg-amber-100 flex items-center justify-center mx-auto">
           <svg
-            className="w-6 h-6 text-red-500"
+            className="w-7 h-7 text-amber-600"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -243,10 +246,23 @@ export function CameraCapture({
             />
           </svg>
         </div>
-        <p className="text-sm text-foreground font-medium">{cameraError}</p>
-        <p className="text-xs text-muted">
-          Koristite Upload modo za odabir slika iz galerije.
+        <div>
+          <p className="text-sm text-foreground font-semibold mb-1">Kamera je obavezna</p>
+          <p className="text-sm text-amber-800">{cameraError}</p>
+        </div>
+        <p className="text-xs text-muted max-w-sm mx-auto">
+          Iz sigurnosnih razloga, sve slike moraju biti slikane uzivo kamerom.
+          Omogucite pristup kameri u postavkama preglednika i pokusajte ponovo.
         </p>
+        <button
+          onClick={handleRetry}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-lg font-medium text-sm hover:bg-accent-hover transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+          </svg>
+          Pokusaj ponovo
+        </button>
       </div>
     );
   }

@@ -143,6 +143,14 @@ Konkretno:
   Slika SAMA SEBE deklarira kao AI-generiranu putem kriptografski potpisanog
   C2PA manifesta. Ovo je nepobitni dokaz. Severity Critical.
 
+=== PRIORITET 5: IZVOR SLIKE (captureSource) ===
+- Ako je captureSource == "camera": Slika je slikana uzivo kamerom uredaja.
+  Ovo povecava povjerenje u autenticnost — prevarant bi morao slikati ekran
+  da bi iskoristio AI sliku, sto ostavlja Moire uzorke (FFT detekcija).
+- Ako je captureSource == "upload": Slika je uploadana, NE slikana kamerom.
+  Ovo je SUMNJIVO jer sustav zahtijeva live capture. Moguce je da je slika
+  unaprijed pripremljena. Prijavi kao Moderate s damage_cause "Metadata anomalija".
+
 === OSTALI MODULI ===
 - Ako je CNN modul (deep_modification_detection) detektirao manipulaciju → OBAVEZNO prijavi kao Severe/Critical
 - Ako semanticka analiza (SEM_AI_GENERATED_*) ukazuje na AI → OBAVEZNO prijavi kao Severe/Critical

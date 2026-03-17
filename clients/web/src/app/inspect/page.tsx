@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { uploadInspection, uploadInspectionWithMetadata, type Inspection, type CaptureMetadata } from "@/lib/api";
-import { ImageUpload } from "@/components/ImageUpload";
+import { useState } from "react";
+import { uploadInspectionWithMetadata, type Inspection, type CaptureMetadata } from "@/lib/api";
 import { CameraCapture, type CapturedImage } from "@/components/CameraCapture";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
@@ -10,19 +9,8 @@ import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
 import { ImageGallery } from "@/components/ImageGallery";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
-import { cn } from "@/lib/cn";
-
-type CaptureMode = "camera" | "upload";
-
-function detectDefaultMode(): CaptureMode {
-  if (typeof window === "undefined") return "upload";
-  const ua = navigator.userAgent;
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
-  return isMobile ? "camera" : "upload";
-}
 
 export default function InspectPage() {
-  const [captureMode, setCaptureMode] = useState<CaptureMode>("upload");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<Inspection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,28 +18,7 @@ export default function InspectPage() {
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
-  useEffect(() => {
-    setCaptureMode(detectDefaultMode());
-  }, []);
-
   const currentStep = result ? 2 : isLoading ? 1 : 0;
-
-  const handleUpload = async (files: File[]) => {
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-    setSelectedDamageIndex(null);
-
-    try {
-      const inspection = await uploadInspection(files);
-      setResult(inspection);
-      setActiveImageUrl(inspection.imageUrl);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Došlo je do greške");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleCameraSubmit = async (captures: CapturedImage[]) => {
     setIsLoading(true);
@@ -75,10 +42,6 @@ export default function InspectPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleCameraError = () => {
-    setCaptureMode("upload");
   };
 
   const handleReset = () => {
@@ -109,64 +72,19 @@ export default function InspectPage() {
             Nova analiza
           </h1>
           <p className="text-muted text-sm sm:text-base mb-6">
-            Dodajte slike ili dokumente za forenzičku verifikaciju
+            Slikajte kamerom za forenzicku verifikaciju
           </p>
           <ProgressSteps currentStep={currentStep} />
         </div>
       </div>
 
-      {/* Upload / Camera state */}
+      {/* Camera capture state */}
       {!result && !isLoading && (
         <div className="space-y-6">
-          {/* Mode toggle */}
-          <div className="flex justify-center">
-            <div className="inline-flex rounded-lg border border-border bg-card p-1 gap-1">
-              <button
-                onClick={() => setCaptureMode("camera")}
-                className={cn(
-                  "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-                  captureMode === "camera"
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground"
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-                  </svg>
-                  Kamera
-                </span>
-              </button>
-              <button
-                onClick={() => setCaptureMode("upload")}
-                className={cn(
-                  "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-                  captureMode === "upload"
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground"
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                  Upload
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Capture area */}
-          {captureMode === "camera" ? (
-            <CameraCapture
-              onCapture={handleCameraSubmit}
-              onCameraError={handleCameraError}
-              isLoading={isLoading}
-            />
-          ) : (
-            <ImageUpload onUpload={handleUpload} isLoading={isLoading} />
-          )}
+          <CameraCapture
+            onCapture={handleCameraSubmit}
+            isLoading={isLoading}
+          />
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
@@ -174,7 +92,7 @@ export default function InspectPage() {
             </div>
           )}
 
-          {/* Info cards below upload */}
+          {/* Info cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             <div className="flex items-start gap-3 p-4 rounded-xl bg-card border border-border">
               <div className="w-8 h-8 rounded-lg bg-accent-light flex items-center justify-center flex-shrink-0">
@@ -184,8 +102,8 @@ export default function InspectPage() {
                 </svg>
               </div>
               <div>
-                <div className="text-sm font-medium mb-0.5">Do 8 slika</div>
-                <div className="text-xs text-muted">Dodajte slike za kompletnu forenzičku analizu</div>
+                <div className="text-sm font-medium mb-0.5">Live kamera</div>
+                <div className="text-xs text-muted">Slikajte uzivo za maksimalnu sigurnost i tocnost</div>
               </div>
             </div>
             <div className="flex items-start gap-3 p-4 rounded-xl bg-card border border-border">
@@ -196,18 +114,18 @@ export default function InspectPage() {
               </div>
               <div>
                 <div className="text-sm font-medium mb-0.5">30-90 sekundi</div>
-                <div className="text-xs text-muted">Forenzička analiza traje manje od 2 minute</div>
+                <div className="text-xs text-muted">Forenzicka analiza traje manje od 2 minute</div>
               </div>
             </div>
             <div className="flex items-start gap-3 p-4 rounded-xl bg-card border border-border">
               <div className="w-8 h-8 rounded-lg bg-accent-light flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                 </svg>
               </div>
               <div>
-                <div className="text-sm font-medium mb-0.5">Detaljan izvještaj</div>
-                <div className="text-xs text-muted">Forenzički nalaz, rizik prijevare i kriptografski dokazi</div>
+                <div className="text-sm font-medium mb-0.5">Anti-fraud zastita</div>
+                <div className="text-xs text-muted">GPS, uredaj i frekvencijska analiza u realnom vremenu</div>
               </div>
             </div>
           </div>
@@ -218,16 +136,16 @@ export default function InspectPage() {
       {isLoading && (
         <div className="bg-card border border-border rounded-2xl p-8 max-w-lg mx-auto text-center">
           <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h3 className="font-heading font-semibold text-lg mb-2">Forenzička analiza u tijeku</h3>
+          <h3 className="font-heading font-semibold text-lg mb-2">Forenzicka analiza u tijeku</h3>
           <p className="text-sm text-muted mb-6">
-            6 forenzičkih modula provjerava autentičnost, detektira manipulacije i AI-generirani sadržaj.
+            8 forenzickih modula provjerava autenticnost, detektira manipulacije i AI-generirani sadrzaj.
           </p>
           <div className="space-y-2 max-w-xs mx-auto">
             <div className="h-2 skeleton rounded-full w-3/4 mx-auto" />
             <div className="h-2 skeleton rounded-full w-1/2 mx-auto" />
             <div className="h-2 skeleton rounded-full w-2/3 mx-auto" />
           </div>
-          <p className="text-xs text-muted mt-6">Ovo može potrajati do 2 minute za više slika</p>
+          <p className="text-xs text-muted mt-6">Ovo moze potrajati do 2 minute za vise slika</p>
         </div>
       )}
 
@@ -254,7 +172,7 @@ export default function InspectPage() {
               Nova analiza
             </button>
             <button onClick={() => window.print()} className="px-6 py-2.5 bg-card border border-border rounded-xl font-medium text-sm hover:bg-card-hover transition-colors">
-              Isprintaj izvještaj
+              Isprintaj izvjestaj
             </button>
           </div>
         </div>
