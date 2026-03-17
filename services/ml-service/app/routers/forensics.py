@@ -10,6 +10,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ── Singleton pipeline ────────────────────────────────────────
+# Created once at module import time. Models are lazy-loaded
+# on first request, then stay in memory for all subsequent calls.
+# This avoids re-loading model weights on every single request.
+_pipeline: ForensicPipeline | None = None
+
+
+def get_pipeline() -> ForensicPipeline:
+    """Return the singleton ForensicPipeline, creating it once if needed."""
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = ForensicPipeline(
+            ela_quality=settings.forensics_ela_quality,
+            ela_scale=settings.forensics_ela_scale,
+            cnn_enabled=settings.forensics_cnn_enabled,
+            optical_enabled=settings.forensics_optical_enabled,
+            semantic_enabled=settings.forensics_semantic_enabled,
+            semantic_face_enabled=settings.forensics_semantic_face_enabled,
+            semantic_vlm_enabled=settings.forensics_semantic_vlm_enabled,
+            semantic_vlm_model=settings.forensics_semantic_vlm_model,
+            openrouter_api_key=settings.openrouter_api_key,
+            document_enabled=settings.forensics_document_enabled,
+            document_signature_verification=settings.forensics_document_signature_verification,
+            aigen_enabled=settings.forensics_aigen_enabled,
+            spectral_enabled=settings.forensics_spectral_enabled,
+        )
+    return _pipeline
+
 
 @router.post("/forensics", response_model=ForensicReport)
 async def analyze_forensics(
@@ -39,21 +67,7 @@ async def analyze_forensics(
 
     skip = skip_modules.split(",") if skip_modules else None
 
-    pipeline = ForensicPipeline(
-        ela_quality=settings.forensics_ela_quality,
-        ela_scale=settings.forensics_ela_scale,
-        cnn_enabled=settings.forensics_cnn_enabled,
-        optical_enabled=settings.forensics_optical_enabled,
-        semantic_enabled=settings.forensics_semantic_enabled,
-        semantic_face_enabled=settings.forensics_semantic_face_enabled,
-        semantic_vlm_enabled=settings.forensics_semantic_vlm_enabled,
-        semantic_vlm_model=settings.forensics_semantic_vlm_model,
-        openrouter_api_key=settings.openrouter_api_key,
-        document_enabled=settings.forensics_document_enabled,
-        document_signature_verification=settings.forensics_document_signature_verification,
-        aigen_enabled=settings.forensics_aigen_enabled,
-        spectral_enabled=settings.forensics_spectral_enabled,
-    )
+    pipeline = get_pipeline()
     report = await pipeline.analyze(contents, filename, skip)
 
     logger.info(

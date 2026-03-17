@@ -65,6 +65,18 @@ class ForensicPipeline:
             AiGenerationAnalyzer() if aigen_enabled else None
         )
 
+    def warmup_models(self) -> None:
+        """Pre-load all ML models into memory at startup.
+        This avoids the cold-start penalty on the first real request."""
+        logger.info("Warming up forensic models...")
+        if self._cnn:
+            self._cnn._ensure_models()
+            logger.info("CNN models ready")
+        if self._aigen:
+            self._aigen._ensure_models()
+            logger.info("AI generation models ready")
+        logger.info("Forensic model warmup complete")
+
     async def analyze(
         self,
         file_bytes: bytes,
