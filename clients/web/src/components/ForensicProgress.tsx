@@ -24,23 +24,26 @@ const DEFAULT_STEPS: ForensicStep[] = [
 
 /**
  * Approximate durations (seconds) per step — used for timed progress simulation.
+ * Tuned for CPU-only server which is slower than GPU.
  * Group 1 (parallel on backend): metadata, ELA, optical, spectral finish fast.
- * Group 2 (sequential): CNN, semantic, AI gen are heavier.
- * Then: Gemini, Agent, Evidence.
+ * Group 2 (sequential): CNN, semantic, AI gen are heavy on CPU.
+ * Then: Gemini (API call), Agent (LLM call), Evidence (hashing).
  */
 const STEP_DURATIONS: Record<string, number> = {
-  metadata_analysis: 1.0,
-  modification_detection: 1.2,
-  optical_forensics: 1.0,
-  spectral_forensics: 1.5,
-  deep_modification_detection: 6,
-  semantic_forensics: 4,
-  ai_generation_detection: 6,
-  gemini: 12,
-  agent: 8,
-  evidence: 2,
+  metadata_analysis: 2,
+  modification_detection: 3,
+  optical_forensics: 2,
+  spectral_forensics: 4,
+  deep_modification_detection: 12,
+  semantic_forensics: 8,
+  ai_generation_detection: 12,
+  gemini: 18,
+  agent: 12,
+  evidence: 5,
 };
 
+/** The last step never auto-completes — it stays spinning until real API returns. */
+const LAST_STEP_INDEX = DEFAULT_STEPS.length - 1;
 const TOTAL_ESTIMATED_DURATION = Object.values(STEP_DURATIONS).reduce((a, b) => a + b, 0);
 
 interface ForensicProgressProps {
@@ -52,6 +55,9 @@ export function ForensicProgress({ steps, progress }: ForensicProgressProps) {
   const displaySteps = steps || DEFAULT_STEPS;
   const completedCount = displaySteps.filter((s) => s.status === "complete").length;
   const activeStep = displaySteps.find((s) => s.status === "active");
+  const allComplete = completedCount === displaySteps.length;
+  const waitingForServer = activeStep?.id === DEFAULT_STEPS[LAST_STEP_INDEX].id
+    && completedCount === displaySteps.length - 1;
 
   return (
     <div className="space-y-4">
@@ -62,20 +68,31 @@ export function ForensicProgress({ steps, progress }: ForensicProgressProps) {
             Forenzicka analiza
           </span>
           <span className="text-xs text-muted">
-            {completedCount}/{displaySteps.length} koraka
+            {allComplete ? (
+              <span className="text-emerald-600 font-medium">Zavrseno ✓</span>
+            ) : (
+              `${completedCount}/${displaySteps.length} koraka`
+            )}
           </span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-accent rounded-full transition-all duration-500 ease-out"
+            className={cn(
+              "h-full rounded-full transition-all duration-500 ease-out",
+              allComplete ? "bg-emerald-500" : "bg-accent"
+            )}
             style={{ width: `${Math.round(progress * 100)}%` }}
           />
         </div>
-        {activeStep && (
+        {waitingForServer ? (
+          <p className="text-xs text-muted animate-pulse">
+            Zavrsavanje analize — cekanje na server...
+          </p>
+        ) : activeStep && !allComplete ? (
           <p className="text-xs text-muted animate-pulse">
             {activeStep.label}...
           </p>
-        )}
+        ) : null}
       </div>
 
       {/* Step list */}
@@ -144,10 +161,22 @@ export function useForensicProgress(isActive: boolean) {
     const interval = setInterval(() => {
       stepElapsedRef.current += tick;
       const idx = stepIndexRef.current;
-      if (idx >= stepIds.length) return; // all done
+
+      // Already past all steps (complete() was called) — nothing to do
+      if (idx > LAST_STEP_INDEX) return;
 
       const currentId = stepIds[idx];
       const duration = STEP_DURATIONS[currentId] || 3;
+
+      // Last step: NEVER auto-complete — keep it spinning until complete() is called.
+      // Slowly creep progress from ~90% toward 98% using asymptotic curve.
+      if (idx === LAST_STEP_INDEX) {
+        const extraTime = stepElapsedRef.current;
+        // Asymptotic creep: 0.90 + 0.08 * (1 - e^(-t/40)) → approaches 0.98
+        const creep = 0.90 + 0.08 * (1 - Math.exp(-extraTime / 40));
+        setProgress(Math.min(creep, 0.98));
+        return;
+      }
 
       if (stepElapsedRef.current >= duration) {
         // Complete current step, activate next
@@ -165,7 +194,7 @@ export function useForensicProgress(isActive: boolean) {
         });
       }
 
-      // Calculate overall progress
+      // Calculate overall progress (up to ~90% for the 9 auto-advancing steps)
       const completedDuration = stepIds
         .slice(0, stepIndexRef.current)
         .reduce((sum, id) => sum + (STEP_DURATIONS[id] || 3), 0);
@@ -173,8 +202,8 @@ export function useForensicProgress(isActive: boolean) {
       const withinStep = Math.min(stepElapsedRef.current / currentDuration, 0.95);
       const totalProg = (completedDuration + withinStep * currentDuration) / TOTAL_ESTIMATED_DURATION;
 
-      // Cap at 95% — final 5% reserved for actual completion
-      setProgress(Math.min(totalProg, 0.95));
+      // Cap at 90% — last 10% is for the final step which stays spinning
+      setProgress(Math.min(totalProg, 0.90));
     }, tick * 1000);
 
     return () => clearInterval(interval);

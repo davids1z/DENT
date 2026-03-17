@@ -125,7 +125,7 @@ public class MlAnalysisService : IMlAnalysisService
             byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
                 GetContentType(fileName));
             content.Add(byteContent, "file", fileName);
-            content.Add(new StringContent(forensicJson, Encoding.UTF8, "application/json"), "forensic_context");
+            content.Add(new StringContent(forensicJson, Encoding.UTF8, "text/plain"), "forensic_context");
             if (!string.IsNullOrEmpty(captureSource))
                 content.Add(new StringContent(captureSource), "capture_source");
 

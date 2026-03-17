@@ -236,6 +236,9 @@ export interface VehicleContext {
   mileage?: number;
 }
 
+/** 3-minute timeout for analysis requests (CPU-only server can be slow). */
+const ANALYSIS_TIMEOUT_MS = 180_000;
+
 export async function uploadInspectionWithMetadata(
   files: File[],
   captureMetadata: CaptureMetadata[],
@@ -249,17 +252,30 @@ export async function uploadInspectionWithMetadata(
   if (vehicle?.mileage) formData.append("mileage", String(vehicle.mileage));
   formData.append("captureMetadata", JSON.stringify(captureMetadata));
 
-  const res = await fetch(`${API_BASE}/inspections`, {
-    method: "POST",
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Upload failed" }));
-    throw new Error(err.error || `Upload failed: ${res.status}`);
+  try {
+    const res = await fetch(`${API_BASE}/inspections`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(err.error || `Upload failed: ${res.status}`);
+    }
+
+    return res.json();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Analiza je istekla — server nije odgovorio unutar 3 minute. Pokusajte ponovo.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return res.json();
 }
 
 export async function uploadInspection(
@@ -273,17 +289,30 @@ export async function uploadInspection(
   if (vehicle?.vehicleYear) formData.append("vehicleYear", String(vehicle.vehicleYear));
   if (vehicle?.mileage) formData.append("mileage", String(vehicle.mileage));
 
-  const res = await fetch(`${API_BASE}/inspections`, {
-    method: "POST",
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Upload failed" }));
-    throw new Error(err.error || `Upload failed: ${res.status}`);
+  try {
+    const res = await fetch(`${API_BASE}/inspections`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(err.error || `Upload failed: ${res.status}`);
+    }
+
+    return res.json();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Analiza je istekla — server nije odgovorio unutar 3 minute. Pokusajte ponovo.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return res.json();
 }
 
 export async function overrideDecision(
