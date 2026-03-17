@@ -322,13 +322,23 @@ def parse_repair_line_items(raw_items: list | None) -> list[RepairLineItem]:
 def _enforce_forensic_severity(
     response: AnalysisResponse,
     forensic_data: dict,
+    capture_source: str | None = None,
 ) -> AnalysisResponse:
     """
     Deterministic post-processing: override Gemini's severity ratings
     to match forensic fusion scores.  Gemini DESCRIBES findings,
     but fusion scores DETERMINE severity.
+
+    Upload images get stricter thresholds (lowered by 0.15) because
+    they bypass live camera anti-fraud controls.
     """
     risk = forensic_data.get("overall_risk_score", 0)
+
+    # Upload images get stricter thresholds
+    is_upload = capture_source == "upload"
+    t_critical = 0.60 if is_upload else 0.75
+    t_high = 0.35 if is_upload else 0.50
+    t_medium = 0.15 if is_upload else 0.25
 
     FRAUD_CAUSES = {
         "AI generiranje",
@@ -344,7 +354,7 @@ def _enforce_forensic_severity(
     for d in response.damages:
         is_fraud = d.damage_cause in FRAUD_CAUSES
 
-        if risk >= 0.75:  # CRITICAL fusion
+        if risk >= t_critical:  # CRITICAL fusion
             if is_fraud:
                 d.severity = "Critical"
                 d.safety_rating = "Critical"
@@ -354,14 +364,14 @@ def _enforce_forensic_severity(
                 if d.safety_rating == "Safe":
                     d.safety_rating = "Warning"
 
-        elif risk >= 0.50:  # HIGH fusion
+        elif risk >= t_high:  # HIGH fusion
             if is_fraud:
                 if d.severity in ("Minor", "Moderate"):
                     d.severity = "Severe"
                 if d.safety_rating == "Safe":
                     d.safety_rating = "Critical"
 
-        elif risk >= 0.25:  # MEDIUM fusion
+        elif risk >= t_medium:  # MEDIUM fusion
             if is_fraud:
                 if d.severity == "Minor":
                     d.severity = "Moderate"
@@ -369,22 +379,22 @@ def _enforce_forensic_severity(
                     d.safety_rating = "Warning"
 
     # Forbid "Autenticno" findings when fusion >= HIGH
-    if risk >= 0.50:
+    if risk >= t_high:
         for d in response.damages:
             if d.damage_cause == "Autenticno":
                 d.damage_cause = "Metadata anomalija"
-                d.severity = "Moderate" if risk < 0.75 else "Severe"
+                d.severity = "Moderate" if risk < t_critical else "Severe"
                 d.safety_rating = "Warning"
                 d.description += (
                     " [Forenzicki moduli ukazuju na visok rizik manipulacije.]"
                 )
 
     # Enforce urgency_level consistency
-    if risk >= 0.75:
+    if risk >= t_critical:
         response.urgency_level = "Critical"
-    elif risk >= 0.50:
+    elif risk >= t_high:
         response.urgency_level = "High"
-    elif risk >= 0.25 and response.urgency_level == "Low":
+    elif risk >= t_medium and response.urgency_level == "Low":
         response.urgency_level = "Medium"
 
     return response
@@ -713,6 +723,7 @@ Odgovori ISKLJUCIVO validnim JSON-om, bez objasnjenja ili markdowna:
 async def analyze_with_context(
     file: UploadFile = File(...),
     forensic_context: str = Form("{}"),
+    capture_source: str = Form(""),
 ):
     """Context-aware analysis: receives forensic results and synthesizes them with visual analysis."""
     contents = await file.read()
@@ -739,6 +750,20 @@ async def analyze_with_context(
         forensic_text = _format_forensic_context(forensic_data)
         prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
         system = CONTEXT_SYSTEM_PROMPT
+
+        # ── UPLOAD SOURCE WARNING ──────────────────────────────────
+        # Uploaded images bypass live camera anti-fraud controls.
+        # Alert the LLM so it factors this into its analysis.
+        if capture_source == "upload":
+            upload_warning = (
+                "\n=== ⚠ IZVOR SLIKE: UPLOAD ===\n"
+                "Ova slika je UPLOADANA iz galerije, NE slikana live kamerom.\n"
+                "To znaci da nema GPS/uredaj verifikacije i da slika moze biti\n"
+                "unaprijed pripremljena, editirana ili AI-generirana.\n"
+                "MORAS biti POSEBNO OPREZAN i strozi u procjeni autenticnosti.\n"
+                "=== KRAJ UPLOAD UPOZORENJA ===\n\n"
+            )
+            prompt_text = upload_warning + prompt_text
 
         # ── FRAUD REPORT MODE ─────────────────────────────────────
         # When fusion score >= 0.50, inject strict fraud-report
@@ -777,7 +802,9 @@ async def analyze_with_context(
     # Post-process Gemini output: fusion scores override severity
     # ratings to prevent LLM from contradicting forensic evidence.
     if result.success and forensic_data.get("overall_risk_score", 0) > 0:
-        result = _enforce_forensic_severity(result, forensic_data)
+        result = _enforce_forensic_severity(
+            result, forensic_data, capture_source=capture_source or None
+        )
 
     return result
 

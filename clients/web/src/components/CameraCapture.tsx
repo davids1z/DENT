@@ -30,6 +30,7 @@ export interface CapturedImage {
 interface CameraCaptureProps {
   onCapture: (images: CapturedImage[]) => void;
   isLoading: boolean;
+  onCameraUnavailable?: () => void;
 }
 
 type GpsStatus = "acquiring" | "available" | "denied" | "unavailable";
@@ -56,6 +57,7 @@ function acquireGps(): Promise<GpsCoordinates | null> {
 export function CameraCapture({
   onCapture,
   isLoading,
+  onCameraUnavailable,
 }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -100,8 +102,10 @@ export function CameraCapture({
           );
         } else if (name === "NotFoundError") {
           setCameraError("Kamera nije pronadena na ovom uredaju.");
+          onCameraUnavailable?.();
         } else {
           setCameraError("Greska pri pokretanju kamere.");
+          onCameraUnavailable?.();
         }
       }
     },
@@ -112,6 +116,7 @@ export function CameraCapture({
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError("Vas preglednik ne podrzava pristup kameri. Koristite moderan preglednik (Chrome, Safari, Firefox).");
+      onCameraUnavailable?.();
       return;
     }
 
@@ -247,12 +252,12 @@ export function CameraCapture({
           </svg>
         </div>
         <div>
-          <p className="text-sm text-foreground font-semibold mb-1">Kamera je obavezna</p>
+          <p className="text-sm text-foreground font-semibold mb-1">Kamera nije dostupna</p>
           <p className="text-sm text-amber-800">{cameraError}</p>
         </div>
         <p className="text-xs text-muted max-w-sm mx-auto">
-          Iz sigurnosnih razloga, sve slike moraju biti slikane uzivo kamerom.
-          Omogucite pristup kameri u postavkama preglednika i pokusajte ponovo.
+          Za maksimalnu forenzicku pouzdanost koristite uredaj s kamerom.
+          Alternativne opcije su dostupne ispod.
         </p>
         <button
           onClick={handleRetry}

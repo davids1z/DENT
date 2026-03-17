@@ -112,6 +112,7 @@ public class MlAnalysisService : IMlAnalysisService
     public async Task<MlAnalysisResult> AnalyzeImageWithContextAsync(
         byte[] imageData, string fileName,
         MlForensicResult forensicContext,
+        string? captureSource = null,
         CancellationToken ct = default)
     {
         try
@@ -125,6 +126,8 @@ public class MlAnalysisService : IMlAnalysisService
                 GetContentType(fileName));
             content.Add(byteContent, "file", fileName);
             content.Add(new StringContent(forensicJson, Encoding.UTF8, "application/json"), "forensic_context");
+            if (!string.IsNullOrEmpty(captureSource))
+                content.Add(new StringContent(captureSource), "capture_source");
 
             var response = await _httpClient.PostAsync("/analyze-with-context", content, ct);
             response.EnsureSuccessStatusCode();

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { uploadInspectionWithMetadata, type Inspection, type CaptureMetadata } from "@/lib/api";
+import { uploadInspectionWithMetadata, uploadInspection, type Inspection, type CaptureMetadata } from "@/lib/api";
 import { CameraCapture, type CapturedImage } from "@/components/CameraCapture";
+import { QrHandoff } from "@/components/QrHandoff";
+import { UploadFallback } from "@/components/UploadFallback";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionBadge } from "@/components/DecisionBadge";
@@ -17,6 +19,7 @@ export default function InspectPage() {
   const [selectedDamageIndex, setSelectedDamageIndex] = useState<number | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
 
   const currentStep = result ? 2 : isLoading ? 1 : 0;
 
@@ -39,6 +42,24 @@ export default function InspectPage() {
       setActiveImageUrl(inspection.imageUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Došlo je do greške");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUploadSubmit = async (files: File[]) => {
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
+    setSelectedDamageIndex(null);
+
+    try {
+      // No captureMetadata → backend sets captureSource = "upload"
+      const inspection = await uploadInspection(files);
+      setResult(inspection);
+      setActiveImageUrl(inspection.imageUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Doslo je do greske");
     } finally {
       setIsLoading(false);
     }
@@ -72,7 +93,7 @@ export default function InspectPage() {
             Nova analiza
           </h1>
           <p className="text-muted text-sm sm:text-base mb-6">
-            Slikajte kamerom za forenzicku verifikaciju
+            Forenzicka verifikacija digitalnih medija
           </p>
           <ProgressSteps currentStep={currentStep} />
         </div>
@@ -84,7 +105,26 @@ export default function InspectPage() {
           <CameraCapture
             onCapture={handleCameraSubmit}
             isLoading={isLoading}
+            onCameraUnavailable={() => setCameraUnavailable(true)}
           />
+
+          {/* Fallback options — shown when camera hardware is unavailable */}
+          {cameraUnavailable && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-sm text-muted">ili</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <QrHandoff />
+                <UploadFallback
+                  onUpload={handleUploadSubmit}
+                  isLoading={isLoading}
+                />
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">

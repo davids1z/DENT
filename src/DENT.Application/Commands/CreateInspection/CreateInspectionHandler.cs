@@ -230,7 +230,8 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             {
                 // Context-aware: pass forensic results to Gemini
                 result = await _mlService.AnalyzeImageWithContextAsync(
-                    firstImage.Data, firstImage.FileName, forensicResult, ct);
+                    firstImage.Data, firstImage.FileName, forensicResult,
+                    inspection.CaptureSource, ct);
             }
             else if (request.Images.Count == 1)
             {

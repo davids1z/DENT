@@ -18,6 +18,7 @@ public interface IMlAnalysisService
     Task<MlAnalysisResult> AnalyzeImageWithContextAsync(
         byte[] imageData, string fileName,
         MlForensicResult forensicContext,
+        string? captureSource = null,
         CancellationToken ct = default);
 
     Task<MlAgentDecision?> RunAgentEvaluationAsync(MlAgentEvaluateRequest request, CancellationToken ct = default);
