@@ -8,7 +8,6 @@ import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
-import { RepairEstimateTable } from "@/components/RepairEstimateTable";
 import { ImageGallery } from "@/components/ImageGallery";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { cn } from "@/lib/cn";
@@ -247,7 +246,6 @@ export default function InspectPage() {
               <DamageReport inspection={result} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} />
             </div>
           </div>
-          <RepairEstimateTable inspection={result} />
           {result.decisionTraces && result.decisionTraces.length > 0 && (
             <DecisionTrace traces={result.decisionTraces} />
           )}

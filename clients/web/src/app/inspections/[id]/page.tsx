@@ -14,9 +14,7 @@ import { FftSpectrumOverlay } from "@/components/FftSpectrumOverlay";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
-import { RepairEstimateTable } from "@/components/RepairEstimateTable";
 import { ImageGallery } from "@/components/ImageGallery";
-import { SeverityGauge } from "@/components/ui/SeverityGauge";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
@@ -82,14 +80,6 @@ export default function InspectionDetailPage() {
 
   if (!inspection) return null;
 
-  const worstSeverity = inspection.damages.reduce(
-    (worst, d) => {
-      const order = ["Minor", "Moderate", "Severe", "Critical"];
-      return order.indexOf(d.severity) > order.indexOf(worst) ? d.severity : worst;
-    },
-    "Minor"
-  );
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-start justify-between mb-8">
@@ -135,34 +125,16 @@ export default function InspectionDetailPage() {
         <div className="space-y-3">
           <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} />
           <ImageGallery primaryImageUrl={inspection.imageUrl} additionalImages={inspection.additionalImages} activeImageUrl={activeImageUrl || inspection.imageUrl} onSelect={handleImageSelect} />
-          {inspection.damages.length > 0 && (
-            <GlassPanel className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-muted mb-1">Ukupna ozbiljnost</div>
-                <SeverityGauge severity={worstSeverity} size={100} />
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-muted">
-                  <div>Datoteka: {inspection.originalFileName}</div>
-                  <div className="mt-0.5 font-mono text-[10px]">ID: {inspection.id.slice(0, 8)}...</div>
-                </div>
-              </div>
-            </GlassPanel>
-          )}
-          {inspection.damages.length === 0 && (
-            <GlassPanel>
-              <div className="text-xs text-muted">
-                <span>Datoteka: {inspection.originalFileName}</span>
-                <span className="mx-2">|</span>
-                <span>ID: {inspection.id.slice(0, 8)}...</span>
-              </div>
-            </GlassPanel>
-          )}
+          <GlassPanel>
+            <div className="text-xs text-muted">
+              <span>Datoteka: {inspection.originalFileName}</span>
+              <span className="mx-2">|</span>
+              <span>ID: {inspection.id.slice(0, 8)}...</span>
+            </div>
+          </GlassPanel>
         </div>
         <DamageReport inspection={inspection} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} />
       </div>
-
-      <div className="mt-6"><RepairEstimateTable inspection={inspection} /></div>
 
       {inspection.forensicResult && (
         <div className="mt-6 space-y-4">

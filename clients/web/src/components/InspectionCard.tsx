@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Inspection } from "@/lib/api";
-import { formatCurrency, formatDate, severityColor, severityLabel } from "@/lib/api";
+import { formatDate, severityColor, severityLabel, fraudRiskLabel, fraudRiskColor } from "@/lib/api";
 import { cn } from "@/lib/cn";
 
 interface InspectionCardProps {
@@ -43,9 +43,9 @@ export function InspectionCard({ inspection: i }: InspectionCardProps) {
           <h3 className="font-medium truncate mb-1">{i.originalFileName}</h3>
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted">{formatDate(i.createdAt)}</span>
-            {i.totalEstimatedCostMin != null && (
-              <span className="text-sm font-semibold text-accent">
-                {formatCurrency(i.totalEstimatedCostMin)}{i.totalEstimatedCostMax && i.totalEstimatedCostMax !== i.totalEstimatedCostMin ? ` - ${formatCurrency(i.totalEstimatedCostMax)}` : ""}
+            {i.fraudRiskLevel && (
+              <span className={cn("text-sm font-semibold", fraudRiskColor(i.fraudRiskLevel))}>
+                {fraudRiskLabel(i.fraudRiskLevel)}
               </span>
             )}
           </div>

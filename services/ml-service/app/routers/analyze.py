@@ -44,160 +44,110 @@ VALID_SAFETY_RATINGS = {"Safe", "Warning", "Critical"}
 VALID_REPAIR_CATEGORIES = {"Replace", "Repair", "Polish"}
 VALID_LABOR_TYPES = {"Body", "Refinish", "Glass", "Mechanical"}
 
-SYSTEM_PROMPT = """Ti si profesionalni procjenitelj steta na vozilima s 20+ godina iskustva u europskim osiguravajucim kucama.
+SYSTEM_PROMPT = """Ti si vrhunski forenzicki analiticar digitalnih medija s 20+ godina iskustva u detekciji krivotvorina, manipulacija i AI-generiranog sadrzaja.
 
-=== TVOJ NAJVAZNIJI PRINCIP: VIZUALNA TOCNOST ===
-- NIKAD ne prijavljuj stetu koju ne mozes JASNO VIDJETI na slici
-- Ako dio vozila izgleda neostecen na slici, NE prijavljuj stetu na tom dijelu
-- Bolje je propustiti jednu manju stetu nego lazno prijaviti stetu koja ne postoji
-- Bounding box MORA biti postavljen TOCNO na vidljivo ostecenje, ne na siroko podrucje
+=== TVOJ NAJVAZNIJI PRINCIP: PRECIZNA FORENZICKA ANALIZA ===
+- Analiziraj sliku ili dokument za znakove digitalne manipulacije, AI generiranja ili krivotvorenja
+- Trazi: nekonzistentnosti u osvjetljenju, sjene, perspektivi, teksturi, rubovima, kompresijskim artefaktima
+- Trazi: znakove AI generiranja (ponavljajuci uzorci, neprirodne teksture, anomalije u detaljima poput prstiju/teksta/odsjaja)
+- Trazi: znakove montaze (copy-paste regije, klonirane oblasti, neuskladjeni sumovi)
+- Trazi: metadata anomalije (neobicni software, nedostajuci EXIF, sumnjivi kreativni alati)
+- Ako slika izgleda autenticna, JASNO to navedi - ne izmisljaj probleme
+- Bounding box MORA biti postavljen TOCNO na sumnjivo podrucje
+- NE prijavljuj nalaze koje ne mozes JASNO argumentirati - nula lazno pozitivnih"""
 
-=== ANATOMIJA VOZILA - POZICIJE DIJELOVA ===
-Koristi ovo za ispravno identificiranje dijelova po poziciji na slici:
+ANALYSIS_PROMPT = """FORENZICKA ANALIZA AUTENTICNOSTI
 
-PREDNJA STRANA (gledano sprijeda):
-- Hood (hauba): veliki panel u gornjoj sredini
-- FrontBumper: donji dio, ispod farova
-- HeadlightLeft: lijevo od gledatelja (desno od vozaca)
-- HeadlightRight: desno od gledatelja (lijevo od vozaca)
-- FrontLeftFender: lijevi panel izmedu prednjih vrata i prednjeg svjetla
-- FrontRightFender: desni panel izmedu prednjih vrata i prednjeg svjetla
-- Windshield: staklo iznad haube
+=== KORAK 1: PRVA PROCJENA ===
+Pogledaj sliku i utvrdi: je li ovo fotografija, screenshot, dokument, ili nesto drugo?
+Ima li ocitih znakova AI generiranja ili manipulacije na prvi pogled?
 
-STRAZNJA STRANA (gledano straga):
-- Trunk (prtljaznik): veliki panel u sredini
-- RearBumper: donji dio
-- TaillightLeft: lijevo od gledatelja
-- TaillightRight: desno od gledatelja
+=== KORAK 2: DETALJNA ANALIZA ===
+Provjeri sljedece aspekte:
+1. OSVJETLJENJE I SJENE - jesu li konzistentni? Ima li nemogucih izvora svjetla?
+2. RUBOVI I PRIJELAZI - ima li neprirodnih rezova, zamagljenih rubova oko objekata?
+3. TEKSTURE - ponavljaju li se uzorci? Jesu li teksture neprirodne za stvarni svijet?
+4. DETALJI - prsti, tekst, odsjaji, refleksije - jesu li fizikalno moguce?
+5. KOMPRESIJA - ima li neocekivanih artefakata koji sugeriraju visestruko spremanje?
+6. PERSPEKTIVA - je li geometrija konzistentna u cijeloj slici?
+7. SUMOVI - je li razina suma konzistentna preko cijele slike ili su vidljive granice?
 
-BOCNA STRANA:
-- Vrata su srednji paneli, blatobrani su kraj
-- Retrovizori su na prednjem rubu prednjih vrata
+=== KORAK 3: POZICIONIRAJ BOUNDING BOX ===
+Za svako sumnjivo podrucje:
+- x,y = gornji lijevi kut sumnjivog podrucja (0.0-1.0), w,h = sirina i visina
+- Bounding box MORA obuhvatiti SAMO sumnjivo podrucje
 
-VAZNO: "Lijevo" i "Desno" u imenima dijelova se odnose na VOZACKU perspektivu (kao da sjedes u autu):
-- HeadlightLeft = lijevi far VOZACA = s desne strane gledatelja na fotki sprijeda
-- HeadlightRight = desni far VOZACA = s lijeve strane gledatelja na fotki sprijeda"""
-
-ANALYSIS_PROMPT = """ANALIZA STETA NA VOZILU
-
-=== KORAK 1: ODREDI KUT SNIMANJA ===
-Pogledaj sliku i odredi s koje strane je vozilo snimljeno: sprijeda, straga, s lijeve bocne strane, s desne bocne strane, ili pod kutom. Ovo je KRITICNO za tocnu identifikaciju dijelova.
-
-=== KORAK 2: MAPIRAJ VIDLJIVE DIJELOVE ===
-Na temelju kuta snimanja, identificiraj TOCNO koje dijelove vozila vidis na slici. NE pretpostavljaj dijelove koje ne vidis.
-
-=== KORAK 3: ANALIZIRAJ SVAKI VIDLJIVI DIO ===
-Za svaki vidljivi dio vozila na slici:
-1. Pogledaj pazljivo - ima li VIDLJIVIH tragova ostecenja? (udubljenja, ogrebotine, pukotine, deformacija, promjena boje, slomljeni dijelovi)
-2. Ako dio izgleda NEOSTECEN - PRESKOCI ga, ne prijavljuj nikakvu stetu
-3. Ako vidis ostecenje - oznaci ga precizno
-
-=== KORAK 4: POZICIONIRAJ BOUNDING BOX ===
-Za svako POTVRDENO ostecenje:
-- Zamijeni sliku kao mrezu 10x10 polja
-- Odredi u kojima poljima se nalazi ostecenje
-- Bounding box MORA obuhvatiti SAMO osteceno podrucje, ne cijeli panel
-- x,y = gornji lijevi kut ostecenja (0.0-1.0), w,h = sirina i visina ostecenja
-- Primjer: ostecenje u donjem desnom kutu slike bi imalo x~0.7, y~0.7
-
-ANTI-HALLUCINACIJA PRAVILA:
-- Refleksije, sjene i odbljesci NISU ostecenja
-- Normalne linije dizajna vozila (panel gaps, linije vrata) NISU ostecenja
-- Ako nisi siguran bar 70% da je nesto ostecenje, NE prijavljuj ga
-- Provjeri: da li boja, tekstura ili oblik dijela STVARNO odstupa od normalnog?
-
-=== PROCJENA TROSKOVA (EU TRZISTE) ===
-Referentne cijene:
-- Poliranje ogrebotine: 80-200 EUR
-- Lokalno lakiranje: 200-500 EUR
-- PDR izvlacenje: 80-300 EUR
-- Udubljenje s lakiranjem: 300-800 EUR
-- Zamjena branika: 400-1.500 EUR
-- Zamjena blatobrana: 500-1.500 EUR
-- Zamjena haube: 600-2.000 EUR
-- Zamjena vrata: 800-2.500 EUR
-- Vjetrobransko staklo OEM: 250-800 EUR
-- Prednje svjetlo OEM: 300-1.500 EUR
-- Straznje svjetlo: 150-600 EUR
-- Retrovizor: 150-500 EUR
-- Lakiranje panela: 400-800 EUR
-- Strukturalni popravak: 1.000-5.000+ EUR
-Sat autolimara: 50-80 EUR, autolakirera: 60-90 EUR
-
-=== REPAIR LINE ITEMS ===
-Za svako ostecenje napravi tablicu popravaka:
-- line_number: redni broj (globalni kroz sva ostecenja)
-- part_name: naziv dijela na HRVATSKOM
-- operation: Repair/Replace/Refinish/Blend/Remove-Install/Check-Adjust
-- labor_type: Body/Refinish/Glass/Mechanical
-- labor_hours: procjena sati
-- part_type: OEM/Aftermarket/Used/Existing
-- quantity: broj komada
-- unit_cost: cijena dijela ili null
-- total_cost: ukupno (rad + dio) ili null
+=== KATEGORIJE NALAZA (za damage_cause polje) ===
+- "AI generiranje" - znakovi AI-generiranog sadrzaja
+- "Digitalna manipulacija" - rucna obrada u Photoshopu ili slicnom alatu
+- "Copy-paste krivotvorina" - klonirane regije unutar slike
+- "Rekompresijski artefakti" - sumnjivi JPEG artefakti
+- "Nekonzistentno osvjetljenje" - razlike u osvjetljenju koje sugeriraju montazu
+- "Metadata anomalija" - nekonzistentni metapodaci
+- "Deepfake indikator" - znakovi deepfake manipulacije
+- "Sumnjiva tekstura" - neprirodne teksture tipicne za AI
+- "Perspektivna anomalija" - nekonzistentna perspektiva
+- "Autenticno" - nalaz koji potvrduje autenticnost elementa
 
 === OBAVEZAN JSON FORMAT ===
 Odgovori ISKLJUCIVO validnim JSON-om, bez objasnjenja ili markdowna:
 
 {
   "vehicle_info": {
-    "make": "proizvodac ili null",
-    "model": "model ili null",
-    "year": 2020,
-    "color": "boja na hrvatskom ili null"
+    "make": null,
+    "model": null,
+    "year": null,
+    "color": null
   },
   "damages": [
     {
-      "damage_type": "ENUM: Scratch|Dent|Crack|PaintDamage|BrokenGlass|Rust|BodyDeformation|BumperDamage|LightDamage|TireDamage|MirrorDamage|Other",
-      "car_part": "ENUM: FrontBumper|RearBumper|Hood|Trunk|FrontLeftDoor|FrontRightDoor|RearLeftDoor|RearRightDoor|FrontLeftFender|FrontRightFender|RearLeftFender|RearRightFender|Roof|Windshield|RearWindow|SideWindowLeft|SideWindowRight|SideMirrorLeft|SideMirrorRight|HeadlightLeft|HeadlightRight|TaillightLeft|TaillightRight|WheelFrontLeft|WheelFrontRight|WheelRearLeft|WheelRearRight|Undercarriage|Other",
-      "severity": "ENUM: Minor|Moderate|Severe|Critical",
-      "description": "Detaljan opis na HRVATSKOM. 2-3 recenice. Objasni STO tocno vidis i GDJE na slici.",
+      "damage_type": "Other",
+      "car_part": "Other",
+      "severity": "ENUM: Minor|Moderate|Severe|Critical (Minor=niska sumnja, Moderate=umjerena, Severe=visoka, Critical=kriticna sumnja na krivotvorinu)",
+      "description": "Detaljan opis nalaza na HRVATSKOM. 2-3 recenice. Objasni STO tocno vidis i ZASTO je sumnjivo.",
       "confidence": 0.92,
       "bounding_box": {"x": 0.3, "y": 0.4, "w": 0.15, "h": 0.1},
       "source_image_index": 0,
-      "damage_cause": "Uzrok na hrvatskom",
-      "safety_rating": "ENUM: Safe|Warning|Critical",
-      "material_type": "celik/aluminij/plastika/staklo/kompozit/guma",
-      "repair_method": "Opis popravka na HRVATSKOM",
-      "repair_operations": "Korak-po-korak na HRVATSKOM",
-      "repair_category": "ENUM: Replace|Repair|Polish",
-      "estimated_cost_min": 200,
-      "estimated_cost_max": 500,
-      "labor_hours": 3.0,
-      "parts_needed": "Popis dijelova na HRVATSKOM ili null",
-      "repair_line_items": [
-        {"line_number": 1, "part_name": "Pokrov prednjeg branika", "operation": "Repair", "labor_type": "Body", "labor_hours": 2.0, "part_type": "Existing", "quantity": 1, "unit_cost": null, "total_cost": 140}
-      ]
+      "damage_cause": "Kategorija nalaza iz gornjeg popisa",
+      "safety_rating": "ENUM: Safe|Warning|Critical (Safe=autenticno, Warning=sumnjivo, Critical=krivotvoreno)",
+      "material_type": null,
+      "repair_method": null,
+      "repair_operations": null,
+      "repair_category": null,
+      "estimated_cost_min": null,
+      "estimated_cost_max": null,
+      "labor_hours": null,
+      "parts_needed": null,
+      "repair_line_items": []
     }
   ],
   "overall_assessment": {
-    "summary": "Profesionalni izvjestaj na HRVATSKOM u 3-5 recenica.",
-    "structural_integrity": "Procjena strukturnog integriteta na HRVATSKOM",
-    "total_cost_min": 500,
-    "total_cost_max": 2000,
-    "is_driveable": true,
-    "urgency_level": "ENUM: Low|Medium|High|Critical",
-    "labor_total": 1200,
-    "parts_total": 800,
-    "materials_total": 200,
-    "gross_total": 2200
+    "summary": "Forenzicki izvjestaj na HRVATSKOM u 3-5 recenica. Ukratko opisi rezultat analize autenticnosti.",
+    "structural_integrity": "Procjena integriteta slike/dokumenta na HRVATSKOM",
+    "total_cost_min": null,
+    "total_cost_max": null,
+    "is_driveable": null,
+    "urgency_level": "ENUM: Low|Medium|High|Critical (razina hitnosti pregleda)",
+    "labor_total": null,
+    "parts_total": null,
+    "materials_total": null,
+    "gross_total": null
   }
 }
 
 === KRITICNA PRAVILA ===
-1. damage_type, car_part, severity MORAJU biti TOCNO enum vrijednosti (PascalCase, engleski)
-2. safety_rating MORA biti: Safe, Warning ili Critical
-3. repair_category MORA biti: Replace, Repair ili Polish
-4. bounding_box koordinate MORAJU biti 0.0-1.0 i TOCNO na vidljivom ostecenju
-5. source_image_index: 0 za prvu sliku, 1 za drugu, itd. Bounding box se odnosi na TU KONKRETNU sliku
-6. Svi opisi MORAJU biti na HRVATSKOM
-7. Troskovi MORAJU biti realisticni za EU trziste u EUR
-8. NE prijavljuj ostecenja koja ne vidis jasno na slici - NULA lazno pozitivnih
-9. Ako slika nije jasna, smanji confidence i opisi sto vidis
+1. damage_type UVIJEK stavi "Other" (koristimo damage_cause za kategoriju nalaza)
+2. car_part UVIJEK stavi "Other" (nije relevantno za forenziku)
+3. severity mapira razinu sumnje: Minor=niska, Moderate=umjerena, Severe=visoka, Critical=kriticna
+4. safety_rating mapira verdikt: Safe=autenticno, Warning=sumnjivo, Critical=krivotvoreno
+5. bounding_box koordinate MORAJU biti 0.0-1.0 i TOCNO na sumnjivom podrucju
+6. source_image_index: 0 za prvu sliku, 1 za drugu, itd.
+7. Svi opisi MORAJU biti na HRVATSKOM
+8. NE prijavljuj nalaze koje ne mozes JASNO argumentirati - nula lazno pozitivnih
+9. Ako slika izgleda potpuno autenticna, vrati PRAZAN damages array
 10. UVIJEK vrati validan JSON
-11. labor_type MORA biti: Body, Refinish, Glass ili Mechanical
-12. Totali (labor_total, parts_total, materials_total, gross_total) MORAJU biti tocni zbroji
-13. car_part MORA odgovarati STVARNOJ poziciji ostecenja na slici - ne pogadaj!"""
+11. damage_cause MORA biti jedna od definiranih kategorija nalaza
+12. Troskovi (estimated_cost_min/max, labor_total, itd.) UVIJEK null - nisu relevantni"""
 
 
 def get_media_type(filename: str) -> str:
@@ -346,8 +296,6 @@ async def _call_openrouter(
         raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
 
     system_content = SYSTEM_PROMPT
-    if vehicle_context:
-        system_content += f"\n\nKONTEKST VOZILA (korisnik naveo): {vehicle_context}"
 
     # Build user content: label each image with its index, then analysis prompt
     user_content = []
@@ -366,12 +314,12 @@ async def _call_openrouter(
     if len(image_contents) > 1:
         multi_image_note = f"""
 
-VISE SLIKA: Poslano je {len(image_contents)} slika istog vozila, oznacenih [SLIKA 0] do [SLIKA {len(image_contents) - 1}].
-- Analiziraj SVAKU sliku zasebno i prijavi stete sa SVAKE slike
-- source_image_index MORA biti index slike na kojoj je steta NAJVIDLJIVIJA
+VISE SLIKA: Poslano je {len(image_contents)} slika, oznacenih [SLIKA 0] do [SLIKA {len(image_contents) - 1}].
+- Analiziraj SVAKU sliku zasebno za znakove manipulacije
+- source_image_index MORA biti index slike na kojoj je nalaz NAJVIDLJIVIJI
 - Bounding box koordinate se odnose na sliku navedenu u source_image_index
-- Ako se ista steta vidi na vise slika, prijavi je JEDNOM s onom slikom gdje je najjasnija
-- NIKAD ne stavljaj bounding box za stetu vidljivu na slici 1 koristeci koordinate slike 0"""
+- Ako se isti nalaz vidi na vise slika, prijavi ga JEDNOM s onom slikom gdje je najjasniji
+- NIKAD ne stavljaj bounding box za nalaz vidljiv na slici 1 koristeci koordinate slike 0"""
 
     user_content.append({"type": "text", "text": ANALYSIS_PROMPT + multi_image_note})
 
@@ -383,7 +331,7 @@ VISE SLIKA: Poslano je {len(image_contents)} slika istog vozila, oznacenih [SLIK
                     "Authorization": f"Bearer {settings.openrouter_api_key}",
                     "Content-Type": "application/json",
                     "HTTP-Referer": "https://dent.xyler.ai",
-                    "X-Title": "DENT - Vehicle Damage Forensic Analysis",
+                    "X-Title": "DENT - Fraud Detection & Forensic Analysis",
                 },
                 json={
                     "model": settings.model,

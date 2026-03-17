@@ -10,134 +10,119 @@ public static class DecisionEngine
     public static (string Outcome, string Reason, string TraceJson) Evaluate(Inspection inspection)
     {
         var traces = new List<DecisionTraceEntryDto>();
-        var totalCostMax = inspection.TotalEstimatedCostMax ?? inspection.GrossTotal ?? 0;
-        var hasCriticalDamage = inspection.Damages.Any(d => d.Severity == DamageSeverity.Critical);
-        var hasSevereDamage = inspection.Damages.Any(d => d.Severity == DamageSeverity.Severe);
+        var hasCriticalFinding = inspection.Damages.Any(d => d.Severity == DamageSeverity.Critical);
+        var hasSevereFinding = inspection.Damages.Any(d => d.Severity == DamageSeverity.Severe);
         var hasSafetyCritical = inspection.Damages.Any(d => d.SafetyRating == "Critical");
-        var hasStructuralIssue = !string.IsNullOrEmpty(inspection.StructuralIntegrity)
-            && inspection.StructuralIntegrity.Contains("pomicanje", StringComparison.OrdinalIgnoreCase);
-        var damageCount = inspection.Damages.Count;
+        var findingCount = inspection.Damages.Count;
 
-        // Rule 1: Cost threshold - Escalate
+        // Rule 1: Critical forensic risk
+        var fraudRiskScore = inspection.FraudRiskScore ?? 0;
+        var hasCriticalFraud = fraudRiskScore >= 0.75;
+        var hasHighFraud = fraudRiskScore >= 0.50;
+        var hasMediumFraud = fraudRiskScore >= 0.25;
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Visok trosak",
-            RuleDescription = "Ukupni trosak prelazi 3.000 EUR",
-            Triggered = totalCostMax > 3000,
-            ThresholdValue = "3.000 EUR",
-            ActualValue = $"{totalCostMax:N0} EUR",
+            RuleName = "Kritican forenzicki rizik",
+            RuleDescription = "Forenzicka analiza indicira visoku vjerojatnost manipulacije ili krivotvorenja",
+            Triggered = hasCriticalFraud,
+            ThresholdValue = ">= 75% rizik",
+            ActualValue = $"{fraudRiskScore:P0} rizik ({inspection.FraudRiskLevel ?? "N/A"})",
             EvaluationOrder = 1
         });
 
-        // Rule 2: Critical damage severity
+        // Rule 2: Critical finding from AI analysis
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Kriticna ozbiljnost",
-            RuleDescription = "Barem jedno ostecenje kriticne ozbiljnosti",
-            Triggered = hasCriticalDamage,
+            RuleName = "Kriticni nalaz AI analize",
+            RuleDescription = "AI analiza detektirala kriticne znakove krivotvorenja",
+            Triggered = hasCriticalFinding,
             ThresholdValue = "0 kriticnih",
-            ActualValue = hasCriticalDamage ? "DA" : "NE",
+            ActualValue = hasCriticalFinding ? "DA" : "NE",
             EvaluationOrder = 2
         });
 
-        // Rule 3: Safety critical (windshield in driver FOV, etc.)
+        // Rule 3: Safety critical (forged content)
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Sigurnosno kriticno",
-            RuleDescription = "Ostecenje s kriticnom sigurnosnom ocjenom",
+            RuleName = "Krivotvoreni sadrzaj",
+            RuleDescription = "AI verdikt oznacio sadrzaj kao krivotvoreno",
             Triggered = hasSafetyCritical,
-            ThresholdValue = "0 kriticnih",
+            ThresholdValue = "0 krivotvorenih",
             ActualValue = hasSafetyCritical ? "DA" : "NE",
             EvaluationOrder = 3
         });
 
-        // Rule 4: Structural integrity
+        // Rule 4: High forensic risk
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Strukturalni integritet",
-            RuleDescription = "Moguce strukturno pomicanje ili ostecenje sasije",
-            Triggered = hasStructuralIssue,
-            ThresholdValue = "Intaktna sasija",
-            ActualValue = hasStructuralIssue ? "KOMPROMITIRAN" : "OK",
+            RuleName = "Povisen forenzicki rizik",
+            RuleDescription = "Forenzicka analiza pokazuje povisenu sumnju na manipulaciju",
+            Triggered = hasHighFraud,
+            ThresholdValue = ">= 50% rizik",
+            ActualValue = $"{fraudRiskScore:P0} rizik",
             EvaluationOrder = 4
         });
 
-        // Rule 5: Severe damage
+        // Rule 5: Severe findings from AI analysis
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Ozbiljna ostecenja",
-            RuleDescription = "Barem jedno ostecenje ozbiljne razine",
-            Triggered = hasSevereDamage,
+            RuleName = "Ozbiljni nalazi AI analize",
+            RuleDescription = "AI analiza detektirala ozbiljne znakove manipulacije",
+            Triggered = hasSevereFinding,
             ThresholdValue = "0 ozbiljnih",
-            ActualValue = hasSevereDamage ? "DA" : "NE",
+            ActualValue = hasSevereFinding ? "DA" : "NE",
             EvaluationOrder = 5
         });
 
-        // Rule 6: Medium cost threshold
+        // Rule 6: Multiple findings
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Srednji trosak",
-            RuleDescription = "Ukupni trosak izmedu 500 i 3.000 EUR",
-            Triggered = totalCostMax >= 500 && totalCostMax <= 3000,
-            ThresholdValue = "500-3.000 EUR",
-            ActualValue = $"{totalCostMax:N0} EUR",
+            RuleName = "Vise nalaza",
+            RuleDescription = "Detektirano vise od 3 sumnjiva nalaza",
+            Triggered = findingCount > 3,
+            ThresholdValue = "3 nalaza",
+            ActualValue = $"{findingCount} nalaza",
             EvaluationOrder = 6
         });
 
-        // Rule 7: Many damages
+        // Rule 7: Medium forensic risk
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Vise ostecenja",
-            RuleDescription = "Vise od 5 detektiranih ostecenja",
-            Triggered = damageCount > 5,
-            ThresholdValue = "5 ostecenja",
-            ActualValue = $"{damageCount} ostecenja",
+            RuleName = "Umjeren forenzicki rizik",
+            RuleDescription = "Forenzicka analiza pokazuje umjerenu sumnju",
+            Triggered = hasMediumFraud,
+            ThresholdValue = ">= 25% rizik",
+            ActualValue = $"{fraudRiskScore:P0} rizik",
             EvaluationOrder = 7
-        });
-
-        // Rule 8: Fraud risk
-        var fraudRiskScore = inspection.FraudRiskScore ?? 0;
-        var hasCriticalFraud = fraudRiskScore >= 0.75;
-        var hasFraudRisk = fraudRiskScore >= 0.50;
-        traces.Add(new DecisionTraceEntryDto
-        {
-            RuleName = "Rizik prijevare",
-            RuleDescription = "Forenzicka analiza indicira moguce manipulacije slika ili dokumenata",
-            Triggered = hasFraudRisk,
-            ThresholdValue = "< 50% rizik",
-            ActualValue = $"{fraudRiskScore:P0} rizik ({inspection.FraudRiskLevel ?? "N/A"})",
-            EvaluationOrder = 8
         });
 
         // Determine outcome
         string outcome;
         string reason;
 
-        if (totalCostMax > 3000 || hasCriticalDamage || hasSafetyCritical || hasStructuralIssue || hasCriticalFraud)
+        if (hasCriticalFraud || hasCriticalFinding || hasSafetyCritical)
         {
             outcome = "Escalate";
             var reasons = new List<string>();
-            if (totalCostMax > 3000) reasons.Add($"visok trosak ({totalCostMax:N0} EUR)");
-            if (hasCriticalDamage) reasons.Add("kriticna ostecenja");
-            if (hasSafetyCritical) reasons.Add("sigurnosno kriticno");
-            if (hasStructuralIssue) reasons.Add("strukturno ostecenje");
-            if (hasCriticalFraud) reasons.Add("kriticna sumnja na manipulaciju");
-            reason = $"Eskalirano: {string.Join(", ", reasons)}";
+            if (hasCriticalFraud) reasons.Add($"kriticna sumnja na manipulaciju ({fraudRiskScore:P0})");
+            if (hasCriticalFinding) reasons.Add("kriticni nalazi AI analize");
+            if (hasSafetyCritical) reasons.Add("sadrzaj oznacen kao krivotvoreno");
+            reason = $"Sumnja na krivotvorinu: {string.Join(", ", reasons)}";
         }
-        else if (totalCostMax >= 500 || hasSevereDamage || damageCount > 5 || hasFraudRisk)
+        else if (hasHighFraud || hasSevereFinding || findingCount > 3 || hasMediumFraud)
         {
             outcome = "HumanReview";
             var reasons = new List<string>();
-            if (totalCostMax >= 500) reasons.Add($"srednji trosak ({totalCostMax:N0} EUR)");
-            if (hasSevereDamage) reasons.Add("ozbiljna ostecenja");
-            if (damageCount > 5) reasons.Add($"{damageCount} ostecenja");
-            if (hasFraudRisk) reasons.Add("povisen rizik prijevare");
+            if (hasHighFraud) reasons.Add($"povisen forenzicki rizik ({fraudRiskScore:P0})");
+            if (hasSevereFinding) reasons.Add("ozbiljni nalazi AI analize");
+            if (findingCount > 3) reasons.Add($"{findingCount} sumnjivih nalaza");
+            if (hasMediumFraud && !hasHighFraud) reasons.Add($"umjeren forenzicki rizik ({fraudRiskScore:P0})");
             reason = $"Potreban pregled: {string.Join(", ", reasons)}";
         }
         else
         {
             outcome = "AutoApprove";
-            reason = $"Automatski odobreno: nizak trosak ({totalCostMax:N0} EUR), {damageCount} manjih ostecenja";
+            reason = $"Autenticno: nizak forenzicki rizik ({fraudRiskScore:P0}), {findingCount} nalaza";
         }
 
         var traceJson = JsonSerializer.Serialize(traces, new JsonSerializerOptions

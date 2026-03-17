@@ -4,9 +4,7 @@ import { useState, useRef } from "react";
 import type { DamageDetection, BoundingBox } from "@/lib/api";
 import {
   parseBoundingBox,
-  repairCategoryColor,
-  damageTypeLabel,
-  carPartLabel,
+  findingCategoryLabel,
   severityLabel,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -42,11 +40,8 @@ export function DamageOverlay({
     .map((d, i) => {
       const box = parseBoundingBox(d.boundingBox);
       if (!box) return null;
-      // Only show bounding boxes that belong to the currently active image
       if (box.imageIndex !== activeImageIndex) return null;
-      const color = d.repairCategory
-        ? repairCategoryColor(d.repairCategory)
-        : severityToColor(d.severity);
+      const color = severityToColor(d.severity);
       return { damage: d, box, index: i, color };
     })
     .filter((d): d is ParsedDamage => d !== null);
@@ -66,7 +61,7 @@ export function DamageOverlay({
         >
           <img
             src={imageUrl}
-            alt="Vehicle damage"
+            alt="Analizirani sadrzaj"
             className="w-full h-auto object-contain bg-gray-50"
             onLoad={() => setImageLoaded(true)}
           />
@@ -142,7 +137,7 @@ export function DamageOverlay({
         )}
 
         {hoveredIndex !== null && showOverlay && parsedDamages.find((d) => d.index === hoveredIndex) && (
-          <DamageTooltip damage={parsedDamages.find((d) => d.index === hoveredIndex)!} />
+          <FindingTooltip damage={parsedDamages.find((d) => d.index === hoveredIndex)!} />
         )}
       </div>
 
@@ -187,7 +182,7 @@ export function DamageOverlay({
   );
 }
 
-function DamageTooltip({ damage }: { damage: ParsedDamage }) {
+function FindingTooltip({ damage }: { damage: ParsedDamage }) {
   const { box, damage: d, index, color } = damage;
   const tooltipLeft = `${(box.x + box.w / 2) * 100}%`;
   const tooltipTop = `${box.y * 100}%`;
@@ -204,10 +199,10 @@ function DamageTooltip({ damage }: { damage: ParsedDamage }) {
       <div className="bg-white border border-border rounded-lg px-3 py-2 text-xs shadow-lg">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-          <span className="font-medium">#{index + 1} {damageTypeLabel(d.damageType)}</span>
+          <span className="font-medium">#{index + 1} {findingCategoryLabel(d.damageCause)}</span>
         </div>
         <div className="text-muted">
-          {carPartLabel(d.carPart)} &middot; {severityLabel(d.severity)}
+          {severityLabel(d.severity)}
         </div>
       </div>
     </div>
@@ -217,9 +212,10 @@ function DamageTooltip({ damage }: { damage: ParsedDamage }) {
 function Legend() {
   return (
     <div className="flex items-center gap-2">
-      <LegendItem color="#ef4444" label="Zamjena" />
-      <LegendItem color="#f97316" label="Popravak" />
-      <LegendItem color="#eab308" label="Poliranje" />
+      <LegendItem color="#22c55e" label="Niska" />
+      <LegendItem color="#f59e0b" label="Umjerena" />
+      <LegendItem color="#f97316" label="Visoka" />
+      <LegendItem color="#ef4444" label="Kriticna" />
     </div>
   );
 }
@@ -237,7 +233,7 @@ function severityToColor(severity: string): string {
   switch (severity) {
     case "Critical": return "#ef4444";
     case "Severe": return "#f97316";
-    case "Moderate": return "#eab308";
+    case "Moderate": return "#f59e0b";
     case "Minor": return "#22c55e";
     default: return "#71717a";
   }

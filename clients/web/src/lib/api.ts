@@ -426,10 +426,10 @@ export function carPartLabel(part: string): string {
 
 export function severityLabel(severity: string): string {
   const labels: Record<string, string> = {
-    Minor: "Manja",
-    Moderate: "Umjerena",
-    Severe: "Ozbiljna",
-    Critical: "Kritična",
+    Minor: "Niska sumnja",
+    Moderate: "Umjerena sumnja",
+    Severe: "Visoka sumnja",
+    Critical: "Kriticna sumnja",
   };
   return labels[severity] || severity;
 }
@@ -464,9 +464,9 @@ export function repairCategoryColor(category: string): string {
 
 export function safetyRatingLabel(rating: string): string {
   const labels: Record<string, string> = {
-    Safe: "Sigurno",
-    Warning: "Upozorenje",
-    Critical: "Kritično",
+    Safe: "Autenticno",
+    Warning: "Sumnjivo",
+    Critical: "Krivotvoreno",
   };
   return labels[rating] || rating;
 }
@@ -504,11 +504,28 @@ export function parseBoundingBox(json: string | null): BoundingBox | null {
 
 export function decisionOutcomeLabel(outcome: string): string {
   const labels: Record<string, string> = {
-    AutoApprove: "Automatski odobreno",
+    AutoApprove: "Autenticno",
     HumanReview: "Potreban pregled",
-    Escalate: "Eskalirano",
+    Escalate: "Sumnja na krivotvorinu",
   };
   return labels[outcome] || outcome;
+}
+
+export function findingCategoryLabel(cause: string | null): string {
+  if (!cause) return "Nepoznato";
+  const labels: Record<string, string> = {
+    "AI generiranje": "AI generiranje",
+    "Digitalna manipulacija": "Digitalna manipulacija",
+    "Copy-paste krivotvorina": "Copy-paste krivotvorina",
+    "Rekompresijski artefakti": "Rekompresijski artefakti",
+    "Nekonzistentno osvjetljenje": "Nekonzistentno osvjetljenje",
+    "Metadata anomalija": "Metadata anomalija",
+    "Deepfake indikator": "Deepfake indikator",
+    "Sumnjiva tekstura": "Sumnjiva tekstura",
+    "Perspektivna anomalija": "Perspektivna anomalija",
+    "Autenticno": "Autenticno",
+  };
+  return labels[cause] || cause;
 }
 
 export function decisionOutcomeColor(outcome: string): string {

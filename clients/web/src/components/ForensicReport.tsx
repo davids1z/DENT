@@ -10,7 +10,7 @@ interface ForensicReportProps {
 }
 
 export function ForensicReport({ result }: ForensicReportProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   if (result.modules.length === 0) return null;
 
