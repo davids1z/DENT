@@ -107,10 +107,10 @@ export default function InspectPage() {
       <div className="mb-8">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-2">
-            Nova inspekcija
+            Nova analiza
           </h1>
           <p className="text-muted text-sm sm:text-base mb-6">
-            Dodajte fotografije oštećenja za AI analizu vozila
+            Dodajte slike ili dokumente za forenzičku verifikaciju
           </p>
           <ProgressSteps currentStep={currentStep} />
         </div>
@@ -186,7 +186,7 @@ export default function InspectPage() {
               </div>
               <div>
                 <div className="text-sm font-medium mb-0.5">Do 8 slika</div>
-                <div className="text-xs text-muted">Fotografirajte vozilo iz više kutova za bolju preciznost</div>
+                <div className="text-xs text-muted">Dodajte slike za kompletnu forenzičku analizu</div>
               </div>
             </div>
             <div className="flex items-start gap-3 p-4 rounded-xl bg-card border border-border">
@@ -197,7 +197,7 @@ export default function InspectPage() {
               </div>
               <div>
                 <div className="text-sm font-medium mb-0.5">30-90 sekundi</div>
-                <div className="text-xs text-muted">Analiza traje manje od 2 minute za više fotografija</div>
+                <div className="text-xs text-muted">Forenzička analiza traje manje od 2 minute</div>
               </div>
             </div>
             <div className="flex items-start gap-3 p-4 rounded-xl bg-card border border-border">
@@ -208,7 +208,7 @@ export default function InspectPage() {
               </div>
               <div>
                 <div className="text-sm font-medium mb-0.5">Detaljan izvještaj</div>
-                <div className="text-xs text-muted">Štete, ozbiljnost, troškovi i preporuka za djelovanje</div>
+                <div className="text-xs text-muted">Forenzički nalaz, rizik prijevare i kriptografski dokazi</div>
               </div>
             </div>
           </div>
@@ -219,9 +219,9 @@ export default function InspectPage() {
       {isLoading && (
         <div className="bg-card border border-border rounded-2xl p-8 max-w-lg mx-auto text-center">
           <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h3 className="font-heading font-semibold text-lg mb-2">AI analizira vaše vozilo</h3>
+          <h3 className="font-heading font-semibold text-lg mb-2">Forenzička analiza u tijeku</h3>
           <p className="text-sm text-muted mb-6">
-            Napredni vizijski model detektira i klasificira svako oštećenje na fotografijama.
+            6 forenzičkih modula provjerava autentičnost, detektira manipulacije i AI-generirani sadržaj.
           </p>
           <div className="space-y-2 max-w-xs mx-auto">
             <div className="h-2 skeleton rounded-full w-3/4 mx-auto" />
@@ -253,7 +253,7 @@ export default function InspectPage() {
           )}
           <div className="flex gap-3">
             <button onClick={handleReset} className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors">
-              Nova inspekcija
+              Nova analiza
             </button>
             <button onClick={() => window.print()} className="px-6 py-2.5 bg-card border border-border rounded-xl font-medium text-sm hover:bg-card-hover transition-colors">
               Isprintaj izvještaj

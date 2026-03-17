@@ -20,9 +20,9 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "DENT - AI analiza šteta na vozilima",
+  title: "DENT - Detekcija prijevara i forenzička verifikacija",
   description:
-    "AI platforma za detekciju oštećenja vozila, klasifikaciju ozbiljnosti i procjenu troškova popravka. Uploadajte fotografije i dobijte profesionalni izvještaj.",
+    "AI platforma za detekciju prijevara, forenzičku analizu slika i dokumenata, prepoznavanje AI-generiranog sadržaja i kriptografsku verifikaciju dokaza.",
 };
 
 export default function RootLayout({

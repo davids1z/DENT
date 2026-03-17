@@ -14,16 +14,16 @@ const features = [
       </svg>
     ),
     title: "Detekcija prijevara",
-    desc: "Forenzička analiza slika: ELA, FFT spektar, CNN detekcija manipulacija, analiza metapodataka i provjera autentičnosti.",
+    desc: "Forenzička analiza slika i dokumenata: ELA, FFT spektar, CNN detekcija manipulacija, analiza metapodataka i provjera autentičnosti.",
   },
   {
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75H6A2.25 2.25 0 003.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0120.25 6v1.5m0 9V18A2.25 2.25 0 0118 20.25h-1.5m-9 0H6A2.25 2.25 0 013.75 18v-1.5M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
       </svg>
     ),
-    title: "Detekcija šteta",
-    desc: "AI prepoznaje ogrebotine, udubljenja, pukotine, oštećenja boje, slomljeno staklo i deformacije karoserije.",
+    title: "AI-generirani sadržaj",
+    desc: "Prepoznavanje AI-generiranih slika, deepfakeova i sintetičkog sadržaja pomoću CNN modela i VLM analize.",
   },
   {
     icon: (
@@ -32,16 +32,16 @@ const features = [
       </svg>
     ),
     title: "AI agent evaluacija",
-    desc: "LLM agent analizira cijeli predmet: štete, forenziku, vremenske uvjete i autonomno donosi odluku o odobrenju.",
+    desc: "LLM agent analizira cijeli predmet: forenzičke nalaze, metapodatke, konzistentnost i autonomno donosi odluku.",
   },
   {
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
       </svg>
     ),
-    title: "Procjena troškova",
-    desc: "Automatska kalkulacija troškova popravka s detaljnim stavkama: rad, dijelovi, materijali i ukupna procjena.",
+    title: "Forenzika dokumenata",
+    desc: "Analiza PDF strukture, provjera digitalnih potpisa, detekcija manipulacija fontova i skrivenih elemenata.",
   },
   {
     icon: (
@@ -59,20 +59,20 @@ const features = [
       </svg>
     ),
     title: "Automatska odluka",
-    desc: "STP (Straight-Through Processing): automatsko odobrenje, eskalacija ili pregled - s punim traceom odluke.",
+    desc: "STP (Straight-Through Processing): automatsko odobrenje, eskalacija ili odbijanje - s punim traceom odluke.",
   },
 ];
 
 const steps = [
   {
     num: "01",
-    title: "Uploadajte fotografije",
-    desc: "Dodajte do 8 fotografija oštećenog vozila. Sustav hvata GPS, uređaj i metadata za kompletnu evidenciju.",
+    title: "Uploadajte sadržaj",
+    desc: "Dodajte slike ili dokumente za provjeru. Sustav hvata metapodatke, GPS lokaciju i informacije o uređaju.",
   },
   {
     num: "02",
     title: "AI analizira i verificira",
-    desc: "Gemini 2.5 Pro detektira štete, 6 forenzičkih modula provjerava autentičnost, AI agent donosi odluku.",
+    desc: "6 forenzičkih modula provjerava autentičnost, detektira manipulacije i AI-generirani sadržaj, AI agent donosi odluku.",
   },
   {
     num: "03",
@@ -106,11 +106,11 @@ export default function Dashboard() {
             </div>
             <h1 className="font-heading text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6">
               Detekcija prijevara{" "}
-              <span className="text-accent">u osiguranju vozila</span>
+              <span className="text-accent">i forenzička verifikacija</span>
             </h1>
             <p className="text-lg sm:text-xl text-muted leading-relaxed mb-10 max-w-2xl mx-auto">
-              AI platforma za analizu šteta, forenzičku verifikaciju fotografija,
-              detekciju manipulacija i automatsko donošenje odluka
+              AI platforma za forenzičku analizu slika i dokumenata,
+              detekciju manipulacija i AI-generiranog sadržaja
               s kriptografskim dokazima za sud.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -124,7 +124,7 @@ export default function Dashboard() {
                 href="/inspections"
                 className="w-full sm:w-auto px-8 py-3.5 bg-card border border-border text-foreground rounded-xl font-semibold text-base hover:bg-card-hover transition-colors"
               >
-                Pregledaj inspekcije
+                Pregledaj analize
               </Link>
             </div>
           </div>
@@ -143,7 +143,7 @@ export default function Dashboard() {
               Kako funkcionira
             </p>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight">
-              Tri koraka do odluke
+              Tri koraka do rezultata
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
@@ -172,7 +172,7 @@ export default function Dashboard() {
               Mogućnosti
             </p>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight">
-              Kompletna platforma za osiguranje
+              Kompletna forenzička platforma
             </h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -203,8 +203,8 @@ export default function Dashboard() {
               6 modula forenzičke analize
             </h2>
             <p className="text-muted max-w-2xl mx-auto">
-              Svaka fotografija prolazi kroz višeslojnu provjeru autentičnosti
-              koja detektira Photoshop manipulacije, AI-generirane slike i lažne metapodatke.
+              Svaka slika i dokument prolazi kroz višeslojnu provjeru autentičnosti
+              koja detektira Photoshop manipulacije, AI-generirane slike, lažne metapodatke i falsificirane dokumente.
             </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4">
@@ -234,12 +234,12 @@ export default function Dashboard() {
               <div className="text-xs text-muted">Forenzičkih modula</div>
             </div>
             <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
-              <div className="font-heading text-3xl font-bold text-accent mb-1">12+</div>
-              <div className="text-xs text-muted">Tipova šteta</div>
+              <div className="font-heading text-3xl font-bold text-accent mb-1">CNN</div>
+              <div className="text-xs text-muted">Deepfake detekcija</div>
             </div>
             <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
-              <div className="font-heading text-3xl font-bold text-accent mb-1">26+</div>
-              <div className="text-xs text-muted">Dijelova vozila</div>
+              <div className="font-heading text-3xl font-bold text-accent mb-1">VLM</div>
+              <div className="text-xs text-muted">Vizualno-jezična analiza</div>
             </div>
             <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">RFC 3161</div>
@@ -258,7 +258,7 @@ export default function Dashboard() {
                 Vaše statistike
               </p>
               <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight">
-                Pregled vaših inspekcija
+                Pregled vaših analiza
               </h2>
             </div>
             <DashboardStats stats={stats} />
@@ -266,7 +266,7 @@ export default function Dashboard() {
               <div className="mt-10">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="font-heading font-semibold">
-                    Zadnje inspekcije
+                    Zadnje analize
                   </h3>
                   <Link
                     href="/inspections"
@@ -294,10 +294,10 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-4">
-              Spremni za analizu?
+              Spremni za provjeru?
             </h2>
             <p className="text-muted mb-8">
-              Uploadajte fotografije i dobijte forenzički verificiran
+              Uploadajte slike ili dokumente i dobijte forenzički verificiran
               izvještaj s kriptografskim dokazima za manje od 2 minute.
             </p>
             <Link

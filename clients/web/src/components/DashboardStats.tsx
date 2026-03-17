@@ -19,7 +19,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <GlowCard>
-          <div className="text-xs text-muted uppercase tracking-wider mb-2">Ukupno inspekcija</div>
+          <div className="text-xs text-muted uppercase tracking-wider mb-2">Ukupno analiza</div>
           <div className="text-2xl font-bold">{stats.totalInspections}</div>
         </GlowCard>
         <GlowCard>
@@ -38,7 +38,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       </div>
       {topDamageTypes.length > 0 && (
         <GlassPanel>
-          <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">Najčešći tipovi šteta</h3>
+          <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">Najčešći tipovi nalaza</h3>
           <div className="space-y-3">
             {topDamageTypes.map(([type, count]) => (
               <div key={type} className="flex items-center gap-3">

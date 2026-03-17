@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 
 const links = [
   { href: "/", label: "Početna" },
-  { href: "/inspections", label: "Inspekcije" },
+  { href: "/inspections", label: "Analize" },
 ];
 
 export function Navbar() {
@@ -56,7 +56,7 @@ export function Navbar() {
                 : "bg-accent text-white hover:bg-accent-hover"
             )}
           >
-            Nova analiza
+            Nova provjera
           </Link>
         </div>
       </div>

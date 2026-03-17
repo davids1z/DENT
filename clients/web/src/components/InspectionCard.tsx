@@ -34,13 +34,13 @@ export function InspectionCard({ inspection: i }: InspectionCardProps) {
           {i.damages.length > 0 && (
             <div className="absolute bottom-3 left-3">
               <span className={cn("text-xs font-semibold bg-white/90 px-2 py-1 rounded", severityColor(worstSeverity))}>
-                {i.damages.length} šteta &middot; {severityLabel(worstSeverity)}
+                {i.damages.length} {i.damages.length === 1 ? "nalaz" : "nalaza"} &middot; {severityLabel(worstSeverity)}
               </span>
             </div>
           )}
         </div>
         <div className="p-4">
-          <h3 className="font-medium truncate mb-1">{i.vehicleMake && i.vehicleModel ? `${i.vehicleMake} ${i.vehicleModel}` : i.originalFileName}</h3>
+          <h3 className="font-medium truncate mb-1">{i.originalFileName}</h3>
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted">{formatDate(i.createdAt)}</span>
             {i.totalEstimatedCostMin != null && (

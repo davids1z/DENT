@@ -82,10 +82,10 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
             </svg>
           </div>
           <p className="text-foreground font-medium text-sm mb-1">
-            Povucite slike ovdje ili kliknite za odabir
+            Povucite datoteke ovdje ili kliknite za odabir
           </p>
           <p className="text-xs text-muted">
-            Do {MAX_IMAGES} slika &middot; JPG, PNG, WebP ili HEIC
+            Do {MAX_IMAGES} datoteka &middot; JPG, PNG, WebP ili HEIC
           </p>
         </label>
       </div>

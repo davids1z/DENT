@@ -44,7 +44,7 @@ export default function InspectionDetailPage() {
   useEffect(() => { loadInspection(); }, [loadInspection]);
 
   const handleDelete = async () => {
-    if (!inspection || !confirm("Jeste li sigurni da želite obrisati ovu inspekciju?")) return;
+    if (!inspection || !confirm("Jeste li sigurni da želite obrisati ovu analizu?")) return;
     setDeleting(true);
     try { await deleteInspection(inspection.id); router.push("/inspections"); } catch { setDeleting(false); }
   };
@@ -99,11 +99,11 @@ export default function InspectionDetailPage() {
             Natrag
           </button>
           <h1 className="font-heading text-2xl font-bold">
-            {inspection.vehicleMake && inspection.vehicleModel ? `${inspection.vehicleMake} ${inspection.vehicleModel}` : "Inspekcija"}
+            Forenzička analiza
           </h1>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-muted text-sm">{formatDate(inspection.createdAt)}</p>
-            {inspection.mileage && <span className="text-muted text-sm">&middot; {inspection.mileage.toLocaleString("hr-HR")} km</span>}
+            <span className="text-muted text-sm">&middot; {inspection.originalFileName}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 const links = [
   { href: "/", label: "Početna" },
   { href: "/inspect", label: "Upload", primary: true },
-  { href: "/inspections", label: "Inspekcije" },
+  { href: "/inspections", label: "Analize" },
 ];
 
 export function MobileNav() {

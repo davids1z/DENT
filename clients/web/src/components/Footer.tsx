@@ -16,8 +16,8 @@ export function Footer() {
               </span>
             </Link>
             <p className="text-sm text-muted leading-relaxed max-w-xs">
-              AI platforma za detekciju i procjenu šteta na vozilima.
-              Profesionalni izvještaji u sekundama.
+              AI platforma za detekciju prijevara, forenzičku verifikaciju
+              slika i dokumenata.
             </p>
           </div>
 
@@ -40,7 +40,7 @@ export function Footer() {
                   href="/inspections"
                   className="text-sm text-muted hover:text-foreground transition-colors"
                 >
-                  Inspekcije
+                  Analize
                 </Link>
               </li>
               <li>
@@ -60,10 +60,10 @@ export function Footer() {
               Mogućnosti
             </h4>
             <ul className="space-y-2.5">
-              <li className="text-sm text-muted">Detekcija šteta</li>
-              <li className="text-sm text-muted">Procjena troškova</li>
-              <li className="text-sm text-muted">Klasifikacija ozb.</li>
-              <li className="text-sm text-muted">Prepoznavanje vozila</li>
+              <li className="text-sm text-muted">Detekcija prijevara</li>
+              <li className="text-sm text-muted">Forenzika slika</li>
+              <li className="text-sm text-muted">AI-generirani sadržaj</li>
+              <li className="text-sm text-muted">Forenzika dokumenata</li>
             </ul>
           </div>
 

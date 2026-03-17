@@ -45,13 +45,13 @@ export default function InspectionsPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="font-heading text-2xl font-bold mb-1">Inspekcije</h1>
-          <p className="text-muted text-sm">Pregled svih analiza oštećenja</p>
+          <h1 className="font-heading text-2xl font-bold mb-1">Analize</h1>
+          <p className="text-muted text-sm">Pregled svih forenzičkih analiza</p>
         </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="flex-1"><SearchBar value={search} onChange={setSearch} placeholder="Pretraži po vozilu ili datoteci..." /></div>
+        <div className="flex-1"><SearchBar value={search} onChange={setSearch} placeholder="Pretraži po datoteci..." /></div>
         <div className="hidden lg:flex items-center gap-1 bg-card border border-border rounded-lg p-1">
           <button onClick={() => setView("grid")} className={cn("p-2 rounded-md transition-colors", view === "grid" ? "bg-accent/10 text-accent" : "text-muted hover:text-foreground")}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z" /></svg>
@@ -84,11 +84,11 @@ export default function InspectionsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Vozilo</th>
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Datoteka</th>
                 <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Status</th>
-                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Ozbiljnost</th>
-                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Štete</th>
-                <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Trošak</th>
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Rizik</th>
+                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Nalazi</th>
+                <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Rezultat</th>
                 <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Datum</th>
               </tr>
             </thead>
@@ -103,7 +103,7 @@ export default function InspectionsPage() {
                     <td className="px-4 py-3">
                       <Link href={`/inspections/${i.id}`} className="flex items-center gap-3">
                         <img src={i.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
-                        <span className="font-medium truncate">{i.vehicleMake && i.vehicleModel ? `${i.vehicleMake} ${i.vehicleModel}` : i.originalFileName}</span>
+                        <span className="font-medium truncate">{i.originalFileName}</span>
                       </Link>
                     </td>
                     <td className="px-4 py-3">
