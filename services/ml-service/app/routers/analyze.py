@@ -319,6 +319,77 @@ def parse_repair_line_items(raw_items: list | None) -> list[RepairLineItem]:
     return items
 
 
+def _enforce_forensic_severity(
+    response: AnalysisResponse,
+    forensic_data: dict,
+) -> AnalysisResponse:
+    """
+    Deterministic post-processing: override Gemini's severity ratings
+    to match forensic fusion scores.  Gemini DESCRIBES findings,
+    but fusion scores DETERMINE severity.
+    """
+    risk = forensic_data.get("overall_risk_score", 0)
+
+    FRAUD_CAUSES = {
+        "AI generiranje",
+        "Digitalna manipulacija",
+        "Copy-paste krivotvorina",
+        "Rekompresijski artefakti",
+        "Deepfake indikator",
+        "Sumnjiva tekstura",
+        "Spektralna anomalija",
+        "Statisticka anomalija",
+    }
+
+    for d in response.damages:
+        is_fraud = d.damage_cause in FRAUD_CAUSES
+
+        if risk >= 0.75:  # CRITICAL fusion
+            if is_fraud:
+                d.severity = "Critical"
+                d.safety_rating = "Critical"
+            elif d.damage_cause != "Autenticno":
+                if d.severity in ("Minor", "Moderate"):
+                    d.severity = "Severe"
+                if d.safety_rating == "Safe":
+                    d.safety_rating = "Warning"
+
+        elif risk >= 0.50:  # HIGH fusion
+            if is_fraud:
+                if d.severity in ("Minor", "Moderate"):
+                    d.severity = "Severe"
+                if d.safety_rating == "Safe":
+                    d.safety_rating = "Critical"
+
+        elif risk >= 0.25:  # MEDIUM fusion
+            if is_fraud:
+                if d.severity == "Minor":
+                    d.severity = "Moderate"
+                if d.safety_rating == "Safe":
+                    d.safety_rating = "Warning"
+
+    # Forbid "Autenticno" findings when fusion >= HIGH
+    if risk >= 0.50:
+        for d in response.damages:
+            if d.damage_cause == "Autenticno":
+                d.damage_cause = "Metadata anomalija"
+                d.severity = "Moderate" if risk < 0.75 else "Severe"
+                d.safety_rating = "Warning"
+                d.description += (
+                    " [Forenzicki moduli ukazuju na visok rizik manipulacije.]"
+                )
+
+    # Enforce urgency_level consistency
+    if risk >= 0.75:
+        response.urgency_level = "Critical"
+    elif risk >= 0.50:
+        response.urgency_level = "High"
+    elif risk >= 0.25 and response.urgency_level == "Low":
+        response.urgency_level = "Medium"
+
+    return response
+
+
 def _extract_json(response_text: str) -> dict:
     """Extract JSON from response, handling markdown code blocks."""
     text = response_text.strip()
@@ -668,16 +739,47 @@ async def analyze_with_context(
         forensic_text = _format_forensic_context(forensic_data)
         prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
         system = CONTEXT_SYSTEM_PROMPT
+
+        # ── FRAUD REPORT MODE ─────────────────────────────────────
+        # When fusion score >= 0.50, inject strict fraud-report
+        # instructions that FORBID the LLM from generating
+        # "Autenticno" findings or low-severity ratings.
+        overall_risk = forensic_data.get("overall_risk_score", 0)
+        if overall_risk >= 0.50:
+            fraud_header = (
+                "\n=== ⚠ FRAUD REPORT MODE ===\n"
+                "Forenzicki moduli detektirali su VISOKU sumnju na manipulaciju/AI generiranje "
+                f"(ukupni rizik: {overall_risk:.2f}).\n"
+                "ZABRANJENO ti je:\n"
+                "- Koristiti damage_cause \"Autenticno\"\n"
+                "- Stavljati severity \"Minor\" ili safety_rating \"Safe\" na bilo koji nalaz\n"
+                "- Pisati tekst koji opravdava autenticnost slike\n"
+                "MORAS:\n"
+                "- Opisati SVE detektirane anomalije\n"
+                "- Koristiti severity Severe/Critical za fraud-related nalaze\n"
+                "- Jasno istaknuti forenzicke dokaze u svakom opisu\n"
+                "=== KRAJ FRAUD REPORT MODE ===\n\n"
+            )
+            prompt_text = fraud_header + prompt_text
     else:
         # Fallback to standard prompts if no forensic context
         prompt_text = ANALYSIS_PROMPT
         system = SYSTEM_PROMPT
+        forensic_data = {}
 
-    return await _call_openrouter_with_prompt(
+    result = await _call_openrouter_with_prompt(
         [(image_b64, media_type)],
         system_prompt=system,
         analysis_prompt=prompt_text,
     )
+
+    # ── Deterministic severity enforcement ─────────────────────
+    # Post-process Gemini output: fusion scores override severity
+    # ratings to prevent LLM from contradicting forensic evidence.
+    if result.success and forensic_data.get("overall_risk_score", 0) > 0:
+        result = _enforce_forensic_severity(result, forensic_data)
+
+    return result
 
 
 async def _call_openrouter_with_prompt(

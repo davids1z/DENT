@@ -15,7 +15,13 @@ public static class DecisionEngine
         var hasSafetyCritical = inspection.Damages.Any(d => d.SafetyRating == "Critical");
         var findingCount = inspection.Damages.Count;
 
-        // Rule 1: Critical forensic risk
+        // Parse forensic module scores for fine-grained rules
+        var modules = ParseModuleScores(inspection.ForensicResult?.ModuleResultsJson);
+        var aiGenScore = modules.GetValueOrDefault("ai_generation_detection", 0);
+        var spectralScore = modules.GetValueOrDefault("spectral_forensics", 0);
+        var cnnScore = modules.GetValueOrDefault("deep_modification_detection", 0);
+
+        // Rule 1: Critical forensic risk (fusion score)
         var fraudRiskScore = inspection.FraudRiskScore ?? 0;
         var hasCriticalFraud = fraudRiskScore >= 0.75;
         var hasHighFraud = fraudRiskScore >= 0.50;
@@ -96,28 +102,75 @@ public static class DecisionEngine
             EvaluationOrder = 7
         });
 
-        // Determine outcome
+        // Rule 8: AI generation detector strong signal
+        var aiGenTriggered = aiGenScore >= 0.60;
+        traces.Add(new DecisionTraceEntryDto
+        {
+            RuleName = "AI detektor (neuronska mreza)",
+            RuleDescription = "Swin Transformer ensemble detektirao AI-generirani sadrzaj",
+            Triggered = aiGenTriggered,
+            ThresholdValue = ">= 60% rizik",
+            ActualValue = $"{aiGenScore:P0}",
+            EvaluationOrder = 8
+        });
+
+        // Rule 9: Spectral + AI cross-validation
+        var crossValidated = aiGenScore >= 0.50 && spectralScore >= 0.40;
+        traces.Add(new DecisionTraceEntryDto
+        {
+            RuleName = "Spektralna cross-validacija",
+            RuleDescription = "Dva nezavisna pristupa (NN + frekvencijska analiza) potvrduju AI generiranje",
+            Triggered = crossValidated,
+            ThresholdValue = "AI >= 50% I Spektral >= 40%",
+            ActualValue = $"AI: {aiGenScore:P0}, Spektral: {spectralScore:P0}",
+            EvaluationOrder = 9
+        });
+
+        // Rule 10: Capture source is upload with elevated risk
+        var isUpload = inspection.CaptureSource == "upload";
+        var uploadWithRisk = isUpload && hasMediumFraud;
+        traces.Add(new DecisionTraceEntryDto
+        {
+            RuleName = "Upload s povisenim rizikom",
+            RuleDescription = "Slika uploadana (ne slikana kamerom) uz povisenu forenzicku sumnju",
+            Triggered = uploadWithRisk,
+            ThresholdValue = "Upload + >= 25% rizik",
+            ActualValue = $"Izvor: {inspection.CaptureSource ?? "N/A"}, Rizik: {fraudRiskScore:P0}",
+            EvaluationOrder = 10
+        });
+
+        // Determine outcome — DETERMINISTIC from fusion scores + module signals
         string outcome;
         string reason;
 
-        if (hasCriticalFraud || hasCriticalFinding || hasSafetyCritical)
+        if (hasCriticalFraud || hasCriticalFinding || hasSafetyCritical
+            || aiGenTriggered || crossValidated)
         {
             outcome = "Escalate";
             var reasons = new List<string>();
             if (hasCriticalFraud) reasons.Add($"kriticna sumnja na manipulaciju ({fraudRiskScore:P0})");
             if (hasCriticalFinding) reasons.Add("kriticni nalazi AI analize");
             if (hasSafetyCritical) reasons.Add("sadrzaj oznacen kao krivotvoreno");
+            if (aiGenTriggered) reasons.Add($"AI detektor: {aiGenScore:P0}");
+            if (crossValidated) reasons.Add($"cross-validacija AI ({aiGenScore:P0}) + spektral ({spectralScore:P0})");
             reason = $"Sumnja na krivotvorinu: {string.Join(", ", reasons)}";
         }
-        else if (hasHighFraud || hasSevereFinding || findingCount > 3 || hasMediumFraud)
+        else if (hasHighFraud || hasSevereFinding || findingCount > 3
+            || uploadWithRisk || cnnScore >= 0.50)
         {
             outcome = "HumanReview";
             var reasons = new List<string>();
             if (hasHighFraud) reasons.Add($"povisen forenzicki rizik ({fraudRiskScore:P0})");
             if (hasSevereFinding) reasons.Add("ozbiljni nalazi AI analize");
             if (findingCount > 3) reasons.Add($"{findingCount} sumnjivih nalaza");
-            if (hasMediumFraud && !hasHighFraud) reasons.Add($"umjeren forenzicki rizik ({fraudRiskScore:P0})");
+            if (uploadWithRisk) reasons.Add("slika uploadana uz forenzicku sumnju");
+            if (cnnScore >= 0.50) reasons.Add($"CNN detektor: {cnnScore:P0}");
             reason = $"Potreban pregled: {string.Join(", ", reasons)}";
+        }
+        else if (hasMediumFraud)
+        {
+            outcome = "HumanReview";
+            reason = $"Potreban pregled: umjeren forenzicki rizik ({fraudRiskScore:P0})";
         }
         else
         {
@@ -131,5 +184,40 @@ public static class DecisionEngine
         });
 
         return (outcome, reason, traceJson);
+    }
+
+    /// <summary>
+    /// Parse individual module risk scores from the forensic results JSON.
+    /// Returns a dictionary of module_name → risk_score.
+    /// </summary>
+    private static Dictionary<string, double> ParseModuleScores(string? moduleResultsJson)
+    {
+        var scores = new Dictionary<string, double>();
+        if (string.IsNullOrEmpty(moduleResultsJson)) return scores;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(moduleResultsJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return scores;
+
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                var name = element.TryGetProperty("moduleName", out var nameProp)
+                    ? nameProp.GetString() ?? ""
+                    : "";
+                var score = element.TryGetProperty("riskScore", out var scoreProp)
+                    ? scoreProp.GetDouble()
+                    : 0.0;
+
+                if (!string.IsNullOrEmpty(name))
+                    scores[name] = score;
+            }
+        }
+        catch
+        {
+            // If JSON parsing fails, return empty — fusion score still works
+        }
+
+        return scores;
     }
 }

@@ -319,10 +319,14 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     Details = $"{inspection.Damages.Count} findings detected",
                 });
 
-                // Run AI agent evaluation (Phase 7 - replaces rule-based as primary)
-                string decOutcome;
-                string decReason;
-                string decTraceJson;
+                // ── DETERMINISTIC DECISION ──────────────────────────────
+                // DecisionEngine is the PRIMARY decision maker (deterministic
+                // fusion of forensic module scores).  Agent LLM provides
+                // explanatory reasoning text but CANNOT override the outcome.
+                var (ruleOutcome, ruleReason, ruleTraceJson) = DecisionEngine.Evaluate(inspection);
+
+                // Run Agent for explanation/reasoning (advisory only)
+                string agentSummary = "";
                 try
                 {
                     var agentRequest = new MlAgentEvaluateRequest
@@ -372,9 +376,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
                     if (agentResult != null && !agentResult.FallbackUsed)
                     {
-                        decOutcome = agentResult.Outcome;
-                        decReason = agentResult.SummaryHr;
-
+                        // Store agent data for UI (reasoning steps, weather, etc.)
                         inspection.AgentDecisionJson = JsonSerializer.Serialize(agentResult,
                             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
                         inspection.AgentConfidence = agentResult.Confidence;
@@ -383,33 +385,25 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         inspection.AgentFallbackUsed = false;
                         inspection.AgentProcessingTimeMs = agentResult.ProcessingTimeMs;
 
-                        // Still run rule engine for audit trail
-                        var (_, _, ruleTrace) = DecisionEngine.Evaluate(inspection);
-                        decTraceJson = ruleTrace;
+                        // Use agent's summary text for human-readable explanation
+                        agentSummary = agentResult.SummaryHr;
                     }
                     else
                     {
                         _logger.LogWarning("Agent returned fallback for inspection {Id}", inspection.Id);
-                        var (rO, rR, rT) = DecisionEngine.Evaluate(inspection);
-                        decOutcome = rO;
-                        decReason = rR;
-                        decTraceJson = rT;
                         inspection.AgentFallbackUsed = true;
                     }
                 }
                 catch (Exception agentEx)
                 {
-                    _logger.LogWarning(agentEx, "Agent failed for inspection {Id}, falling back to rules", inspection.Id);
-                    var (rO, rR, rT) = DecisionEngine.Evaluate(inspection);
-                    decOutcome = rO;
-                    decReason = rR;
-                    decTraceJson = rT;
+                    _logger.LogWarning(agentEx, "Agent failed for inspection {Id}, continuing with deterministic decision", inspection.Id);
                     inspection.AgentFallbackUsed = true;
                 }
 
-                inspection.DecisionOutcome = decOutcome;
-                inspection.DecisionReason = decReason;
-                inspection.DecisionTraceJson = decTraceJson;
+                // DecisionEngine outcome is ALWAYS final (deterministic)
+                inspection.DecisionOutcome = ruleOutcome;
+                inspection.DecisionReason = !string.IsNullOrEmpty(agentSummary) ? agentSummary : ruleReason;
+                inspection.DecisionTraceJson = ruleTraceJson;
 
                 // Hash agent decision (Phase 8)
                 if (inspection.AgentDecisionJson != null)
