@@ -141,31 +141,37 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         _db.Inspections.Add(inspection);
         await _db.SaveChangesAsync(ct);
 
-        // Run ML analysis
+        // Run ML analysis + forensics in PARALLEL for speed
         try
         {
-            MlAnalysisResult result;
-
+            // Start AI analysis task
+            Task<MlAnalysisResult> analysisTask;
             if (request.Images.Count == 1)
             {
-                // Single image - use original endpoint for backward compat
-                using var mlStream = new MemoryStream(firstImage.Data);
-                result = await _mlService.AnalyzeImageAsync(mlStream, firstImage.FileName, ct);
+                analysisTask = Task.Run(async () =>
+                {
+                    using var mlStream = new MemoryStream(firstImage.Data);
+                    return await _mlService.AnalyzeImageAsync(mlStream, firstImage.FileName, ct);
+                }, ct);
             }
             else
             {
-                // Multi-image - use new endpoint
                 var mlImages = request.Images.Select(img => new MlImageInput
                 {
                     Data = img.Data,
                     FileName = img.FileName,
                 }).ToList();
-
-                result = await _mlService.AnalyzeMultipleImagesAsync(
+                analysisTask = _mlService.AnalyzeMultipleImagesAsync(
                     mlImages,
                     request.VehicleMake, request.VehicleModel, request.VehicleYear, request.Mileage,
                     ct);
             }
+
+            // Start forensics in parallel (independent of AI analysis)
+            var forensicsTask = _mlService.RunForensicsAsync(firstImage.Data, firstImage.FileName, ct);
+
+            // Await AI analysis result
+            var result = await analysisTask;
 
             if (result.Success)
             {
@@ -232,14 +238,13 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 {
                     Event = "analysis_complete",
                     Timestamp = DateTime.UtcNow,
-                    Details = $"{inspection.Damages.Count} damages detected",
+                    Details = $"{inspection.Damages.Count} findings detected",
                 });
 
-                // Run forensic fraud detection (non-blocking)
+                // Await forensics (started in parallel, may already be done)
                 try
                 {
-                    var forensicResult = await _mlService.RunForensicsAsync(
-                        firstImage.Data, firstImage.FileName, ct);
+                    var forensicResult = await forensicsTask;
 
                     // Store ELA heatmap in MinIO if present
                     string? elaUrl = null;
@@ -254,7 +259,10 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
                     inspection.FraudRiskScore = forensicResult.OverallRiskScore;
                     inspection.FraudRiskLevel = forensicResult.OverallRiskLevel;
-                    inspection.ForensicResult = new ForensicResult
+
+                    // FIX: Explicitly add ForensicResult to DbContext to prevent
+                    // EF tracking it as Modified instead of Added
+                    var fr = new ForensicResult
                     {
                         Id = Guid.NewGuid(),
                         InspectionId = inspection.Id,
@@ -266,9 +274,11 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         FftSpectrumUrl = null,
                         TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                     };
+                    _db.ForensicResults.Add(fr);
+                    inspection.ForensicResult = fr;
 
                     // Hash forensic results
-                    var forensicJson = inspection.ForensicResult?.ModuleResultsJson ?? "[]";
+                    var forensicJson = fr.ModuleResultsJson ?? "[]";
                     inspection.ForensicResultHash = ComputeSha256(forensicJson);
                     custodyLog.Add(new EvidenceCustodyEvent
                     {
