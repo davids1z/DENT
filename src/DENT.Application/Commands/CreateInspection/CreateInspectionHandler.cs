@@ -164,6 +164,28 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     elaUrl = _storage.GetPublicUrl(elaKey);
                 }
 
+                // Store FFT spectrum in MinIO if present
+                string? fftUrl = null;
+                if (forensicResult.FftSpectrumB64 is not null)
+                {
+                    var fftBytes = Convert.FromBase64String(forensicResult.FftSpectrumB64);
+                    using var fftStream = new MemoryStream(fftBytes);
+                    var fftKey = await _storage.UploadAsync(
+                        fftStream, $"fft_{inspection.Id}.png", "image/png", ct);
+                    fftUrl = _storage.GetPublicUrl(fftKey);
+                }
+
+                // Store spectral heatmap in MinIO if present
+                string? spectralUrl = null;
+                if (forensicResult.SpectralHeatmapB64 is not null)
+                {
+                    var spectralBytes = Convert.FromBase64String(forensicResult.SpectralHeatmapB64);
+                    using var spectralStream = new MemoryStream(spectralBytes);
+                    var spectralKey = await _storage.UploadAsync(
+                        spectralStream, $"spectral_{inspection.Id}.png", "image/png", ct);
+                    spectralUrl = _storage.GetPublicUrl(spectralKey);
+                }
+
                 inspection.FraudRiskScore = forensicResult.OverallRiskScore;
                 inspection.FraudRiskLevel = forensicResult.OverallRiskLevel;
 
@@ -177,7 +199,8 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     ModuleResultsJson = JsonSerializer.Serialize(forensicResult.Modules,
                         new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
                     ElaHeatmapUrl = elaUrl,
-                    FftSpectrumUrl = null,
+                    FftSpectrumUrl = fftUrl,
+                    SpectralHeatmapUrl = spectralUrl,
                     TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                 };
                 _db.ForensicResults.Add(fr);
@@ -584,6 +607,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             Modules = ParseForensicModules(fr.ModuleResultsJson),
             ElaHeatmapUrl = fr.ElaHeatmapUrl,
             FftSpectrumUrl = fr.FftSpectrumUrl,
+            SpectralHeatmapUrl = fr.SpectralHeatmapUrl,
             TotalProcessingTimeMs = fr.TotalProcessingTimeMs,
         };
     }

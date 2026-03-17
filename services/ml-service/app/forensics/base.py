@@ -37,6 +37,7 @@ class ForensicReport(BaseModel):
     total_processing_time_ms: int = 0
     ela_heatmap_b64: str | None = None
     fft_spectrum_b64: str | None = None
+    spectral_heatmap_b64: str | None = None
 
 
 class BaseAnalyzer(ABC):

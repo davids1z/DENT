@@ -11,6 +11,7 @@ import { ForensicBadge } from "@/components/ForensicBadge";
 import { ForensicReport } from "@/components/ForensicReport";
 import { ElaHeatmapOverlay } from "@/components/ElaHeatmapOverlay";
 import { FftSpectrumOverlay } from "@/components/FftSpectrumOverlay";
+import { SpectralHeatmapOverlay } from "@/components/SpectralHeatmapOverlay";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
@@ -148,6 +149,12 @@ export default function InspectionDetailPage() {
           {inspection.forensicResult.fftSpectrumUrl && (
             <FftSpectrumOverlay
               fftSpectrumUrl={inspection.forensicResult.fftSpectrumUrl}
+            />
+          )}
+          {inspection.forensicResult.spectralHeatmapUrl && (
+            <SpectralHeatmapOverlay
+              originalImageUrl={activeImageUrl || inspection.imageUrl}
+              heatmapUrl={inspection.forensicResult.spectralHeatmapUrl}
             />
           )}
         </div>

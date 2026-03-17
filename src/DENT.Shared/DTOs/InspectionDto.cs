@@ -147,6 +147,7 @@ public record ForensicResultDto
     public List<ForensicModuleResultDto> Modules { get; init; } = [];
     public string? ElaHeatmapUrl { get; init; }
     public string? FftSpectrumUrl { get; init; }
+    public string? SpectralHeatmapUrl { get; init; }
     public int TotalProcessingTimeMs { get; init; }
 }
 

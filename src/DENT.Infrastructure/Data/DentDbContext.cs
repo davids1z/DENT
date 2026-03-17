@@ -78,6 +78,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.ModuleResultsJson).HasMaxLength(50000);
             entity.Property(e => e.ElaHeatmapUrl).HasMaxLength(1000);
             entity.Property(e => e.FftSpectrumUrl).HasMaxLength(1000);
+            entity.Property(e => e.SpectralHeatmapUrl).HasMaxLength(1000);
             entity.HasOne(e => e.Inspection)
                 .WithOne(i => i.ForensicResult)
                 .HasForeignKey<ForensicResult>(e => e.InspectionId)

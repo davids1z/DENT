@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     forensics_semantic_vlm_enabled: bool = True
     forensics_semantic_vlm_model: str = "google/gemini-2.5-pro-preview"
 
+    # Spectral forensics (F2D-Net frequency-domain AI detection)
+    forensics_spectral_enabled: bool = True
+
     # AI generation detection (Swin Transformer ensemble)
     forensics_aigen_enabled: bool = True
     forensics_aigen_methods: str = "sdxl,vit"

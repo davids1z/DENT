@@ -1,13 +1,14 @@
 from .base import ModuleResult, RiskLevel
 
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "metadata_analysis": 0.15,
-    "modification_detection": 0.15,
-    "deep_modification_detection": 0.20,
-    "optical_forensics": 0.05,
-    "semantic_forensics": 0.10,
+    "metadata_analysis": 0.13,
+    "modification_detection": 0.13,
+    "deep_modification_detection": 0.18,
+    "optical_forensics": 0.04,
+    "semantic_forensics": 0.08,
     "document_forensics": 0.10,
-    "ai_generation_detection": 0.25,
+    "ai_generation_detection": 0.22,
+    "spectral_forensics": 0.12,
 }
 
 

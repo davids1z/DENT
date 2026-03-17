@@ -52,6 +52,7 @@ async def analyze_forensics(
         document_enabled=settings.forensics_document_enabled,
         document_signature_verification=settings.forensics_document_signature_verification,
         aigen_enabled=settings.forensics_aigen_enabled,
+        spectral_enabled=settings.forensics_spectral_enabled,
     )
     report = await pipeline.analyze(contents, filename, skip)
 

@@ -14,6 +14,7 @@ public class ForensicResult
     // Visual artifact URLs (stored in MinIO)
     public string? ElaHeatmapUrl { get; set; }
     public string? FftSpectrumUrl { get; set; }
+    public string? SpectralHeatmapUrl { get; set; }
 
     public int TotalProcessingTimeMs { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

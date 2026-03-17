@@ -107,6 +107,7 @@ public record MlForensicResult
     public List<MlForensicModule> Modules { get; init; } = [];
     public string? ElaHeatmapB64 { get; init; }
     public string? FftSpectrumB64 { get; init; }
+    public string? SpectralHeatmapB64 { get; init; }
     public int TotalProcessingTimeMs { get; init; }
 }
 

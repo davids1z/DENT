@@ -122,6 +122,7 @@ export interface ForensicResult {
   modules: ForensicModuleResult[];
   elaHeatmapUrl: string | null;
   fftSpectrumUrl: string | null;
+  spectralHeatmapUrl: string | null;
   totalProcessingTimeMs: number;
 }
 
@@ -596,6 +597,8 @@ export function forensicModuleLabel(moduleName: string): string {
     optical_forensics: "Opticka forenzika",
     semantic_forensics: "Semanticka forenzika",
     document_forensics: "Forenzika dokumenata",
+    ai_generation_detection: "Detekcija AI generiranja",
+    spectral_forensics: "Spektralna forenzika",
   };
   return labels[moduleName] || moduleName;
 }

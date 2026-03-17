@@ -117,6 +117,9 @@ Konkretno:
 - Ako modul za detekciju AI-generiranog sadrzaja (ai_generation_detection) pokazuje visok rizik (>= 0.60),
   ovo je NAJJACI dokaz da je slika umjetno generirana. MORAS prijaviti nalaz kao Severe ili Critical.
   Ovaj modul koristi neuronske mreze (Swin Transformer) OBUCENE specificno za prepoznavanje AI slika.
+- Ako spektralna forenzika (spectral_forensics) pokazuje visok rizik (>= 0.50),
+  frekvencijska domena otkriva artefakte AI generatora nevidljive ljudskom oku.
+  Ovo je jak signal — prijavi kao Moderate/Severe.
 - Ako je CNN modul (deep_modification_detection) detektirao manipulaciju → OBAVEZNO prijavi kao Severe/Critical
 - Ako semanticka analiza (SEM_AI_GENERATED_*) ukazuje na AI → OBAVEZNO prijavi kao Severe/Critical
 - Ako ELA analiza pokazuje sumnjive regije → prijavi kao Moderate/Severe
@@ -505,7 +508,7 @@ def _format_forensic_context(forensic_data: dict) -> str:
 
 CONTEXT_ANALYSIS_PROMPT = """FORENZICKA SINTEZA — analiziraj sliku U KONTEKSTU forenzickih rezultata.
 
-Ispod su rezultati 7 forenzickih modula koji su statisticki i ML metodama analizirali sliku.
+Ispod su rezultati 8 forenzickih modula koji su statisticki i ML metodama analizirali sliku.
 TVOJ ZADATAK: sintetiziraj ove rezultate s vlastitom vizualnom analizom u koherentan izvjestaj.
 
 {forensic_context}
