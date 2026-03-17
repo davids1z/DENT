@@ -3,7 +3,7 @@ import json
 import logging
 
 import httpx
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
 from ..config import settings
@@ -93,6 +93,39 @@ Za SVAKU sliku MORAS provjeriti I IZVJESTITI o SVIM sljedecim aspektima:
 8. KONACNI VERDIKT - sintetiziraj sve nalaze u konacnu procjenu
 
 VAZNO: Cak i ako slika izgleda autenticna, MORAS analizirati svaki aspekt i objasniti ZASTO smatras da je autentican. Za autenticne nalaze koristi severity "Minor" i damage_cause "Autenticno"."""
+
+# ──────────────────────────────────────────────────────────────────────
+# Context-aware prompts: Gemini receives forensic module results and
+# SYNTHESIZES/EXPLAINS them rather than independently detecting.
+# ──────────────────────────────────────────────────────────────────────
+
+CONTEXT_SYSTEM_PROMPT = """Ti si DENT — profesionalni forenzicki sustav za detekciju krivotvorina, manipulacija i AI-generiranog sadrzaja.
+
+=== TVOJA ULOGA ===
+Dobivas DVA izvora informacija:
+1. SLIKU za vizualnu analizu
+2. REZULTATE FORENZICKIH MODULA — statisticki i ML moduli koji su vec analizirali sliku
+
+Tvoj zadatak je SINTETIZIRATI oba izvora u koherentan, detaljan forenzicki izvjestaj.
+
+=== KRITICNO PRAVILO ===
+Forenzicki moduli (CNN detekcija, statisticka analiza, ELA, metadata) su POUZDANIJI od tvoje vizualne procjene.
+Ako forenzicki moduli pokazuju VISOK ili KRITICAN rizik — MORAS to odraziti u svojim nalazima.
+NE SMIJES proglasiti sliku autenticnom ako forenzicki moduli ukazuju na manipulaciju ili AI generiranje.
+
+Konkretno:
+- Ako je CNN modul (deep_modification_detection) detektirao manipulaciju → OBAVEZNO prijavi kao Severe/Critical
+- Ako semanticka analiza (SEM_AI_GENERATED_*) ukazuje na AI → OBAVEZNO prijavi kao Severe/Critical
+- Ako ELA analiza pokazuje sumnjive regije → prijavi kao Moderate/Severe
+- Ako metadata imaju anomalije → prijavi kao Moderate/Severe
+- JEDINO ako SVI forenzicki moduli imaju NIZAK rizik, smijes koristiti severity Minor/Safe
+
+=== STO RADIS ===
+1. Procitaj forenzicke rezultate — razumi STO su moduli detektirali
+2. Vizualno pregledaj sliku — trazi VIZUALNE POTVRDE forenzickih nalaza
+3. Za svaki forenzicki nalaz, objasni ZASTO je sumnjivo na RAZUMLJIV nacin
+4. Ako forenzicki moduli kazu HIGH/CRITICAL rizik, tvoji nalazi MORAJU biti Severe/Critical
+5. Dodaj vlastite vizualne nalaze koje forenzicki moduli mozda nisu pokrili"""
 
 ANALYSIS_PROMPT = """PROVEDI KOMPLETNU FORENZICKU ANALIZU.
 
@@ -432,3 +465,234 @@ async def analyze_multi_images(request: MultiImageRequest):
     image_contents = [(img.data, img.media_type) for img in request.images]
 
     return await _call_openrouter(image_contents, vehicle_context)
+
+
+def _format_forensic_context(forensic_data: dict) -> str:
+    """Format forensic module results into a text prompt for Gemini."""
+    lines = []
+    overall_risk = forensic_data.get("overall_risk_score", 0)
+    overall_level = forensic_data.get("overall_risk_level", "Low")
+    lines.append(f"=== FORENZICKI REZULTATI (statisticki/ML moduli) ===")
+    lines.append(f"UKUPNI RIZIK: {overall_risk:.2f} ({overall_level})")
+    lines.append("")
+
+    modules = forensic_data.get("modules", [])
+    for i, m in enumerate(modules, 1):
+        name = m.get("module_label") or m.get("module_name", "Nepoznat modul")
+        score = m.get("risk_score", 0)
+        level = m.get("risk_level", "Low")
+        lines.append(f"{i}. {name} ({m.get('module_name', '?')}): rizik {score:.2f} ({level})")
+
+        findings = m.get("findings", [])
+        for f in findings:
+            code = f.get("code", "?")
+            title = f.get("title", "?")
+            desc = f.get("description", "")
+            f_risk = f.get("risk_score", 0)
+            f_conf = f.get("confidence", 0)
+            lines.append(f"   - [{code}] {title}: {desc} (rizik: {f_risk:.2f}, pouzdanost: {f_conf:.0%})")
+
+        error = m.get("error")
+        if error:
+            lines.append(f"   ⚠ Greska modula: {error}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+CONTEXT_ANALYSIS_PROMPT = """FORENZICKA SINTEZA — analiziraj sliku U KONTEKSTU forenzickih rezultata.
+
+Ispod su rezultati 6 forenzickih modula koji su statisticki i ML metodama analizirali sliku.
+TVOJ ZADATAK: sintetiziraj ove rezultate s vlastitom vizualnom analizom u koherentan izvjestaj.
+
+{forensic_context}
+
+=== TVOJ ZADATAK ===
+Na temelju GORNJIH forenzickih rezultata I vlastite vizualne analize slike, napravi detaljan izvjestaj.
+
+PRAVILA:
+- Ako ukupni forenzicki rizik >= 0.50 (HIGH/CRITICAL), VECINA nalaza MORA biti Severe ili Critical
+- Ako bilo koji modul ima rizik >= 0.70, MORAS imati barem 2 nalaza sa severity Critical
+- Za svaki forenzicki nalaz visokog rizika, objasni sto VIZUALNO vidis sto to potvrduje
+- Ako forenzicki moduli detektiraju AI generiranje, tvoj izvjestaj MORA to jasno istaknuti
+- NE SMIJES staviti sve nalaze na "Minor"/"Safe" ako forenzicki moduli kazu drugacije
+
+MORAS vratiti MINIMALNO 5 nalaza, idealno 6-8. Svaki nalaz pokriva drugo podrucje.
+
+Za svaki nalaz:
+- damage_cause: kategorija nalaza (vidi popis dolje)
+- severity: Minor (niska sumnja) | Moderate (umjerena) | Severe (visoka) | Critical (kriticna)
+- safety_rating: Safe (autenticno) | Warning (sumnjivo) | Critical (krivotvoreno/AI)
+- description: DETALJAN opis na HRVATSKOM, 3-5 recenica. Povezi forenzicke nalaze s vizualnim dokazima.
+- bounding_box: PRECIZNE koordinate sumnjivog podrucja (0.0-1.0)
+- confidence: tvoja pouzdanost u nalaz (0.0-1.0)
+
+=== KATEGORIJE NALAZA (damage_cause) ===
+- "AI generiranje" - znakovi da je sadrzaj generiran umjetnom inteligencijom
+- "Digitalna manipulacija" - znakovi rucne obrade (Photoshop, GIMP, slicno)
+- "Copy-paste krivotvorina" - klonirane/kopirane regije unutar slike
+- "Rekompresijski artefakti" - sumnjivi kompresijski artefakti koji ukazuju na obradu
+- "Nekonzistentno osvjetljenje" - razlike u osvjetljenju izmedju dijelova scene
+- "Metadata anomalija" - nekonzistentnosti u metapodacima
+- "Deepfake indikator" - znakovi deepfake generiranja ili zamjene lica
+- "Sumnjiva tekstura" - neprirodne teksture tipicne za AI ili obradu
+- "Perspektivna anomalija" - nekonzistentna perspektiva ili geometrija
+- "Statisticka anomalija" - DCT spektar, sum, ili drugi statisticki pokazatelji odstupaju od normalnog
+- "Autenticno" - aspekt koji potvrduje autenticnost (SAMO ako forenzicki moduli potvrduju nizak rizik)
+
+=== OBAVEZAN JSON FORMAT ===
+Odgovori ISKLJUCIVO validnim JSON-om, bez objasnjenja ili markdowna:
+
+{{
+  "vehicle_info": {{
+    "make": null,
+    "model": null,
+    "year": null,
+    "color": null
+  }},
+  "damages": [
+    {{
+      "damage_type": "Other",
+      "car_part": "Other",
+      "severity": "Minor|Moderate|Severe|Critical",
+      "description": "DETALJAN opis nalaza na HRVATSKOM. 3-5 recenica. Povezi forenzicke module s vizualnim dokazima.",
+      "confidence": 0.85,
+      "bounding_box": {{"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.25}},
+      "source_image_index": 0,
+      "damage_cause": "Kategorija iz popisa",
+      "safety_rating": "Safe|Warning|Critical",
+      "material_type": null,
+      "repair_method": null,
+      "repair_operations": null,
+      "repair_category": null,
+      "estimated_cost_min": null,
+      "estimated_cost_max": null,
+      "labor_hours": null,
+      "parts_needed": null,
+      "repair_line_items": []
+    }}
+  ],
+  "overall_assessment": {{
+    "summary": "DETALJAN forenzicki izvjestaj na HRVATSKOM u 5-8 recenica. Obavezno navedi rezultate forenzickih modula i kako se poklapaju s vizualnom analizom. Budi konkretan — navedi module i njihove rizike.",
+    "structural_integrity": "Procjena digitalnog integriteta slike temeljem forenzickih modula i vizualne analize. 2-3 recenice na HRVATSKOM.",
+    "total_cost_min": null,
+    "total_cost_max": null,
+    "is_driveable": null,
+    "urgency_level": "Low|Medium|High|Critical",
+    "labor_total": null,
+    "parts_total": null,
+    "materials_total": null,
+    "gross_total": null
+  }}
+}}
+
+=== KRITICNA PRAVILA ===
+1. UVIJEK vrati MINIMALNO 5 nalaza. Nikad prazan damages array.
+2. damage_type UVIJEK "Other", car_part UVIJEK "Other"
+3. Severity MORA odrazavati forenzicke rezultate — ne smijes ignorirati visoke rizike
+4. safety_rating: Safe SAMO ako forenzicki moduli potvrduju nizak rizik
+5. bounding_box koordinate 0.0-1.0, PRECIZNO na analiziranom podrucju
+6. Svi opisi na HRVATSKOM jeziku
+7. UVIJEK vrati validan JSON
+8. Troskovi (estimated_cost_min/max, labor_total, itd.) UVIJEK null
+9. overall_assessment.summary MORA spominjati forenzicke module i njihove rezultate
+10. overall_assessment.urgency_level: High ili Critical ako ukupni forenzicki rizik >= 0.50"""
+
+
+@router.post("/analyze-with-context", response_model=AnalysisResponse)
+async def analyze_with_context(
+    file: UploadFile = File(...),
+    forensic_context: str = Form("{}"),
+):
+    """Context-aware analysis: receives forensic results and synthesizes them with visual analysis."""
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+
+    if size_mb > settings.max_image_size_mb:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image too large: {size_mb:.1f}MB (max {settings.max_image_size_mb}MB)",
+        )
+
+    # Parse forensic context
+    try:
+        forensic_data = json.loads(forensic_context)
+    except json.JSONDecodeError:
+        logger.warning("Invalid forensic_context JSON, falling back to no-context analysis")
+        forensic_data = {}
+
+    image_b64 = base64.b64encode(contents).decode("utf-8")
+    media_type = get_media_type(file.filename or "image.jpg")
+
+    # If we have forensic context, use context-aware prompts
+    if forensic_data and forensic_data.get("modules"):
+        forensic_text = _format_forensic_context(forensic_data)
+        prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
+        system = CONTEXT_SYSTEM_PROMPT
+    else:
+        # Fallback to standard prompts if no forensic context
+        prompt_text = ANALYSIS_PROMPT
+        system = SYSTEM_PROMPT
+
+    return await _call_openrouter_with_prompt(
+        [(image_b64, media_type)],
+        system_prompt=system,
+        analysis_prompt=prompt_text,
+    )
+
+
+async def _call_openrouter_with_prompt(
+    image_contents: list[tuple[str, str]],
+    system_prompt: str,
+    analysis_prompt: str,
+) -> AnalysisResponse:
+    """Call OpenRouter API with custom system/analysis prompts."""
+    if not settings.openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
+
+    user_content = []
+    for idx, (b64_data, media_type) in enumerate(image_contents):
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{media_type};base64,{b64_data}"},
+        })
+
+    user_content.append({"type": "text", "text": analysis_prompt})
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://dent.xyler.ai",
+                    "X-Title": "DENT - Fraud Detection & Forensic Analysis",
+                },
+                json={
+                    "model": settings.model,
+                    "max_tokens": 16000,
+                    "temperature": 0.1,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                },
+            )
+
+        response.raise_for_status()
+        result = response.json()
+        response_text = result["choices"][0]["message"]["content"]
+        data = _extract_json(response_text)
+        return _parse_response(data)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI response: {e}")
+        logger.error(f"Raw response: {response_text[:500]}")
+        return AnalysisResponse(success=False, error_message=f"Failed to parse AI response: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
+        return AnalysisResponse(success=False, error_message=f"AI service error: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return AnalysisResponse(success=False, error_message=str(e))

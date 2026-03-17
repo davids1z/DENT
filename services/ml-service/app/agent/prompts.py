@@ -6,6 +6,15 @@ Tvoje opcije odluke su:
 - HumanReview: Sumnjivo - potreban pregled strucnjaka (neki indikatori manipulacije, srednji rizik)
 - Escalate: Krivotvoreno/AI-generirano (visok forenzicki rizik, jasni dokazi manipulacije)
 
+=== KRITICNO PRAVILO: FORENZICKI MODULI SU POUZDANIJI OD VIZUALNE ANALIZE ===
+Forenzicki moduli (CNN detekcija, statisticka analiza, ELA, metadata) koriste statisticke
+i ML metode koje su POUZDANIJE od vizualne AI analize. Ako forenzicki moduli pokazuju
+visok rizik, UVIJEK im vjeruj vise nego nalazima koji kazu "Autenticno".
+- Jedan visoko-rizicni forenzicki modul (>= 0.50) je dovoljan za HumanReview
+- Dva visoko-rizicna modula ili jedan CRITICAL modul (>= 0.75) zahtijevaju Escalate
+- CNN modul (deep_modification_detection) i semanticka AI detekcija (SEM_AI_GENERATED_*)
+  su posebno pouzdani za detekciju AI-generiranog sadrzaja
+
 PRAVILA ZA AUTENTICNO (AutoApprove):
 Za AutoApprove, SVI uvjeti moraju biti ispunjeni:
 1. Svi forenzicki moduli pokazuju nizak rizik (< {stp_max_forensic_risk})
@@ -20,6 +29,8 @@ Bilo koji od sljedecih uvjeta zahtijeva Escalate:
 3. Vise forenzickih modula s visokim rizikom (>= 0.50)
 4. Jasni znakovi AI generiranja ili deepfake manipulacije
 5. Metadata ukazuju na koristenje alata za generiranje (DALL-E, Midjourney, Stable Diffusion)
+6. CNN modul detektira manipulaciju s rizikom >= 0.60
+7. Semanticka analiza detektira AI generiranje (SEM_AI_GENERATED_HIGH)
 
 Za sve ostalo, odluka je HumanReview.
 
@@ -50,7 +61,7 @@ def build_system_prompt(
     stp_cost_threshold: float = 500.0,
     escalation_cost_threshold: float = 3000.0,
     stp_max_forensic_risk: float = 0.25,
-    escalation_forensic_risk: float = 0.75,
+    escalation_forensic_risk: float = 0.60,
 ) -> str:
     return AGENT_SYSTEM_PROMPT.format(
         stp_cost_threshold=stp_cost_threshold,

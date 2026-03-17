@@ -109,6 +109,38 @@ public class MlAnalysisService : IMlAnalysisService
         }
     }
 
+    public async Task<MlAnalysisResult> AnalyzeImageWithContextAsync(
+        byte[] imageData, string fileName,
+        MlForensicResult forensicContext,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            // Serialize forensic context to JSON (snake_case for Python service)
+            var forensicJson = JsonSerializer.Serialize(forensicContext, SnakeCaseOptions);
+
+            using var content = new MultipartFormDataContent();
+            using var byteContent = new ByteArrayContent(imageData);
+            byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                GetContentType(fileName));
+            content.Add(byteContent, "file", fileName);
+            content.Add(new StringContent(forensicJson, Encoding.UTF8, "application/json"), "forensic_context");
+
+            var response = await _httpClient.PostAsync("/analyze-with-context", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<MlAnalysisResult>(SnakeCaseOptions, ct);
+            return result ?? new MlAnalysisResult { Success = false, ErrorMessage = "Empty response from ML service" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Context-aware analysis failed for {FileName}, falling back to standard analysis", fileName);
+            // Fallback to standard analysis without context
+            using var stream = new MemoryStream(imageData);
+            return await AnalyzeImageAsync(stream, fileName, ct);
+        }
+    }
+
     public async Task<MlAgentDecision?> RunAgentEvaluationAsync(MlAgentEvaluateRequest request, CancellationToken ct = default)
     {
         try

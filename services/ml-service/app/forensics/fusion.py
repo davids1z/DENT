@@ -50,5 +50,27 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, RiskLevel]:
         return 0.0, RiskLevel.LOW
 
     overall = weighted_score / total_weight
+
+    # ── Max-signal override ──────────────────────────────────────────
+    # Prevent strong single-module signals from being diluted by the
+    # weighted average.  One CRITICAL module should never produce a LOW
+    # overall score.
+    active_modules = [m for m in modules if not m.error]
+    if active_modules:
+        max_module_score = max(m.risk_score for m in active_modules)
+
+        # Single CRITICAL module → boost overall to at least HIGH
+        if max_module_score >= 0.75 and overall < 0.50:
+            overall = max(overall, 0.50 + (max_module_score - 0.75) * 0.5)
+
+        # Single strong module → boost to at least moderate
+        elif max_module_score >= 0.60 and overall < 0.40:
+            overall = max(overall, 0.40)
+
+        # Multiple high-risk modules agreeing = strong signal
+        high_risk_count = sum(1 for m in active_modules if m.risk_score >= 0.50)
+        if high_risk_count >= 2 and overall < 0.60:
+            overall = max(overall, 0.60)
+
     overall = max(0.0, min(1.0, overall))
     return overall, _risk_level(overall)

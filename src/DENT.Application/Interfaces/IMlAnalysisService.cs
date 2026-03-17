@@ -11,6 +11,15 @@ public interface IMlAnalysisService
 
     Task<MlForensicResult> RunForensicsAsync(byte[] fileBytes, string fileName, CancellationToken ct = default);
 
+    /// <summary>
+    /// Context-aware analysis: sends the image together with forensic module results
+    /// so Gemini synthesizes and explains forensic evidence rather than independently detecting.
+    /// </summary>
+    Task<MlAnalysisResult> AnalyzeImageWithContextAsync(
+        byte[] imageData, string fileName,
+        MlForensicResult forensicContext,
+        CancellationToken ct = default);
+
     Task<MlAgentDecision?> RunAgentEvaluationAsync(MlAgentEvaluateRequest request, CancellationToken ct = default);
 
     // Evidence (Phase 8)

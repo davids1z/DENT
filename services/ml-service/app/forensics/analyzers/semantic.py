@@ -505,35 +505,35 @@ Ako slika izgleda autenticno, postavi is_suspicious=false i objasni zasto."""
             # 1a. Statistical AI detection
             ai_score, ai_evidence = self._compute_ai_score(img_array, gray)
 
-            if ai_score > 0.75:
+            if ai_score > 0.60:
                 findings.append(
                     AnalyzerFinding(
                         code="SEM_AI_GENERATED_HIGH",
                         title="Visoka vjerojatnost AI-generirane slike",
                         description="Statisticka analiza DCT spektra, korelacije boja i suma ukazuje na visoku vjerojatnost da je slika generirana umjetnom inteligencijom.",
-                        risk_score=0.85,
+                        risk_score=0.90,
                         confidence=0.85,
                         evidence=ai_evidence,
                     )
                 )
-            elif ai_score > 0.45:
+            elif ai_score > 0.35:
                 findings.append(
                     AnalyzerFinding(
                         code="SEM_AI_GENERATED_MODERATE",
                         title="Umjerena sumnja na AI-generirani sadrzaj",
                         description="Statisticki pokazatelji sugeriraju moguce koristenje AI generatora slika.",
-                        risk_score=0.45,
+                        risk_score=0.55,
                         confidence=0.65,
                         evidence=ai_evidence,
                     )
                 )
-            elif ai_score > 0.25:
+            elif ai_score > 0.20:
                 findings.append(
                     AnalyzerFinding(
                         code="SEM_AI_GENERATED_LOW",
                         title="Blagi AI indikatori",
                         description="Neki statisticki pokazatelji odstupaju od tipicnih kamera, ali nedovoljno za potvrdu AI generiranja.",
-                        risk_score=0.15,
+                        risk_score=0.25,
                         confidence=0.45,
                         evidence=ai_evidence,
                     )
