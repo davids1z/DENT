@@ -71,7 +71,7 @@ _MIN_TEXT_LENGTH = 300
 _MIN_SENTENCES = 5
 
 _PERPLEXITY_MODEL = "distilgpt2"
-_CLASSIFIER_MODEL = "roberta-base-openai-detector"
+_CLASSIFIER_MODEL = "fakespot-ai/roberta-base-ai-text-detection-v1"
 
 
 def _split_sentences(text: str) -> list[str]:

@@ -44,7 +44,7 @@ class Settings(BaseSettings):
 
     # Text AI detection (for documents: PDF, DOCX, XLSX)
     text_ai_enabled: bool = True
-    text_ai_classifier: str = "roberta-base-openai-detector"
+    text_ai_classifier: str = "fakespot-ai/roberta-base-ai-text-detection-v1"
     text_ai_perplexity_model: str = "distilgpt2"
     text_ai_gptzero_api_key: str = ""
 
