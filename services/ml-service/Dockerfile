@@ -21,14 +21,21 @@ RUN pip install --no-cache-dir photoholmes>=1.0.0 || true
 # Install Transformers for AI-generated image detection (Swin Transformer classifiers)
 RUN pip install --no-cache-dir transformers>=4.36.0 || true
 
+# Install Diffusers for VAE reconstruction error detection (separate layer for caching)
+RUN pip install --no-cache-dir diffusers>=0.27.0 || true
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create model cache directory and copy pre-trained probe weights
-RUN mkdir -p /app/models/clip_ai
+# Stage probe weights so entrypoint.sh can copy them into the volume
+RUN mkdir -p /app/models/clip_ai /app/models_stage/clip_ai
 COPY models/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
+COPY models/clip_ai/probe_weights.npz /app/models_stage/clip_ai/probe_weights.npz
 
 COPY app/ app/
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
