@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from ..config import settings
+from ..forensics.fusion import _AI_DETECTOR_MODULES
 from ..schemas import (
     AnalysisResponse,
     BoundingBox,
@@ -397,14 +398,11 @@ def _enforce_forensic_severity(
     # ── AI-specific "Autenticno" override (defence-in-depth) ─────────
     # Even if the fusion score is below t_high, individual AI detectors
     # that fire with risk >= 0.45 must block "Autenticno" findings.
-    _AI_MODULE_NAMES = {
-        "ai_generation_detection", "clip_ai_detection", "vae_reconstruction",
-    }
     modules = forensic_data.get("modules", [])
     any_ai_high = any(
         m.get("riskScore", 0) >= 0.45
         for m in modules
-        if m.get("moduleName") in _AI_MODULE_NAMES
+        if m.get("moduleName") in _AI_DETECTOR_MODULES
     )
     if any_ai_high:
         for d in response.damages:

@@ -85,13 +85,13 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
             self._models_loaded = True
             return
 
-        if not getattr(settings, "clip_ai_enabled", True):
+        if not getattr(settings, "forensics_clip_ai_enabled", True):
             self._models_loaded = True
             return
 
         from transformers import CLIPModel, CLIPProcessor
 
-        model_name = getattr(settings, "clip_ai_model", _CLIP_MODEL_NAME)
+        model_name = getattr(settings, "forensics_clip_ai_model", _CLIP_MODEL_NAME)
         cache_dir = os.path.join(settings.forensics_model_cache_dir, "clip_ai")
         os.makedirs(cache_dir, exist_ok=True)
 
@@ -148,7 +148,7 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         start = time.monotonic()
         findings: list[AnalyzerFinding] = []
 
-        if not getattr(settings, "clip_ai_enabled", True):
+        if not getattr(settings, "forensics_clip_ai_enabled", True):
             return self._make_result([], int((time.monotonic() - start) * 1000))
 
         try:

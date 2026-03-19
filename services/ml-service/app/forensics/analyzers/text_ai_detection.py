@@ -20,7 +20,7 @@ Layer 2 — ML Classifier (local):
 Layer 3 — Optional GPTZero API integration:
   * Highest accuracy (95.7% on RAID benchmark)
   * Sentence-level detection
-  * Configurable via settings.text_ai_gptzero_api_key
+  * Configurable via settings.forensics_text_ai_gptzero_api_key
 """
 
 import io
@@ -134,7 +134,7 @@ class TextAiDetectionAnalyzer(BaseAnalyzer):
             self._models_loaded = True
             return
 
-        if not getattr(settings, "text_ai_enabled", True):
+        if not getattr(settings, "forensics_text_ai_enabled", True):
             self._models_loaded = True
             return
 
@@ -148,7 +148,7 @@ class TextAiDetectionAnalyzer(BaseAnalyzer):
         os.makedirs(cache_dir, exist_ok=True)
 
         # Load perplexity model (DistilGPT-2, ~80MB)
-        ppl_model = getattr(settings, "text_ai_perplexity_model", _PERPLEXITY_MODEL)
+        ppl_model = getattr(settings, "forensics_text_ai_perplexity_model", _PERPLEXITY_MODEL)
         try:
             self._perplexity_tokenizer = AutoTokenizer.from_pretrained(
                 ppl_model, cache_dir=cache_dir
@@ -162,7 +162,7 @@ class TextAiDetectionAnalyzer(BaseAnalyzer):
             logger.warning("Failed to load perplexity model: %s", e)
 
         # Load classifier (RoBERTa-based, ~500MB)
-        cls_model = getattr(settings, "text_ai_classifier", _CLASSIFIER_MODEL)
+        cls_model = getattr(settings, "forensics_text_ai_classifier", _CLASSIFIER_MODEL)
         try:
             self._classifier_pipe = hf_pipeline(
                 "text-classification",
@@ -251,7 +251,7 @@ class TextAiDetectionAnalyzer(BaseAnalyzer):
         start = time.monotonic()
         findings: list[AnalyzerFinding] = []
 
-        if not getattr(settings, "text_ai_enabled", True):
+        if not getattr(settings, "forensics_text_ai_enabled", True):
             return self._make_result([], int((time.monotonic() - start) * 1000))
 
         try:

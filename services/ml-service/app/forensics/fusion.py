@@ -1,19 +1,19 @@
 from .base import ModuleResult, RiskLevel
 
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "ai_generation_detection": 0.18,
-    "clip_ai_detection": 0.14,
-    "vae_reconstruction": 0.10,
-    "deep_modification_detection": 0.14,
-    "spectral_forensics": 0.10,
-    "metadata_analysis": 0.10,
-    "modification_detection": 0.08,
-    "semantic_forensics": 0.06,
+    "ai_generation_detection": 0.15,
+    "clip_ai_detection": 0.12,
+    "vae_reconstruction": 0.08,
+    "deep_modification_detection": 0.12,
+    "spectral_forensics": 0.08,
+    "metadata_analysis": 0.08,
+    "modification_detection": 0.07,
+    "semantic_forensics": 0.05,
     "optical_forensics": 0.03,
-    "document_forensics": 0.07,
-    "office_forensics": 0.07,
-    "text_ai_detection": 0.13,
-}
+    "document_forensics": 0.06,
+    "office_forensics": 0.06,
+    "text_ai_detection": 0.10,
+}  # Sum = 1.00
 
 # Module names that are dedicated AI / synthetic-content detectors
 _AI_DETECTOR_MODULES = frozenset({

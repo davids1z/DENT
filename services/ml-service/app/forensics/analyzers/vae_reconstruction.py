@@ -80,7 +80,7 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
             self._models_loaded = True
             return
 
-        if not getattr(settings, "vae_recon_enabled", True):
+        if not getattr(settings, "forensics_vae_recon_enabled", True):
             self._models_loaded = True
             return
 
@@ -90,7 +90,7 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
             cache_dir = os.path.join(settings.forensics_model_cache_dir, "vae_recon")
             os.makedirs(cache_dir, exist_ok=True)
 
-            model_id = getattr(settings, "vae_recon_model", _VAE_MODEL_ID)
+            model_id = getattr(settings, "forensics_vae_recon_model", _VAE_MODEL_ID)
             self._vae = AutoencoderKL.from_pretrained(
                 model_id, cache_dir=cache_dir
             )
@@ -110,7 +110,7 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
         start = time.monotonic()
         findings: list[AnalyzerFinding] = []
 
-        if not getattr(settings, "vae_recon_enabled", True):
+        if not getattr(settings, "forensics_vae_recon_enabled", True):
             return self._make_result([], int((time.monotonic() - start) * 1000))
 
         try:
