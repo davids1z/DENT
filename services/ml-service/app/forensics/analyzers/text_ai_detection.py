@@ -74,6 +74,27 @@ _PERPLEXITY_MODEL = "distilgpt2"
 _CLASSIFIER_MODEL = "fakespot-ai/roberta-base-ai-text-detection-v1"
 
 
+def _is_likely_english(text: str) -> bool:
+    """
+    Quick heuristic to check if text is likely English.
+    DistilGPT-2 perplexity is only meaningful for English text.
+    Non-English text will have artificially high perplexity, skewing results.
+    """
+    # Sample first 2000 chars
+    sample = text[:2000].lower()
+    if not sample:
+        return False
+    # Count common English words
+    english_markers = {
+        "the", "and", "is", "in", "to", "of", "a", "for", "that", "it",
+        "with", "as", "was", "on", "are", "be", "this", "have", "from",
+        "or", "an", "by", "not", "but", "at", "which", "they", "has",
+    }
+    words = set(sample.split())
+    matches = len(words & english_markers)
+    return matches >= 4
+
+
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences using a simple regex heuristic."""
     # Split on period/question/exclamation followed by whitespace and uppercase
@@ -305,8 +326,10 @@ class TextAiDetectionAnalyzer(BaseAnalyzer):
         details: dict = {}
         signals: list[tuple[float, float]] = []  # (score, weight)
 
-        # A. Perplexity analysis
-        if self._perplexity_model is not None and len(sentences) >= _MIN_SENTENCES:
+        # A. Perplexity analysis (English only — DistilGPT-2 is English-trained)
+        is_english = _is_likely_english(text)
+        details["language_english"] = is_english
+        if self._perplexity_model is not None and len(sentences) >= _MIN_SENTENCES and is_english:
             perplexities = self._compute_perplexities(sentences)
             if perplexities:
                 mean_ppl = float(np.mean(perplexities))
