@@ -16,8 +16,21 @@ i ML metode koje su POUZDANIJE od vizualne AI analize. Forenzicki fusion score j
 DETERMINISTICKI i NEPOBITNI — tvoj posao je objasniti ZASTO su moduli dali takav rezultat.
 - Ako forenzicki moduli pokazuju visok rizik, MORAS to odraziti u objasnjenju
 - NE SMIJES umanjivati ili relativizirati visoke forenzicke rezultate
-- CNN modul (deep_modification_detection), AI detekcija (ai_generation_detection) i
-  spektralna forenzika (spectral_forensics) su posebno pouzdani detektori
+- CNN modul (deep_modification_detection), AI detekcija (ai_generation_detection,
+  clip_ai_detection, vae_reconstruction) i spektralna forenzika (spectral_forensics)
+  su posebno pouzdani detektori
+
+=== NUMERICKA PRAVILA (OBAVEZNA — ne mogu se zaobici) ===
+- forenzicki_rizik >= 0.40 → outcome MORA biti "HumanReview" ili "Escalate"
+- forenzicki_rizik >= 0.55 → outcome MORA biti "Escalate"
+- BILO KOJI AI detektor (ai_generation_detection, clip_ai_detection,
+  vae_reconstruction) risk >= 0.45 → outcome MORA biti "HumanReview" ili "Escalate"
+- BILO KOJI AI detektor risk >= 0.55 → outcome MORA biti "Escalate"
+- 2+ AI detektora se slazu (oba >= 0.40) → outcome MORA biti "Escalate"
+- text_ai_detection risk >= 0.50 → outcome MORA biti "HumanReview" ili "Escalate"
+- spectral_forensics + ai_generation_detection OBA >= 0.35 → outcome MORA biti "Escalate"
+- SAMO ako SVI moduli imaju rizik < 0.20 → smije biti "AutoApprove"
+Ova pravila su APSOLUTNA. Nikakvo vizualno opazanje ih ne moze ponistavati.
 
 TVOJ FOKUS:
 1. Objasni STO su forenzicki moduli detektirali — na razumljiv, ne-tehnicki nacin
@@ -128,5 +141,35 @@ def build_evidence_prompt(
             forensic_lines.append(f"  ⚠ Greska modula: {error}")
 
     sections.append("## FORENZICKA ANALIZA\n" + "\n".join(forensic_lines))
+
+    # ── Highlight AI / manipulation signals so the agent cannot miss them ──
+    _AI_WARNING_MODULES = {
+        "ai_generation_detection": ("SWIN ENSEMBLE",
+            "Swin Transformer klasifikatori (obuceni na 500k+ slika)"),
+        "clip_ai_detection": ("CLIP DETEKTOR",
+            "CLIP ViT-L/14 embeddinzi indiciraju sinteticki sadrzaj"),
+        "vae_reconstruction": ("VAE REKONSTRUKCIJA",
+            "Niska rekonstrukcijska greska = slika je na AI manifoldu"),
+        "spectral_forensics": ("SPEKTRALNA ANALIZA",
+            "Frekvencijske anomalije tipicne za difuzijske generatore"),
+        "text_ai_detection": ("TEXT AI DETEKCIJA",
+            "AI-generirani tekst detektiran u dokumentu"),
+    }
+    warn_lines: list[str] = []
+    for m in forensic_modules:
+        mod_name = m.get("moduleName", "")
+        mod_score = m.get("riskScore", 0)
+        threshold = 0.35 if mod_name == "spectral_forensics" else 0.40
+        if mod_name in _AI_WARNING_MODULES and mod_score >= threshold:
+            label, desc = _AI_WARNING_MODULES[mod_name]
+            warn_lines.append(f"- {label}: rizik {mod_score:.2f} — {desc}")
+
+    if warn_lines:
+        warning_block = (
+            "## ⚠ UPOZORENJE: DETEKTIRANI AI/MANIPULACIJA SIGNALI ⚠\n"
+            + "\n".join(warn_lines)
+            + "\n→ OVE INFORMACIJE IMAJU PRIORITET NAD VIZUALNOM PROCJENOM."
+        )
+        sections.append(warning_block)
 
     return "\n\n".join(sections)

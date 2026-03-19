@@ -630,6 +630,9 @@ export function forensicModuleLabel(moduleName: string): string {
     office_forensics: "Office dokument forenzika",
     ai_generation_detection: "Detekcija AI generiranja",
     spectral_forensics: "Spektralna forenzika",
+    clip_ai_detection: "CLIP AI detekcija",
+    vae_reconstruction: "VAE rekonstrukcija",
+    text_ai_detection: "AI tekst detekcija",
   };
   return labels[moduleName] || moduleName;
 }

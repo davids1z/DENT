@@ -30,3 +30,6 @@ fpdf2>=2.8.0
 # torch and photoholmes are installed separately in Dockerfile for layer caching
 # AI generation detection (optional — transformers installed in Dockerfile for layer caching)
 # Models: Organika/sdxl-detector, umm-maybe/AI-image-detector
+# CLIP AI detection (UniversalFakeDetect style — model downloaded via transformers)
+# VAE reconstruction error detection (DIRE/CO-SPY style)
+diffusers>=0.27.0

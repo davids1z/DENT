@@ -341,9 +341,9 @@ def _enforce_forensic_severity(
 
     # Upload images get stricter thresholds
     is_upload = capture_source == "upload"
-    t_critical = 0.60 if is_upload else 0.75
-    t_high = 0.35 if is_upload else 0.50
-    t_medium = 0.15 if is_upload else 0.25
+    t_critical = 0.50 if is_upload else 0.65
+    t_high = 0.30 if is_upload else 0.40
+    t_medium = 0.12 if is_upload else 0.20
 
     FRAUD_CAUSES = {
         "AI generiranje",
@@ -392,6 +392,28 @@ def _enforce_forensic_severity(
                 d.safety_rating = "Warning"
                 d.description += (
                     " [Forenzicki moduli ukazuju na visok rizik manipulacije.]"
+                )
+
+    # ── AI-specific "Autenticno" override (defence-in-depth) ─────────
+    # Even if the fusion score is below t_high, individual AI detectors
+    # that fire with risk >= 0.45 must block "Autenticno" findings.
+    _AI_MODULE_NAMES = {
+        "ai_generation_detection", "clip_ai_detection", "vae_reconstruction",
+    }
+    modules = forensic_data.get("modules", [])
+    any_ai_high = any(
+        m.get("riskScore", 0) >= 0.45
+        for m in modules
+        if m.get("moduleName") in _AI_MODULE_NAMES
+    )
+    if any_ai_high:
+        for d in response.damages:
+            if d.damage_cause == "Autenticno":
+                d.damage_cause = "AI generiranje"
+                d.severity = "Severe"
+                d.safety_rating = "Critical"
+                d.description += (
+                    " [AI detekcijski moduli identificirali su sinteticki sadrzaj.]"
                 )
 
     # Enforce urgency_level consistency
@@ -775,11 +797,12 @@ async def analyze_with_context(
         # instructions that FORBID the LLM from generating
         # "Autenticno" findings or low-severity ratings.
         overall_risk = forensic_data.get("overall_risk_score", 0)
-        if overall_risk >= 0.50:
+        if overall_risk >= 0.40:
             fraud_header = (
                 "\n=== ⚠ FRAUD REPORT MODE ===\n"
                 "Forenzicki moduli detektirali su VISOKU sumnju na manipulaciju/AI generiranje "
                 f"(ukupni rizik: {overall_risk:.2f}).\n"
+                "FORENZICKI REZULTATI SU IZVOR ISTINE — ne proturjeci im.\n"
                 "ZABRANJENO ti je:\n"
                 "- Koristiti damage_cause \"Autenticno\"\n"
                 "- Stavljati severity \"Minor\" ili safety_rating \"Safe\" na bilo koji nalaz\n"
@@ -955,10 +978,11 @@ async def analyze_with_context_stream(
             prompt_text = upload_warning + prompt_text
 
         overall_risk = effective_forensic.get("overall_risk_score", 0)
-        if overall_risk >= 0.50:
+        if overall_risk >= 0.40:
             fraud_header = (
-                "\n=== FRAUD REPORT MODE ===\n"
+                "\n=== ⚠ FRAUD REPORT MODE ===\n"
                 f"Ukupni forenzicki rizik: {overall_risk:.2f}.\n"
+                "FORENZICKI REZULTATI SU IZVOR ISTINE — ne proturjeci im.\n"
                 "ZABRANJENO koristiti damage_cause Autenticno ili severity Minor.\n"
                 "=== KRAJ FRAUD REPORT MODE ===\n\n"
             )

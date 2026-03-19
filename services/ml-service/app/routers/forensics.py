@@ -39,6 +39,9 @@ def get_pipeline() -> ForensicPipeline:
             aigen_enabled=settings.forensics_aigen_enabled,
             spectral_enabled=settings.forensics_spectral_enabled,
             office_enabled=settings.forensics_office_enabled,
+            clip_ai_enabled=settings.clip_ai_enabled,
+            vae_recon_enabled=settings.vae_recon_enabled,
+            text_ai_enabled=settings.text_ai_enabled,
         )
     return _pipeline
 

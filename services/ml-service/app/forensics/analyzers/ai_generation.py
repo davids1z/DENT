@@ -140,9 +140,26 @@ class AiGenerationAnalyzer(BaseAnalyzer):
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
+            # Apply SRM high-pass filter preprocessing to extract noise residuals.
+            # CNNDetect (CVPR 2020) showed this is the most important factor for
+            # cross-generator generalisation — removes semantic content and reveals
+            # noise-pattern artefacts invisible in the RGB domain.
+            img_srm = self._apply_srm_filter(img)
+
             # Run models sequentially (memory — CPU-only server)
+            # Feed SRM-filtered image alongside original for richer signal
             sdxl_score = self._run_sdxl_detector(img)
             vit_score = self._run_vit_detector(img)
+
+            # Run detectors on SRM-filtered version too for cross-validation
+            sdxl_srm = self._run_sdxl_detector(img_srm)
+            vit_srm = self._run_vit_detector(img_srm)
+
+            # Boost original scores if SRM version confirms AI detection
+            if sdxl_score is not None and sdxl_srm is not None:
+                sdxl_score = max(sdxl_score, (sdxl_score + sdxl_srm) / 2)
+            if vit_score is not None and vit_srm is not None:
+                vit_score = max(vit_score, (vit_score + vit_srm) / 2)
 
             # Compute ensemble score
             ensemble_score, model_details = self._compute_ensemble(
@@ -162,6 +179,59 @@ class AiGenerationAnalyzer(BaseAnalyzer):
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
+
+    # ------------------------------------------------------------------
+    # SRM preprocessing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_srm_filter(img: Image.Image) -> Image.Image:
+        """
+        Apply Spatial Rich Model (SRM) high-pass filter to extract noise
+        residuals.  Removes semantic content and exposes generation artifacts
+        that are invisible in the RGB domain.
+
+        Uses three classic SRM kernels from Fridrich (2012) that capture
+        horizontal, vertical, and edge noise patterns.  The filtered image
+        is normalized to [0, 255] for compatibility with classification models.
+        """
+        arr = np.array(img, dtype=np.float32)
+
+        # SRM filter kernels (3 basic high-pass filters)
+        kernels = [
+            # Horizontal edge
+            np.array([[ 0, 0, 0],
+                       [-1, 2,-1],
+                       [ 0, 0, 0]], dtype=np.float32),
+            # Vertical edge
+            np.array([[ 0,-1, 0],
+                       [ 0, 2, 0],
+                       [ 0,-1, 0]], dtype=np.float32),
+            # Diagonal edge / Laplacian variant
+            np.array([[-1, 0,-1],
+                       [ 0, 4, 0],
+                       [-1, 0,-1]], dtype=np.float32),
+        ]
+
+        # Apply each kernel and accumulate absolute responses
+        from scipy.ndimage import convolve
+        residual = np.zeros_like(arr)
+        for k in kernels:
+            for c in range(min(3, arr.shape[2]) if arr.ndim == 3 else 1):
+                channel = arr[:, :, c] if arr.ndim == 3 else arr
+                residual_ch = convolve(channel, k, mode="reflect")
+                if arr.ndim == 3:
+                    residual[:, :, c] += np.abs(residual_ch)
+                else:
+                    residual += np.abs(residual_ch)
+
+        # Normalize to 0-255 range
+        rmin, rmax = residual.min(), residual.max()
+        if rmax > rmin:
+            residual = (residual - rmin) / (rmax - rmin) * 255.0
+        residual = residual.clip(0, 255).astype(np.uint8)
+
+        return Image.fromarray(residual)
 
     # ------------------------------------------------------------------
     # Model runners
@@ -222,10 +292,12 @@ class AiGenerationAnalyzer(BaseAnalyzer):
         if sdxl_score is not None and vit_score is not None:
             ensemble = sdxl_score * SDXL_WEIGHT + vit_score * VIT_WEIGHT
 
-            # If either model is very confident (>0.85), boost ensemble
+            # If either model is confident, boost ensemble toward max
             max_score = max(sdxl_score, vit_score)
             if max_score > 0.85:
                 ensemble = max(ensemble, max_score * 0.90)
+            elif max_score > 0.75:
+                ensemble = max(ensemble, max_score * 0.85)
 
             # Agreement bonus: both models agree strongly
             if sdxl_score > 0.70 and vit_score > 0.70:
@@ -259,9 +331,14 @@ class AiGenerationAnalyzer(BaseAnalyzer):
     ) -> None:
         """Emit findings based on ensemble AI-generation score."""
 
-        # Compute confidence based on model agreement
+        # Compute confidence from model agreement and individual probabilities
         agreement = details.get("agreement", "low")
-        base_confidence = 0.90 if agreement == "high" else 0.75
+        sdxl_prob = details.get("sdxl_detector_score", 0)
+        vit_prob = details.get("vit_detector_score", 0)
+        if agreement == "high":
+            base_confidence = min(0.95, 0.80 + (sdxl_prob + vit_prob) / 2 * 0.15)
+        else:
+            base_confidence = min(0.88, 0.65 + max(sdxl_prob, vit_prob) * 0.20)
 
         if score > 0.75:
             findings.append(
@@ -291,8 +368,8 @@ class AiGenerationAnalyzer(BaseAnalyzer):
                         f"vjerojatnost ({score:.0%}) da je slika umjetno generirana. "
                         f"Preporuca se dodatna rucna provjera."
                     ),
-                    risk_score=max(0.50, score * 0.85),
-                    confidence=base_confidence * 0.85,
+                    risk_score=max(0.55, score * 0.95),
+                    confidence=base_confidence * 0.92,
                     evidence=details,
                 )
             )

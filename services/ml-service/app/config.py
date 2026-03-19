@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     forensics_aigen_enabled: bool = True
     forensics_aigen_methods: str = "sdxl,vit"
 
+    # CLIP AI detection (UniversalFakeDetect style)
+    clip_ai_enabled: bool = True
+    clip_ai_model: str = "openai/clip-vit-large-patch14"
+
+    # VAE reconstruction error detection (DIRE/CO-SPY style)
+    vae_recon_enabled: bool = True
+    vae_recon_model: str = "stabilityai/sd-vae-ft-mse"
+
+    # Text AI detection (for documents: PDF, DOCX, XLSX)
+    text_ai_enabled: bool = True
+    text_ai_classifier: str = "roberta-base-openai-detector"
+    text_ai_perplexity_model: str = "distilgpt2"
+    text_ai_gptzero_api_key: str = ""
+
     # Document forensics (PDF analysis)
     forensics_document_enabled: bool = True
     forensics_document_signature_verification: bool = True

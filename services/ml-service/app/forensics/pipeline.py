@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 
 from .analyzers.ai_generation import AiGenerationAnalyzer
+from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
 from .analyzers.spectral_forensics import SpectralForensicsAnalyzer
 from .analyzers.document import DocumentForensicsAnalyzer
@@ -11,6 +12,8 @@ from .analyzers.modification import ModificationAnalyzer
 from .analyzers.office import OfficeForensicsAnalyzer
 from .analyzers.optical import OpticalForensicsAnalyzer
 from .analyzers.semantic import SemanticForensicsAnalyzer
+from .analyzers.text_ai_detection import TextAiDetectionAnalyzer
+from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
 from .triage import triage_file
@@ -38,6 +41,9 @@ class ForensicPipeline:
         aigen_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
+        clip_ai_enabled: bool = True,
+        vae_recon_enabled: bool = True,
+        text_ai_enabled: bool = True,
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -75,13 +81,33 @@ class ForensicPipeline:
         self._office: OfficeForensicsAnalyzer | None = (
             OfficeForensicsAnalyzer() if office_enabled else None
         )
+        # ── New AI detection modules ─────────────────────────────────
+        self._clip_ai: ClipAiDetectionAnalyzer | None = (
+            ClipAiDetectionAnalyzer() if clip_ai_enabled else None
+        )
+        self._vae_recon: VaeReconstructionAnalyzer | None = (
+            VaeReconstructionAnalyzer() if vae_recon_enabled else None
+        )
+        self._text_ai: TextAiDetectionAnalyzer | None = (
+            TextAiDetectionAnalyzer() if text_ai_enabled else None
+        )
 
     def _count_active_modules(self, skip: set, file_category: str) -> int:
         """Count how many modules will actually run (for progress tracking)."""
         if file_category == "pdf":
-            return 1 if (self._document and self._document.MODULE_NAME not in skip) else 0
+            count = 0
+            if self._document and self._document.MODULE_NAME not in skip:
+                count += 1
+            if self._text_ai and self._text_ai.MODULE_NAME not in skip:
+                count += 1
+            return count
         if file_category in ("docx", "xlsx"):
-            return 1 if (self._office and self._office.MODULE_NAME not in skip) else 0
+            count = 0
+            if self._office and self._office.MODULE_NAME not in skip:
+                count += 1
+            if self._text_ai and self._text_ai.MODULE_NAME not in skip:
+                count += 1
+            return count
         # Image modules
         count = 0
         # Group 1 (parallel)
@@ -93,12 +119,16 @@ class ForensicPipeline:
             count += 1
         if self._spectral and self._spectral.MODULE_NAME not in skip:
             count += 1
+        if self._clip_ai and self._clip_ai.MODULE_NAME not in skip:
+            count += 1
         # Group 2 (sequential)
         if self._cnn and self._cnn.MODULE_NAME not in skip:
             count += 1
         if self._semantic and self._semantic.MODULE_NAME not in skip:
             count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
+            count += 1
+        if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
             count += 1
         return count
 
@@ -112,6 +142,15 @@ class ForensicPipeline:
         if self._aigen:
             self._aigen._ensure_models()
             logger.info("AI generation models ready")
+        if self._clip_ai:
+            self._clip_ai._ensure_models()
+            logger.info("CLIP AI detection model ready")
+        if self._vae_recon:
+            self._vae_recon._ensure_models()
+            logger.info("VAE reconstruction model ready")
+        if self._text_ai:
+            self._text_ai._ensure_models()
+            logger.info("Text AI detection models ready")
         logger.info("Forensic model warmup complete")
 
     async def analyze(
@@ -140,16 +179,60 @@ class ForensicPipeline:
                 progress_callback(module_name, round(pct, 2))
 
         if file_category == "pdf":
+            # Run document forensics + text AI detection in parallel
+            doc_tasks: list[tuple[str, asyncio.Task]] = []
             if self._document and self._document.MODULE_NAME not in skip:
-                result = await self._document.analyze_document(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._document.MODULE_NAME)
+                doc_tasks.append((
+                    self._document.MODULE_NAME,
+                    asyncio.ensure_future(self._document.analyze_document(file_bytes, filename)),
+                ))
+            if self._text_ai and self._text_ai.MODULE_NAME not in skip:
+                doc_tasks.append((
+                    self._text_ai.MODULE_NAME,
+                    asyncio.ensure_future(self._text_ai.analyze_document(file_bytes, filename)),
+                ))
+            if doc_tasks:
+                results = await asyncio.gather(
+                    *[t for _, t in doc_tasks], return_exceptions=True
+                )
+                for (mod_name, _), result in zip(doc_tasks, results):
+                    if isinstance(result, Exception):
+                        logger.error("Module %s failed: %s", mod_name, result)
+                        modules.append(ModuleResult(
+                            module_name=mod_name, module_label=mod_name,
+                            risk_score=0.0, risk_level="Low", error=str(result),
+                        ))
+                    else:
+                        modules.append(result)
+                    _report_progress(mod_name)
 
         elif file_category in ("docx", "xlsx"):
+            # Run office forensics + text AI detection in parallel
+            office_tasks: list[tuple[str, asyncio.Task]] = []
             if self._office and self._office.MODULE_NAME not in skip:
-                result = await self._office.analyze_document(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._office.MODULE_NAME)
+                office_tasks.append((
+                    self._office.MODULE_NAME,
+                    asyncio.ensure_future(self._office.analyze_document(file_bytes, filename)),
+                ))
+            if self._text_ai and self._text_ai.MODULE_NAME not in skip:
+                office_tasks.append((
+                    self._text_ai.MODULE_NAME,
+                    asyncio.ensure_future(self._text_ai.analyze_document(file_bytes, filename)),
+                ))
+            if office_tasks:
+                results = await asyncio.gather(
+                    *[t for _, t in office_tasks], return_exceptions=True
+                )
+                for (mod_name, _), result in zip(office_tasks, results):
+                    if isinstance(result, Exception):
+                        logger.error("Module %s failed: %s", mod_name, result)
+                        modules.append(ModuleResult(
+                            module_name=mod_name, module_label=mod_name,
+                            risk_score=0.0, risk_level="Low", error=str(result),
+                        ))
+                    else:
+                        modules.append(result)
+                    _report_progress(mod_name)
 
         else:  # image (default)
             # ── Group 1: Lightweight modules — run in PARALLEL ────────
@@ -175,6 +258,12 @@ class ForensicPipeline:
                 group1_tasks.append((
                     self._spectral.MODULE_NAME,
                     asyncio.ensure_future(self._spectral.analyze_image(file_bytes, filename)),
+                ))
+            # CLIP AI detection — lightweight forward pass, can run in parallel
+            if self._clip_ai and self._clip_ai.MODULE_NAME not in skip:
+                group1_tasks.append((
+                    self._clip_ai.MODULE_NAME,
+                    asyncio.ensure_future(self._clip_ai.analyze_image(file_bytes, filename)),
                 ))
 
             # Await all Group 1 tasks concurrently
@@ -219,6 +308,12 @@ class ForensicPipeline:
                 result = await self._aigen.analyze_image(file_bytes, filename)
                 modules.append(result)
                 _report_progress(self._aigen.MODULE_NAME)
+
+            # VAE reconstruction error — requires SD VAE (~2GB RAM)
+            if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
+                result = await self._vae_recon.analyze_image(file_bytes, filename)
+                modules.append(result)
+                _report_progress(self._vae_recon.MODULE_NAME)
 
         overall_score, overall_level = fuse_scores(modules)
         total_time = sum(m.processing_time_ms for m in modules)

@@ -14,9 +14,12 @@ const DEFAULT_STEPS: ForensicStep[] = [
   { id: "modification_detection", label: "ELA detekcija modifikacija", status: "pending" },
   { id: "optical_forensics", label: "Opticka forenzika", status: "pending" },
   { id: "spectral_forensics", label: "Spektralna forenzika", status: "pending" },
+  { id: "clip_ai_detection", label: "CLIP AI detekcija", status: "pending" },
   { id: "deep_modification_detection", label: "CNN duboka analiza", status: "pending" },
   { id: "semantic_forensics", label: "Semanticka analiza", status: "pending" },
   { id: "ai_generation_detection", label: "AI generiranje detekcija", status: "pending" },
+  { id: "vae_reconstruction", label: "VAE rekonstrukcija", status: "pending" },
+  { id: "text_ai_detection", label: "AI tekst detekcija", status: "pending" },
   { id: "gemini", label: "Gemini kontekst analiza", status: "pending" },
   { id: "agent", label: "Agent evaluacija", status: "pending" },
   { id: "evidence", label: "Digitalni pecat", status: "pending" },
@@ -34,9 +37,12 @@ const STEP_DURATIONS: Record<string, number> = {
   modification_detection: 3,
   optical_forensics: 2,
   spectral_forensics: 4,
+  clip_ai_detection: 4,
   deep_modification_detection: 12,
   semantic_forensics: 8,
   ai_generation_detection: 12,
+  vae_reconstruction: 6,
+  text_ai_detection: 5,
   gemini: 18,
   agent: 12,
   evidence: 5,
@@ -194,7 +200,7 @@ export function useForensicProgress(isActive: boolean) {
         });
       }
 
-      // Calculate overall progress (up to ~90% for the 9 auto-advancing steps)
+      // Calculate overall progress (up to ~90% for the 12 auto-advancing steps)
       const completedDuration = stepIds
         .slice(0, stepIndexRef.current)
         .reduce((sum, id) => sum + (STEP_DURATIONS[id] || 3), 0);

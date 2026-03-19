@@ -24,8 +24,9 @@ RUN pip install --no-cache-dir transformers>=4.36.0 || true
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create model cache directory
-RUN mkdir -p /app/models
+# Create model cache directory and copy pre-trained probe weights
+RUN mkdir -p /app/models/clip_ai
+COPY models/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
 
 COPY app/ app/
 
