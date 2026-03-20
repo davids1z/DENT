@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Office document forensics (DOCX/XLSX analysis)
     forensics_office_enabled: bool = True
 
+    # PRNU sensor noise analysis (camera fingerprinting)
+    forensics_prnu_enabled: bool = True
+
     # Agent settings (Phase 7)
     agent_enabled: bool = True
     agent_model: str = ""

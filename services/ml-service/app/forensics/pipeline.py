@@ -5,6 +5,7 @@ from collections.abc import Callable
 from .analyzers.ai_generation import AiGenerationAnalyzer
 from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
+from .analyzers.prnu_detection import PrnuDetectionAnalyzer
 from .analyzers.spectral_forensics import SpectralForensicsAnalyzer
 from .analyzers.document import DocumentForensicsAnalyzer
 from .analyzers.metadata import MetadataAnalyzer
@@ -44,6 +45,7 @@ class ForensicPipeline:
         clip_ai_enabled: bool = True,
         vae_recon_enabled: bool = True,
         text_ai_enabled: bool = True,
+        prnu_enabled: bool = True,
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -91,6 +93,9 @@ class ForensicPipeline:
         self._text_ai: TextAiDetectionAnalyzer | None = (
             TextAiDetectionAnalyzer() if text_ai_enabled else None
         )
+        self._prnu: PrnuDetectionAnalyzer | None = (
+            PrnuDetectionAnalyzer() if prnu_enabled else None
+        )
 
     def _count_active_modules(self, skip: set, file_category: str) -> int:
         """Count how many modules will actually run (for progress tracking)."""
@@ -120,6 +125,8 @@ class ForensicPipeline:
         if self._spectral and self._spectral.MODULE_NAME not in skip:
             count += 1
         if self._clip_ai and self._clip_ai.MODULE_NAME not in skip:
+            count += 1
+        if self._prnu and self._prnu.MODULE_NAME not in skip:
             count += 1
         # Group 2 (sequential)
         if self._cnn and self._cnn.MODULE_NAME not in skip:
@@ -265,6 +272,12 @@ class ForensicPipeline:
                     self._clip_ai.MODULE_NAME,
                     asyncio.ensure_future(self._clip_ai.analyze_image(file_bytes, filename)),
                 ))
+            # PRNU sensor noise — pure numpy/scipy, CPU-lightweight
+            if self._prnu and self._prnu.MODULE_NAME not in skip:
+                group1_tasks.append((
+                    self._prnu.MODULE_NAME,
+                    asyncio.ensure_future(self._prnu.analyze_image(file_bytes, filename)),
+                ))
 
             # Await all Group 1 tasks concurrently
             if group1_tasks:
@@ -315,7 +328,7 @@ class ForensicPipeline:
                 modules.append(result)
                 _report_progress(self._vae_recon.MODULE_NAME)
 
-        overall_score, overall_level = fuse_scores(modules)
+        overall_score, overall_score_100, overall_level = fuse_scores(modules)
         total_time = sum(m.processing_time_ms for m in modules)
 
         # Extract ELA heatmap if available, fall back to CNN heatmap
@@ -333,12 +346,44 @@ class ForensicPipeline:
             self._spectral.spectral_heatmap_b64 if self._spectral else None
         )
 
+        # ── Extract C2PA status from metadata findings ────────────
+        c2pa_status: str | None = "not_found"
+        c2pa_issuer: str | None = None
+        meta_modules = [m for m in modules if m.module_name == "metadata_analysis"]
+        if meta_modules:
+            for f in meta_modules[0].findings:
+                if f.code == "META_C2PA_VALID":
+                    c2pa_status = "valid"
+                    c2pa_issuer = (f.evidence or {}).get("issuer")
+                elif f.code == "META_C2PA_AI_GENERATED":
+                    c2pa_status = "ai_generated"
+                    c2pa_issuer = (f.evidence or {}).get("issuer")
+                elif f.code == "META_C2PA_INVALID_SIGNATURE":
+                    c2pa_status = "invalid"
+
+        # ── Extract source generator attribution from AI gen ──────
+        predicted_source: str | None = None
+        source_confidence: int = 0
+        aigen_modules = [m for m in modules if m.module_name == "ai_generation_detection"]
+        if aigen_modules:
+            for f in aigen_modules[0].findings:
+                ev = f.evidence or {}
+                if ev.get("predicted_generator"):
+                    predicted_source = ev["predicted_generator"]
+                    source_confidence = round((ev.get("generator_confidence", 0)) * 100)
+                    break
+
         return ForensicReport(
             overall_risk_score=round(overall_score, 4),
+            overall_risk_score_100=overall_score_100,
             overall_risk_level=overall_level,
             modules=modules,
             total_processing_time_ms=total_time,
             ela_heatmap_b64=ela_heatmap,
             fft_spectrum_b64=fft_spectrum,
             spectral_heatmap_b64=spectral_heatmap,
+            predicted_source=predicted_source,
+            source_confidence=source_confidence,
+            c2pa_status=c2pa_status,
+            c2pa_issuer=c2pa_issuer,
         )

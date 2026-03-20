@@ -104,12 +104,19 @@ public record MlRepairLineItem
 public record MlForensicResult
 {
     public double OverallRiskScore { get; init; }
+    public int OverallRiskScore100 { get; init; }
     public string OverallRiskLevel { get; init; } = "Low";
     public List<MlForensicModule> Modules { get; init; } = [];
     public string? ElaHeatmapB64 { get; init; }
     public string? FftSpectrumB64 { get; init; }
     public string? SpectralHeatmapB64 { get; init; }
     public int TotalProcessingTimeMs { get; init; }
+    // Source generator attribution
+    public string? PredictedSource { get; init; }
+    public int SourceConfidence { get; init; }
+    // C2PA provenance
+    public string? C2paStatus { get; init; }
+    public string? C2paIssuer { get; init; }
 }
 
 public record MlForensicModule
@@ -117,6 +124,7 @@ public record MlForensicModule
     public string ModuleName { get; init; } = string.Empty;
     public string ModuleLabel { get; init; } = string.Empty;
     public double RiskScore { get; init; }
+    public int RiskScore100 { get; init; }
     public string RiskLevel { get; init; } = "Low";
     public List<MlForensicFinding> Findings { get; init; } = [];
     public int ProcessingTimeMs { get; init; }

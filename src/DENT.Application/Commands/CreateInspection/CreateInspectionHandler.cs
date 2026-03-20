@@ -234,12 +234,17 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     Id = Guid.NewGuid(),
                     InspectionId = inspection.Id,
                     OverallRiskScore = forensicResult.OverallRiskScore,
+                    OverallRiskScore100 = forensicResult.OverallRiskScore100,
                     OverallRiskLevel = forensicResult.OverallRiskLevel,
                     ModuleResultsJson = JsonSerializer.Serialize(forensicResult.Modules,
                         new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
                     ElaHeatmapUrl = elaUrl,
                     FftSpectrumUrl = fftUrl,
                     SpectralHeatmapUrl = spectralUrl,
+                    PredictedSource = forensicResult.PredictedSource,
+                    SourceConfidence = forensicResult.SourceConfidence,
+                    C2paStatus = forensicResult.C2paStatus,
+                    C2paIssuer = forensicResult.C2paIssuer,
                     TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                 };
                 db.ForensicResults.Add(fr);
@@ -626,12 +631,17 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         return new ForensicResultDto
         {
             OverallRiskScore = fr.OverallRiskScore,
+            OverallRiskScore100 = fr.OverallRiskScore100,
             OverallRiskLevel = fr.OverallRiskLevel,
             Modules = ParseForensicModules(fr.ModuleResultsJson),
             ElaHeatmapUrl = fr.ElaHeatmapUrl,
             FftSpectrumUrl = fr.FftSpectrumUrl,
             SpectralHeatmapUrl = fr.SpectralHeatmapUrl,
             TotalProcessingTimeMs = fr.TotalProcessingTimeMs,
+            PredictedSource = fr.PredictedSource,
+            SourceConfidence = fr.SourceConfidence,
+            C2paStatus = fr.C2paStatus,
+            C2paIssuer = fr.C2paIssuer,
         };
     }
 

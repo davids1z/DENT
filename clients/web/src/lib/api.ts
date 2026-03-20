@@ -110,6 +110,7 @@ export interface ForensicModuleResult {
   moduleName: string;
   moduleLabel: string;
   riskScore: number;
+  riskScore100: number;
   riskLevel: string;
   findings: ForensicFinding[];
   processingTimeMs: number;
@@ -118,12 +119,19 @@ export interface ForensicModuleResult {
 
 export interface ForensicResult {
   overallRiskScore: number;
+  overallRiskScore100: number;
   overallRiskLevel: string;
   modules: ForensicModuleResult[];
   elaHeatmapUrl: string | null;
   fftSpectrumUrl: string | null;
   spectralHeatmapUrl: string | null;
   totalProcessingTimeMs: number;
+  // Source generator attribution
+  predictedSource: string | null;
+  sourceConfidence: number;
+  // C2PA provenance
+  c2paStatus: string | null;
+  c2paIssuer: string | null;
 }
 
 export interface ImageHash {
@@ -658,6 +666,7 @@ export function forensicModuleLabel(moduleName: string): string {
     clip_ai_detection: "CLIP AI detekcija",
     vae_reconstruction: "VAE rekonstrukcija",
     text_ai_detection: "AI tekst detekcija",
+    prnu_detection: "PRNU senzorska analiza",
   };
   return labels[moduleName] || moduleName;
 }

@@ -326,6 +326,38 @@ class AiGenerationAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _attribute_generator(details: dict) -> tuple[str | None, float]:
+        """
+        Attribute the most likely AI generator family based on relative
+        classifier scores. The SDXL detector is fine-tuned on Stable Diffusion
+        outputs while the ViT detector has broader training.
+
+        Returns (generator_name, confidence).
+        """
+        sdxl = details.get("sdxl_detector_score", 0)
+        vit = details.get("vit_detector_score", 0)
+
+        if sdxl < 0.40 and vit < 0.40:
+            return None, 0.0
+
+        delta = sdxl - vit
+
+        if delta > 0.20 and sdxl > 0.60:
+            # SDXL-specialized detector scores much higher → likely SD family
+            return "Stable Diffusion", min(0.85, 0.60 + delta)
+        elif delta < -0.15 and vit > 0.60:
+            # General detector scores higher → older/diverse generators
+            return "GAN/Other AI", min(0.70, 0.50 + abs(delta))
+        elif sdxl > 0.70 and vit > 0.70 and abs(delta) < 0.10:
+            # Both score high and close → likely Midjourney or DALL-E
+            # (these generators trigger both detectors equally)
+            return "Midjourney/DALL-E", min(0.75, (sdxl + vit) / 2 * 0.85)
+        elif sdxl > 0.50 or vit > 0.50:
+            return "AI generator (neodredeni)", min(0.60, max(sdxl, vit) * 0.70)
+
+        return None, 0.0
+
+    @staticmethod
     def _emit_findings(
         score: float, details: dict, findings: list[AnalyzerFinding]
     ) -> None:
@@ -339,6 +371,12 @@ class AiGenerationAnalyzer(BaseAnalyzer):
             base_confidence = min(0.95, 0.80 + (sdxl_prob + vit_prob) / 2 * 0.15)
         else:
             base_confidence = min(0.88, 0.65 + max(sdxl_prob, vit_prob) * 0.20)
+
+        # Source generator attribution
+        gen_name, gen_conf = AiGenerationAnalyzer._attribute_generator(details)
+        if gen_name:
+            details["predicted_generator"] = gen_name
+            details["generator_confidence"] = round(gen_conf, 4)
 
         if score > 0.75:
             findings.append(

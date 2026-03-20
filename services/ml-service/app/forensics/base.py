@@ -24,6 +24,7 @@ class ModuleResult(BaseModel):
     module_name: str
     module_label: str
     risk_score: float
+    risk_score_100: int = 0
     risk_level: RiskLevel
     findings: list[AnalyzerFinding] = []
     processing_time_ms: int = 0
@@ -32,12 +33,21 @@ class ModuleResult(BaseModel):
 
 class ForensicReport(BaseModel):
     overall_risk_score: float
+    overall_risk_score_100: int = 0
     overall_risk_level: RiskLevel
     modules: list[ModuleResult] = []
     total_processing_time_ms: int = 0
     ela_heatmap_b64: str | None = None
     fft_spectrum_b64: str | None = None
     spectral_heatmap_b64: str | None = None
+    ai_region_heatmap_b64: str | None = None
+    copy_move_heatmap_b64: str | None = None
+    # Source generator attribution
+    predicted_source: str | None = None
+    source_confidence: int = 0
+    # C2PA provenance (promoted from metadata findings)
+    c2pa_status: str | None = None  # "valid" | "invalid" | "ai_generated" | "not_found"
+    c2pa_issuer: str | None = None
 
 
 class BaseAnalyzer(ABC):
@@ -72,6 +82,7 @@ class BaseAnalyzer(ABC):
                 module_name=self.MODULE_NAME,
                 module_label=self.MODULE_LABEL,
                 risk_score=0.0,
+                risk_score_100=0,
                 risk_level=RiskLevel.LOW,
                 findings=[],
                 processing_time_ms=processing_time_ms,
@@ -83,6 +94,7 @@ class BaseAnalyzer(ABC):
                 module_name=self.MODULE_NAME,
                 module_label=self.MODULE_LABEL,
                 risk_score=0.0,
+                risk_score_100=0,
                 risk_level=RiskLevel.LOW,
                 findings=[],
                 processing_time_ms=processing_time_ms,
@@ -101,6 +113,7 @@ class BaseAnalyzer(ABC):
             module_name=self.MODULE_NAME,
             module_label=self.MODULE_LABEL,
             risk_score=risk_score,
+            risk_score_100=round(risk_score * 100),
             risk_level=self._risk_level(risk_score),
             findings=findings,
             processing_time_ms=processing_time_ms,

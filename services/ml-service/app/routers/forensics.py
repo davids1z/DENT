@@ -42,6 +42,7 @@ def get_pipeline() -> ForensicPipeline:
             clip_ai_enabled=settings.forensics_clip_ai_enabled,
             vae_recon_enabled=settings.forensics_vae_recon_enabled,
             text_ai_enabled=settings.forensics_text_ai_enabled,
+            prnu_enabled=settings.forensics_prnu_enabled,
         )
     return _pipeline
 

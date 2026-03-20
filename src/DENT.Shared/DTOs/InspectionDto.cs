@@ -143,12 +143,19 @@ public record DecisionOverrideDto
 public record ForensicResultDto
 {
     public double OverallRiskScore { get; init; }
+    public int OverallRiskScore100 { get; init; }
     public string OverallRiskLevel { get; init; } = "Low";
     public List<ForensicModuleResultDto> Modules { get; init; } = [];
     public string? ElaHeatmapUrl { get; init; }
     public string? FftSpectrumUrl { get; init; }
     public string? SpectralHeatmapUrl { get; init; }
     public int TotalProcessingTimeMs { get; init; }
+    // Source generator attribution
+    public string? PredictedSource { get; init; }
+    public int SourceConfidence { get; init; }
+    // C2PA provenance
+    public string? C2paStatus { get; init; }
+    public string? C2paIssuer { get; init; }
 }
 
 public record ForensicModuleResultDto
@@ -156,6 +163,7 @@ public record ForensicModuleResultDto
     public string ModuleName { get; init; } = string.Empty;
     public string ModuleLabel { get; init; } = string.Empty;
     public double RiskScore { get; init; }
+    public int RiskScore100 { get; init; }
     public string RiskLevel { get; init; } = "Low";
     public List<ForensicFindingDto> Findings { get; init; } = [];
     public int ProcessingTimeMs { get; init; }
