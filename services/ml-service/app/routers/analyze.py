@@ -383,6 +383,10 @@ def _enforce_forensic_severity(
     they bypass live camera anti-fraud controls.
     """
     risk = forensic_data.get("overall_risk_score", 0)
+    logger.info(
+        "enforce_forensic_severity: risk=%.2f, capture_source=%s, damages=%d",
+        risk, capture_source, len(response.damages),
+    )
 
     # Upload images get stricter thresholds
     is_upload = capture_source == "upload"
@@ -466,6 +470,11 @@ def _enforce_forensic_severity(
     elif risk >= t_medium and response.urgency_level == "Low":
         response.urgency_level = "Medium"
 
+    logger.info(
+        "enforce_forensic_severity DONE: urgency=%s, causes=%s",
+        response.urgency_level,
+        [d.damage_cause for d in response.damages],
+    )
     return response
 
 
@@ -871,7 +880,12 @@ async def analyze_with_context(
     # ── Deterministic severity enforcement ─────────────────────
     # Post-process Gemini output: fusion scores override severity
     # ratings to prevent LLM from contradicting forensic evidence.
-    if result.success and forensic_data.get("overall_risk_score", 0) > 0:
+    _risk = forensic_data.get("overall_risk_score", 0)
+    logger.info(
+        "analyze_with_context: success=%s, overall_risk_score=%s, will_enforce=%s",
+        result.success, _risk, result.success and _risk > 0,
+    )
+    if result.success and _risk > 0:
         result = _enforce_forensic_severity(
             result, forensic_data, capture_source=capture_source or None
         )
@@ -961,9 +975,9 @@ async def analyze_with_context_stream(
             yield f"data: {json.dumps({'type': 'error', 'message': f'Image too large: {size_mb:.1f}MB'})}\n\n"
         return StreamingResponse(_too_large(), media_type="text/event-stream")
 
-    # Parse forensic context
+    # Parse forensic context (normalize camelCase keys from C# API)
     try:
-        forensic_data = json.loads(forensic_context)
+        forensic_data = _normalize_forensic_keys(json.loads(forensic_context))
     except json.JSONDecodeError:
         forensic_data = {}
 
