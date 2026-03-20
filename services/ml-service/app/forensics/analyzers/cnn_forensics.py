@@ -122,6 +122,18 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         try:
             self._ensure_models()
 
+            if not _TORCH_AVAILABLE:
+                elapsed = int((time.monotonic() - start) * 1000)
+                return self._make_result([], elapsed, error="PyTorch not installed")
+
+            if not _PHOTOHOLMES_AVAILABLE:
+                elapsed = int((time.monotonic() - start) * 1000)
+                return self._make_result([], elapsed, error="PhotoHolmes not installed")
+
+            if self._catnet_method is None and self._trufor_method is None:
+                elapsed = int((time.monotonic() - start) * 1000)
+                return self._make_result([], elapsed, error="No CNN models loaded (CAT-Net, TruFor)")
+
             img = Image.open(io.BytesIO(image_bytes))
             if img.mode != "RGB":
                 img = img.convert("RGB")

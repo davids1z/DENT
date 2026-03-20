@@ -7,22 +7,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     fonts-dejavu-core \
+    git \
+    build-essential \
+    libjpeg-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Install PyTorch CPU separately (large layer, cached independently)
 RUN pip install --no-cache-dir \
-    torch>=2.2.0 --index-url https://download.pytorch.org/whl/cpu
+    torch>=2.2.0 torchvision --index-url https://download.pytorch.org/whl/cpu
 
-# Install PhotoHolmes (depends on torch, may not be available on all platforms)
-RUN pip install --no-cache-dir photoholmes>=1.0.0 || true
+# Install PhotoHolmes from GitHub (not on PyPI yet) for CNN tampering detection
+RUN pip install --no-cache-dir "photoholmes @ git+https://github.com/photoholmes/photoholmes.git" || true
 
 # Install Transformers for AI-generated image detection (Swin Transformer classifiers)
-RUN pip install --no-cache-dir transformers>=4.36.0 || true
+RUN pip install --no-cache-dir transformers>=4.36.0
 
 # Install Diffusers for VAE reconstruction error detection (separate layer for caching)
-RUN pip install --no-cache-dir diffusers>=0.27.0 || true
+RUN pip install --no-cache-dir diffusers>=0.27.0
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
