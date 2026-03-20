@@ -382,18 +382,27 @@ def _enforce_forensic_severity(
     Upload images get stricter thresholds (lowered by 0.15) because
     they bypass live camera anti-fraud controls.
     """
-    risk = forensic_data.get("overall_risk_score", 0) or 0
+    try:
+        risk = float(forensic_data.get("overall_risk_score", 0) or 0)
+    except (TypeError, ValueError):
+        risk = 0.0
     # Fallback: compute risk from modules if top-level is missing
     if risk == 0:
         modules = forensic_data.get("modules", [])
         if modules:
-            scores = [m.get("risk_score", 0) or 0 for m in modules if not m.get("error")]
+            scores = []
+            for m in modules:
+                if not m.get("error"):
+                    try:
+                        scores.append(float(m.get("risk_score", 0) or 0))
+                    except (TypeError, ValueError):
+                        pass
             if scores:
                 risk = max(scores)
                 logger.info("enforce: overall_risk_score was 0, computed from max module: %.2f", risk)
     logger.info(
-        "enforce_forensic_severity: risk=%.2f, capture_source=%s, damages=%d",
-        risk, capture_source, len(response.damages),
+        "enforce_forensic_severity: risk=%.2f, capture_source=%s, damages=%d, urgency_before=%s",
+        risk, capture_source, len(response.damages), response.urgency_level,
     )
 
     # Upload images get stricter thresholds
@@ -471,6 +480,7 @@ def _enforce_forensic_severity(
                 )
 
     # Enforce urgency_level consistency
+    old_urgency = response.urgency_level
     if risk >= t_critical:
         response.urgency_level = "Critical"
     elif risk >= t_high:
@@ -479,8 +489,8 @@ def _enforce_forensic_severity(
         response.urgency_level = "Medium"
 
     logger.info(
-        "enforce_forensic_severity DONE: urgency=%s, causes=%s",
-        response.urgency_level,
+        "enforce_forensic_severity DONE: urgency=%s→%s, risk=%.2f, t_crit=%.2f, t_high=%.2f, causes=%s",
+        old_urgency, response.urgency_level, risk, t_critical, t_high,
         [d.damage_cause for d in response.damages],
     )
     return response
@@ -855,7 +865,10 @@ async def analyze_with_context(
         # When fusion score >= 0.50, inject strict fraud-report
         # instructions that FORBID the LLM from generating
         # "Autenticno" findings or low-severity ratings.
-        overall_risk = forensic_data.get("overall_risk_score", 0)
+        try:
+            overall_risk = float(forensic_data.get("overall_risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            overall_risk = 0.0
         if overall_risk >= 0.40:
             fraud_header = (
                 "\n=== ⚠ FRAUD REPORT MODE ===\n"
@@ -1057,7 +1070,7 @@ async def analyze_with_context_stream(
 
         yield f"data: {json.dumps({'type': 'progress', 'phase': 'gemini', 'progress': 0.95})}\n\n"
 
-        if result.success and effective_forensic.get("overall_risk_score", 0) > 0:
+        if result.damages and effective_forensic.get("modules"):
             result = _enforce_forensic_severity(
                 result, effective_forensic, capture_source=capture_source or None
             )
