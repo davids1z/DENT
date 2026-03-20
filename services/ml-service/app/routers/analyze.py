@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import unicodedata
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 
 from ..config import settings
 from ..forensics.fusion import _AI_DETECTOR_MODULES
+from ..forensics.fusion import DEFAULT_WEIGHTS
 from ..schemas import (
     AnalysisResponse,
     BoundingBox,
@@ -21,6 +23,38 @@ from ..schemas import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Unicode-safe text helpers
+# ──────────────────────────────────────────────────────────────────────
+
+def _normalize_text(s: str) -> str:
+    """Strip diacritics (č→c, ž→z, …) and lowercase for robust matching."""
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).strip().lower()
+
+
+def _is_authentic_cause(cause: str | None) -> bool:
+    """Return True if *cause* is any spelling/diacritic variant of 'Autentično'."""
+    if not cause:
+        return False
+    n = _normalize_text(cause)
+    return n in {"autenticno", "autenticna", "authentic", "autenticni",
+                 "autentican", "autenticnost"}
+
+
+def _text_contradicts_forensics(text: str) -> bool:
+    """Return True if *text* contains phrases that contradict high-risk forensic results."""
+    n = _normalize_text(text)
+    contradictions = [
+        "autenticna", "autenticno", "autenticna fotografija",
+        "nema sumnje", "nema manipulacije", "prava fotografija",
+        "originalna", "originalna fotografija", "autenticna slika",
+        "nema znakova manipulacije", "nema znakova krivotvorenja",
+        "slika je autenticna", "fotografija je autenticna",
+    ]
+    return any(c in n for c in contradictions)
 
 
 def _normalize_forensic_keys(data: dict) -> dict:
@@ -434,7 +468,7 @@ def _enforce_forensic_severity(
             if is_fraud:
                 d.severity = "Critical"
                 d.safety_rating = "Critical"
-            elif d.damage_cause != "Autenticno":
+            elif not _is_authentic_cause(d.damage_cause):
                 if d.severity in ("Minor", "Moderate"):
                     d.severity = "Severe"
                 if d.safety_rating == "Safe":
@@ -457,7 +491,7 @@ def _enforce_forensic_severity(
     # Forbid "Autenticno" findings when fusion >= HIGH
     if risk >= t_high:
         for d in response.damages:
-            if d.damage_cause == "Autenticno":
+            if _is_authentic_cause(d.damage_cause):
                 d.damage_cause = "Metadata anomalija"
                 d.severity = "Moderate" if risk < t_critical else "Severe"
                 d.safety_rating = "Warning"
@@ -476,7 +510,7 @@ def _enforce_forensic_severity(
     )
     if any_ai_high:
         for d in response.damages:
-            if d.damage_cause == "Autenticno":
+            if _is_authentic_cause(d.damage_cause):
                 d.damage_cause = "AI generiranje"
                 d.severity = "Severe"
                 d.safety_rating = "Critical"
@@ -493,12 +527,377 @@ def _enforce_forensic_severity(
     elif risk >= t_medium and response.urgency_level == "Low":
         response.urgency_level = "Medium"
 
+    # ── HARD BLOCK: No "Safe" findings when risk >= t_high ──────────
+    # The LLM may assign safety_rating="Safe" to findings with
+    # innocuous damage_cause values (e.g., "Osvjetljenje").  When the
+    # forensic fusion says the image is suspicious, NO finding may
+    # remain "Safe".
+    if risk >= t_high:
+        for d in response.damages:
+            if d.safety_rating == "Safe":
+                d.safety_rating = "Warning"
+                if d.severity == "Minor":
+                    d.severity = "Moderate"
+                logger.info(
+                    "enforce: blocked Safe→Warning on cause=%s", d.damage_cause
+                )
+
+    # ── SUMMARY ENFORCEMENT ───────────────────────────────────────────
+    # The LLM may write a summary praising the image as "authentic"
+    # even when forensic modules strongly disagree.  Override it.
+    if risk >= t_high and response.summary:
+        if _text_contradicts_forensics(response.summary):
+            triggered = [
+                m.get("module_name", "?")
+                for m in modules
+                if float(m.get("risk_score", 0) or 0) >= 0.40 and not m.get("error")
+            ]
+            response.summary = (
+                f"Forenzicka analiza utvrdila je visoku sumnju na manipulaciju "
+                f"(ukupni rizik: {risk:.0%}). Detektirani signali: "
+                f"{', '.join(triggered[:5]) or 'vise modula'}."
+            )
+            logger.info("enforce: summary overridden (contradicted forensics)")
+
+    # ── DESCRIPTION ENFORCEMENT ───────────────────────────────────────
+    # Individual finding descriptions must not claim authenticity
+    # when forensic results indicate manipulation.
+    if risk >= t_high:
+        for d in response.damages:
+            if d.description and _text_contradicts_forensics(d.description):
+                d.description += (
+                    " NAPOMENA: Forenzicki moduli ukazuju na visoku sumnju "
+                    f"na manipulaciju (rizik: {risk:.0%})."
+                )
+
     logger.info(
         "enforce_forensic_severity DONE: urgency=%s→%s, risk=%.2f, t_crit=%.2f, t_high=%.2f, causes=%s",
         old_urgency, response.urgency_level, risk, t_critical, t_high,
         [d.damage_cause for d in response.damages],
     )
     return response
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Module → damage mapping: deterministic forensic verdict
+# ──────────────────────────────────────────────────────────────────────
+
+_MODULE_DAMAGE_MAP: dict[str, dict] = {
+    "ai_generation_detection": {
+        "threshold": 0.50,
+        "damage_cause": "AI generiranje",
+        "severity_high": "Critical",
+        "severity_low": "Severe",
+        "fallback_desc": (
+            "Swin Transformer detektor (obucen na 500k+ slika) identificirao je "
+            "karakteristike AI-generiranog sadrzaja u ovoj slici."
+        ),
+    },
+    "clip_ai_detection": {
+        "threshold": 0.45,
+        "damage_cause": "AI generiranje",
+        "severity_high": "Severe",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "CLIP ViT-L/14 analiza embeddinga detektirala je obrasce "
+            "karakteristicne za AI-generirane slike."
+        ),
+    },
+    "prnu_detection": {
+        "threshold": 0.45,
+        "damage_cause": "Metadata anomalija",
+        "severity_high": "Severe",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "Analiza PRNU senzorskog suma nije pronasla konzistentan otisak "
+            "fizicke kamere, sto ukazuje na sinteticki izvor slike."
+        ),
+    },
+    "vae_reconstruction": {
+        "threshold": 0.45,
+        "damage_cause": "Sumnjiva tekstura",
+        "severity_high": "Severe",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "VAE rekonstrukcijska analiza pokazala je da se slika lako "
+            "rekonstruira, sto je karakteristicno za AI-generirani sadrzaj."
+        ),
+    },
+    "spectral_forensics": {
+        "threshold": 0.35,
+        "damage_cause": "Spektralna anomalija",
+        "severity_high": "Severe",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "Frekvencijska analiza (FFT) detektirala je anomalije u "
+            "spektru slike koje ukazuju na obradu ili AI generiranje."
+        ),
+    },
+    "deep_modification_detection": {
+        "threshold": 0.45,
+        "damage_cause": "Digitalna manipulacija",
+        "severity_high": "Severe",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "CNN detektor modificiranih regija pronasao je znakove "
+            "digitalne obrade u slici."
+        ),
+    },
+    "modification_detection": {
+        "threshold": 0.25,
+        "damage_cause": "Rekompresijski artefakti",
+        "severity_high": "Moderate",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "ELA analiza ili detekcija kloniranja pronasla je sumnjive "
+            "regije koje ukazuju na mogucu manipulaciju."
+        ),
+    },
+    "metadata_analysis": {
+        "threshold": 0.30,
+        "damage_cause": "Metadata anomalija",
+        "severity_high": "Moderate",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "Analiza metapodataka otkrila je anomalije koje ukazuju "
+            "na mogucu obradu ili generiranje slike."
+        ),
+    },
+    "semantic_forensics": {
+        "threshold": 0.40,
+        "damage_cause": "Statisticka anomalija",
+        "severity_high": "Moderate",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "Statisticka analiza piksela detektirala je obrasce "
+            "netipcine za autenticne fotografije."
+        ),
+    },
+    "optical_forensics": {
+        "threshold": 0.40,
+        "damage_cause": "Nekonzistentno osvjetljenje",
+        "severity_high": "Moderate",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "Opticka analiza otkrila je nekonzistentnosti u osvjetljenju "
+            "ili perspektivi slike."
+        ),
+    },
+    "text_ai_detection": {
+        "threshold": 0.45,
+        "damage_cause": "AI generiranje",
+        "severity_high": "Severe",
+        "severity_low": "Moderate",
+        "fallback_desc": (
+            "Detektor AI teksta identificirao je da tekst u dokumentu "
+            "ima karakteristike strojno generiranog sadrzaja."
+        ),
+    },
+}
+
+
+def _compute_deterministic_verdict(
+    forensic_data: dict,
+    capture_source: str | None = None,
+) -> dict:
+    """Compute ALL verdict fields deterministically from forensic module scores.
+
+    Returns a dict with:
+      - risk: float (overall)
+      - overall_verdict: "Autenticno" | "Sumnjivo" | "Krivotvoreno"
+      - urgency_level: "Low" | "Medium" | "High" | "Critical"
+      - summary_template: pre-built summary
+      - mandatory_findings: list of dicts with predetermined fields
+    """
+    try:
+        risk = float(forensic_data.get("overall_risk_score", 0) or 0)
+    except (TypeError, ValueError):
+        risk = 0.0
+
+    modules = forensic_data.get("modules", [])
+    is_upload = capture_source == "upload"
+
+    # Build module lookup: module_name → module dict
+    mod_lookup: dict[str, dict] = {}
+    for m in modules:
+        name = m.get("module_name")
+        if name and not m.get("error"):
+            mod_lookup[name] = m
+
+    # ── Generate mandatory findings from modules that exceed thresholds ──
+    findings: list[dict] = []
+    for mod_name, mapping in _MODULE_DAMAGE_MAP.items():
+        mod = mod_lookup.get(mod_name)
+        if not mod:
+            continue
+        try:
+            mod_risk = float(mod.get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            mod_risk = 0.0
+
+        threshold = mapping["threshold"]
+        # Upload images: lower thresholds by 0.10
+        if is_upload:
+            threshold = max(0.10, threshold - 0.10)
+
+        if mod_risk >= threshold:
+            severity = mapping["severity_high"] if mod_risk >= 0.60 else mapping["severity_low"]
+            safety = "Critical" if mod_risk >= 0.60 else "Warning"
+            confidence = min(0.95, 0.50 + mod_risk * 0.40)
+
+            findings.append({
+                "damage_cause": mapping["damage_cause"],
+                "severity": severity,
+                "safety_rating": safety,
+                "confidence": round(confidence, 2),
+                "module_name": mod_name,
+                "module_risk": round(mod_risk, 4),
+                "fallback_description": mapping["fallback_desc"],
+                # LLM will fill description; this is fallback
+                "description": "",
+            })
+
+    # ── Determine overall verdict ──
+    if risk >= 0.60 or len(findings) >= 3:
+        overall_verdict = "Krivotvoreno"
+    elif risk >= 0.30 or len(findings) >= 1:
+        overall_verdict = "Sumnjivo"
+    else:
+        overall_verdict = "Autenticno"
+
+    # ── Urgency ──
+    if risk >= 0.60:
+        urgency = "Critical"
+    elif risk >= 0.40:
+        urgency = "High"
+    elif risk >= 0.20:
+        urgency = "Medium"
+    else:
+        urgency = "Low"
+
+    # ── Summary template ──
+    triggered_names = [f["module_name"] for f in findings]
+    if overall_verdict == "Krivotvoreno":
+        summary = (
+            f"Forenzicka analiza utvrdila je visoku sumnju na manipulaciju ili "
+            f"AI generiranje (ukupni rizik: {risk:.0%}). "
+            f"Detektirani signali iz {len(findings)} modula: "
+            f"{', '.join(triggered_names[:5])}."
+        )
+    elif overall_verdict == "Sumnjivo":
+        summary = (
+            f"Forenzicka analiza detektirala je sumnjive indikatore "
+            f"(ukupni rizik: {risk:.0%}). Detektirani signali: "
+            f"{', '.join(triggered_names[:5]) or 'blagi indikatori'}."
+        )
+    else:
+        summary = (
+            f"Forenzicka analiza nije pronasla znacajne indikatore "
+            f"manipulacije ili AI generiranja (ukupni rizik: {risk:.0%})."
+        )
+
+    return {
+        "risk": risk,
+        "overall_verdict": overall_verdict,
+        "urgency_level": urgency,
+        "summary_template": summary,
+        "mandatory_findings": findings,
+    }
+
+
+def _generate_mandatory_findings(forensic_data: dict) -> list[DamageResult]:
+    """Generate DamageResult findings from forensic modules when LLM returned nothing."""
+    verdict = _compute_deterministic_verdict(forensic_data)
+    damages = []
+    for f in verdict["mandatory_findings"]:
+        desc = f["fallback_description"]
+        damages.append(
+            DamageResult(
+                damage_type="Other",
+                car_part="Other",
+                severity=f["severity"],
+                description=desc,
+                confidence=f["confidence"],
+                damage_cause=f["damage_cause"],
+                safety_rating=f["safety_rating"],
+                bounding_box=None,
+            )
+        )
+    return damages
+
+
+def _hard_merge_with_verdict(
+    llm_response: AnalysisResponse,
+    verdict: dict,
+) -> AnalysisResponse:
+    """Merge LLM descriptions with predetermined verdict fields.
+
+    The LLM is ONLY trusted for:
+      - description text (checked for contradictions)
+      - bounding_box coordinates
+      - vehicle_info
+
+    Everything else comes from the deterministic verdict.
+    """
+    mandatory = verdict["mandatory_findings"]
+    risk = verdict["risk"]
+
+    if not mandatory:
+        # No modules triggered — keep LLM response as-is (low risk)
+        return llm_response
+
+    # Build final damages: use predetermined findings, enrich descriptions from LLM
+    final_damages: list[DamageResult] = []
+
+    # Try to match LLM damages to predetermined findings by damage_cause
+    llm_by_cause: dict[str, list[DamageResult]] = {}
+    for d in llm_response.damages:
+        cause = d.damage_cause or "Unknown"
+        llm_by_cause.setdefault(cause, []).append(d)
+
+    used_llm_indices: set[int] = set()
+
+    for mf in mandatory:
+        # Find matching LLM damage for description
+        llm_desc = mf["fallback_description"]
+        llm_bbox = None
+        cause = mf["damage_cause"]
+
+        # Try exact cause match first
+        if cause in llm_by_cause and llm_by_cause[cause]:
+            matched = llm_by_cause[cause].pop(0)
+            if matched.description and not _text_contradicts_forensics(matched.description):
+                llm_desc = matched.description
+            elif matched.description:
+                # LLM contradicts forensics — use its description but append warning
+                llm_desc = (
+                    matched.description
+                    + f" NAPOMENA: Forenzicki moduli ukazuju na visoku sumnju "
+                    f"na manipulaciju (rizik: {risk:.0%})."
+                )
+            llm_bbox = matched.bounding_box
+
+        final_damages.append(
+            DamageResult(
+                damage_type="Other",
+                car_part="Other",
+                severity=mf["severity"],           # FROM VERDICT
+                description=llm_desc,
+                confidence=mf["confidence"],         # FROM VERDICT
+                damage_cause=mf["damage_cause"],     # FROM VERDICT
+                safety_rating=mf["safety_rating"],   # FROM VERDICT
+                bounding_box=llm_bbox,
+            )
+        )
+
+    # Override response
+    llm_response.damages = final_damages
+    llm_response.urgency_level = verdict["urgency_level"]
+
+    # Summary: use verdict template (LLM summary is unreliable)
+    llm_response.summary = verdict["summary_template"]
+
+    return llm_response
 
 
 def _extract_json(response_text: str) -> dict:
@@ -721,6 +1120,102 @@ def _format_forensic_context(forensic_data: dict) -> str:
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Description-only prompt (Phase 2): LLM writes descriptions only.
+# All verdict fields (severity, safety_rating, damage_cause) are
+# predetermined by _compute_deterministic_verdict().
+# ──────────────────────────────────────────────────────────────────────
+
+DESCRIPTION_ONLY_SYSTEM = """Ti si DENT — profesionalni forenzicki sustav.
+
+TVOJ JEDINI ZADATAK: Popuni "description" polje za svaki nalaz u JSON-u ispod.
+SVA ostala polja (severity, safety_rating, damage_cause, urgency_level, summary) su VEC ISPUNJENA
+i DETERMINISTICKI IZRACUNATA iz forenzickih modula. NE SMIJES ih mijenjati.
+
+Pisi na HRVATSKOM jeziku. Za svaki nalaz napisi 3-5 recenica koje:
+1. Objasni STO je forenzicki modul detektirao (koristeci informacije iz forensic_context)
+2. Opisi sto VIZUALNO vidis na slici sto potvrdjuje ili objasnjava nalaz
+3. Budi KONKRETAN — navedi tocne regije, teksture, uzorke
+
+VAZNO:
+- NE PROTURJECI forenzickim nalazima. Ako nalaz kaze "AI generiranje", NE pisi da je slika autenticna.
+- Ako forenzicki modul ima visok rizik, opisi ZASTO je to sumnjivo.
+- Dodaj bounding_box koordinate (0.0-1.0) za podrucje koje opisujes.
+"""
+
+
+def _build_description_prompt(
+    verdict: dict,
+    forensic_text: str,
+) -> str:
+    """Build a prompt that asks the LLM to fill descriptions only."""
+    findings_json = []
+    for i, f in enumerate(verdict["mandatory_findings"]):
+        findings_json.append({
+            "index": i,
+            "damage_cause": f["damage_cause"],
+            "severity": f["severity"],
+            "safety_rating": f["safety_rating"],
+            "confidence": f["confidence"],
+            "module_name": f["module_name"],
+            "module_risk": f["module_risk"],
+            "description": "<<POPUNI OVO POLJE: 3-5 recenica na hrvatskom>>",
+            "bounding_box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0},
+        })
+
+    template = {
+        "damages": findings_json,
+        "overall_assessment": {
+            "structural_integrity": "<<POPUNI: 2-3 recenice o digitalnom integritetu slike>>",
+        },
+    }
+
+    return f"""
+{forensic_text}
+
+=== UNAPRIJED ODREDJENI NALAZI ===
+Ispod je JSON s nalazima gdje su SVA polja vec popunjena OSIM "description" i "bounding_box".
+TVOJ ZADATAK: Zamijeni "<<POPUNI ...>>" s pravim tekstom na hrvatskom jeziku.
+NE DODAVAJ nove nalaze. NE MIJENJAJ postojeca polja. SAMO popuni description i bounding_box.
+
+Odgovori ISKLJUCIVO validnim JSON-om:
+
+{json.dumps(template, ensure_ascii=False, indent=2)}
+"""
+
+
+def _parse_description_response(
+    response_text: str,
+    verdict: dict,
+) -> list[tuple[str, dict | None]]:
+    """Parse LLM response from description-only mode.
+
+    Returns list of (description, bounding_box_raw) tuples aligned
+    with verdict["mandatory_findings"].
+    """
+    try:
+        data = _extract_json(response_text)
+    except (json.JSONDecodeError, IndexError):
+        # Fallback: return empty descriptions
+        return [("", None)] * len(verdict["mandatory_findings"])
+
+    damages = data.get("damages", [])
+    result: list[tuple[str, dict | None]] = []
+
+    for i, mf in enumerate(verdict["mandatory_findings"]):
+        if i < len(damages):
+            d = damages[i]
+            desc = d.get("description", "")
+            bb = d.get("bounding_box")
+        else:
+            desc = ""
+            bb = None
+        result.append((desc, bb))
+
+    # Also extract structural_integrity if available
+    return result
+
+
 CONTEXT_ANALYSIS_PROMPT = """FORENZICKA SINTEZA — analiziraj sliku U KONTEKSTU forenzickih rezultata.
 
 Ispod su rezultati 8 forenzickih modula koji su statisticki i ML metodama analizirali sliku.
@@ -826,7 +1321,15 @@ async def analyze_with_context(
     forensic_context: str = Form("{}"),
     capture_source: str = Form(""),
 ):
-    """Context-aware analysis: receives forensic results and synthesizes them with visual analysis."""
+    """Context-aware analysis — "Matematika odlucuje, LLM objasnjava".
+
+    Flow:
+    1. Parse forensic data
+    2. _compute_deterministic_verdict() → all verdict fields
+    3. Send image + predetermined findings to LLM for descriptions only
+    4. _hard_merge_with_verdict() → keep ONLY descriptions from LLM
+    5. _enforce_forensic_severity() → final safety net
+    """
     contents = await file.read()
     size_mb = len(contents) / (1024 * 1024)
 
@@ -846,69 +1349,57 @@ async def analyze_with_context(
     image_b64 = base64.b64encode(contents).decode("utf-8")
     media_type = get_media_type(file.filename or "image.jpg")
 
-    # If we have forensic context, use context-aware prompts
     if forensic_data and forensic_data.get("modules"):
+        # ── NEW FLOW: Deterministic verdict + description-only LLM ──
         forensic_text = _format_forensic_context(forensic_data)
-        prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
-        system = CONTEXT_SYSTEM_PROMPT
+        verdict = _compute_deterministic_verdict(
+            forensic_data, capture_source=capture_source or None
+        )
 
-        # ── UPLOAD SOURCE WARNING ──────────────────────────────────
-        # Uploaded images bypass live camera anti-fraud controls.
-        # Alert the LLM so it factors this into its analysis.
-        if capture_source == "upload":
-            upload_warning = (
-                "\n=== ⚠ IZVOR SLIKE: UPLOAD ===\n"
-                "Ova slika je UPLOADANA iz galerije, NE slikana live kamerom.\n"
-                "To znaci da nema GPS/uredaj verifikacije i da slika moze biti\n"
-                "unaprijed pripremljena, editirana ili AI-generirana.\n"
-                "MORAS biti POSEBNO OPREZAN i strozi u procjeni autenticnosti.\n"
-                "=== KRAJ UPLOAD UPOZORENJA ===\n\n"
-            )
-            prompt_text = upload_warning + prompt_text
+        logger.info(
+            "deterministic_verdict: risk=%.2f, verdict=%s, findings=%d",
+            verdict["risk"], verdict["overall_verdict"],
+            len(verdict["mandatory_findings"]),
+        )
 
-        # ── FRAUD REPORT MODE ─────────────────────────────────────
-        # When fusion score >= 0.50, inject strict fraud-report
-        # instructions that FORBID the LLM from generating
-        # "Autenticno" findings or low-severity ratings.
-        try:
-            overall_risk = float(forensic_data.get("overall_risk_score", 0) or 0)
-        except (TypeError, ValueError):
-            overall_risk = 0.0
-        if overall_risk >= 0.40:
-            fraud_header = (
-                "\n=== ⚠ FRAUD REPORT MODE ===\n"
-                "Forenzicki moduli detektirali su VISOKU sumnju na manipulaciju/AI generiranje "
-                f"(ukupni rizik: {overall_risk:.2f}).\n"
-                "FORENZICKI REZULTATI SU IZVOR ISTINE — ne proturjeci im.\n"
-                "ZABRANJENO ti je:\n"
-                "- Koristiti damage_cause \"Autenticno\"\n"
-                "- Stavljati severity \"Minor\" ili safety_rating \"Safe\" na bilo koji nalaz\n"
-                "- Pisati tekst koji opravdava autenticnost slike\n"
-                "MORAS:\n"
-                "- Opisati SVE detektirane anomalije\n"
-                "- Koristiti severity Severe/Critical za fraud-related nalaze\n"
-                "- Jasno istaknuti forenzicke dokaze u svakom opisu\n"
-                "=== KRAJ FRAUD REPORT MODE ===\n\n"
+        if verdict["mandatory_findings"]:
+            # LLM writes descriptions only — verdict fields are locked
+            desc_prompt = _build_description_prompt(verdict, forensic_text)
+            system = DESCRIPTION_ONLY_SYSTEM
+
+            result = await _call_openrouter_with_prompt(
+                [(image_b64, media_type)],
+                system_prompt=system,
+                analysis_prompt=desc_prompt,
             )
-            prompt_text = fraud_header + prompt_text
+
+            # Hard-merge: take ONLY descriptions from LLM, everything else from verdict
+            result = _hard_merge_with_verdict(result, verdict)
+        else:
+            # No modules triggered → low risk, use full context prompt
+            prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
+            system = CONTEXT_SYSTEM_PROMPT
+            result = await _call_openrouter_with_prompt(
+                [(image_b64, media_type)],
+                system_prompt=system,
+                analysis_prompt=prompt_text,
+            )
     else:
         # Fallback to standard prompts if no forensic context
         prompt_text = ANALYSIS_PROMPT
         system = SYSTEM_PROMPT
         forensic_data = {}
+        result = await _call_openrouter_with_prompt(
+            [(image_b64, media_type)],
+            system_prompt=system,
+            analysis_prompt=prompt_text,
+        )
 
-    result = await _call_openrouter_with_prompt(
-        [(image_b64, media_type)],
-        system_prompt=system,
-        analysis_prompt=prompt_text,
-    )
+    # ── Final safety net: deterministic enforcement ──────────────
+    if forensic_data:
+        if not result.damages:
+            result.damages = _generate_mandatory_findings(forensic_data)
 
-    # ── Deterministic severity enforcement ─────────────────────
-    # Post-process Gemini output: fusion scores override severity
-    # ratings to prevent LLM from contradicting forensic evidence.
-    # Always run when we have forensic data — the function uses
-    # the risk score internally to determine thresholds.
-    if result.damages and forensic_data.get("modules"):
         result = _enforce_forensic_severity(
             result, forensic_data, capture_source=capture_source or None
         )
@@ -1041,41 +1532,38 @@ async def analyze_with_context_stream(
 
         forensic_text = _format_forensic_context(effective_forensic)
 
-        # ── Phase 2: Gemini context-aware analysis ─────────────────
+        # ── Phase 2: Deterministic verdict + LLM descriptions ──────
         yield f"data: {json.dumps({'type': 'progress', 'phase': 'gemini', 'progress': 0.75})}\n\n"
 
-        prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
-        system = CONTEXT_SYSTEM_PROMPT
-
-        if capture_source == "upload":
-            upload_warning = (
-                "\n=== IZVOR SLIKE: UPLOAD ===\n"
-                "Ova slika je UPLOADANA iz galerije, NE slikana live kamerom.\n"
-                "MORAS biti POSEBNO OPREZAN i strozi u procjeni autenticnosti.\n"
-                "=== KRAJ UPLOAD UPOZORENJA ===\n\n"
-            )
-            prompt_text = upload_warning + prompt_text
-
-        overall_risk = effective_forensic.get("overall_risk_score", 0)
-        if overall_risk >= 0.40:
-            fraud_header = (
-                "\n=== ⚠ FRAUD REPORT MODE ===\n"
-                f"Ukupni forenzicki rizik: {overall_risk:.2f}.\n"
-                "FORENZICKI REZULTATI SU IZVOR ISTINE — ne proturjeci im.\n"
-                "ZABRANJENO koristiti damage_cause Autenticno ili severity Minor.\n"
-                "=== KRAJ FRAUD REPORT MODE ===\n\n"
-            )
-            prompt_text = fraud_header + prompt_text
-
-        result = await _call_openrouter_with_prompt(
-            [(image_b64, media_type_str)],
-            system_prompt=system,
-            analysis_prompt=prompt_text,
+        verdict = _compute_deterministic_verdict(
+            effective_forensic, capture_source=capture_source or None
         )
+
+        if verdict["mandatory_findings"]:
+            # LLM writes descriptions only — verdict fields are locked
+            desc_prompt = _build_description_prompt(verdict, forensic_text)
+            system = DESCRIPTION_ONLY_SYSTEM
+            result = await _call_openrouter_with_prompt(
+                [(image_b64, media_type_str)],
+                system_prompt=system,
+                analysis_prompt=desc_prompt,
+            )
+            result = _hard_merge_with_verdict(result, verdict)
+        else:
+            prompt_text = CONTEXT_ANALYSIS_PROMPT.format(forensic_context=forensic_text)
+            system = CONTEXT_SYSTEM_PROMPT
+            result = await _call_openrouter_with_prompt(
+                [(image_b64, media_type_str)],
+                system_prompt=system,
+                analysis_prompt=prompt_text,
+            )
 
         yield f"data: {json.dumps({'type': 'progress', 'phase': 'gemini', 'progress': 0.95})}\n\n"
 
-        if result.damages and effective_forensic.get("modules"):
+        # ── Final safety net ──
+        if effective_forensic:
+            if not result.damages:
+                result.damages = _generate_mandatory_findings(effective_forensic)
             result = _enforce_forensic_severity(
                 result, effective_forensic, capture_source=capture_source or None
             )

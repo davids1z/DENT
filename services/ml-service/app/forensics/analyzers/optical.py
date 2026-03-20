@@ -101,14 +101,19 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
             s_hh = min(1.0, wavelet_hh_ratio / 0.30)
             s_aniso = min(1.0, wavelet_anisotropy / 0.8)
 
-            # --- Weighted composite score ---
+            # --- Shadow consistency analysis (AI generators often fail) ---
+            shadow_result = self._shadow_consistency_analysis(gray_resized)
+            s_shadow = shadow_result.get("inconsistency_score", 0.0)
+
+            # Add shadow signal to composite (small weight — supportive signal)
             composite = (
-                0.20 * s_radial
-                + 0.15 * s_peaks
-                + 0.20 * s_peak_ratio
-                + 0.20 * s_kurtosis
-                + 0.15 * s_hh
-                + 0.10 * s_aniso
+                0.18 * s_radial
+                + 0.13 * s_peaks
+                + 0.18 * s_peak_ratio
+                + 0.18 * s_kurtosis
+                + 0.13 * s_hh
+                + 0.08 * s_aniso
+                + 0.12 * s_shadow  # Shadow consistency
             )
 
             evidence = {
@@ -118,6 +123,7 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
                 "angular_kurtosis": round(angular_kurtosis, 4),
                 "wavelet_hh_ratio": round(wavelet_hh_ratio, 4),
                 "wavelet_anisotropy": round(wavelet_anisotropy, 4),
+                "shadow_inconsistency": round(s_shadow, 4),
                 "composite_score": round(composite, 4),
             }
 
@@ -422,6 +428,83 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
             "hh_ratios": hh_ratios,
             "anisotropy": anisotropy,
             "cross_scale_corr": cross_scale_corr,
+        }
+
+    # ------------------------------------------------------------------
+    # Shadow Consistency Analysis
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _shadow_consistency_analysis(gray: np.ndarray) -> dict:
+        """Analyze shadow direction consistency.
+
+        AI generators often produce shadows from inconsistent light
+        sources. This method:
+        1. Detects strong gradients (potential shadow edges)
+        2. Clusters gradient directions
+        3. Measures angular variance — high variance = inconsistent shadows
+        """
+        from scipy.ndimage import sobel, gaussian_filter
+
+        # Smooth to reduce noise
+        smoothed = gaussian_filter(gray, sigma=2.0)
+
+        # Compute gradients
+        gx = sobel(smoothed, axis=1)
+        gy = sobel(smoothed, axis=0)
+
+        # Gradient magnitude and direction
+        magnitude = np.sqrt(gx ** 2 + gy ** 2)
+        direction = np.arctan2(gy, gx)  # [-pi, pi]
+
+        # Select strong gradients (top 10% by magnitude)
+        threshold = np.percentile(magnitude, 90)
+        strong_mask = magnitude > threshold
+
+        if np.sum(strong_mask) < 50:
+            return {"inconsistency_score": 0.0, "dominant_angles": []}
+
+        strong_dirs = direction[strong_mask]
+
+        # Bin directions into 18 bins (20 degrees each)
+        n_bins = 18
+        bins = np.linspace(-np.pi, np.pi, n_bins + 1)
+        hist, _ = np.histogram(strong_dirs, bins=bins)
+        hist = hist.astype(np.float64)
+
+        if hist.sum() < 1:
+            return {"inconsistency_score": 0.0, "dominant_angles": []}
+
+        # Normalize histogram
+        hist_norm = hist / hist.sum()
+
+        # Entropy: high entropy = many directions = inconsistent
+        eps = 1e-10
+        entropy = -float(np.sum(hist_norm * np.log2(hist_norm + eps)))
+        max_entropy = np.log2(n_bins)  # Uniform distribution
+
+        # Concentration ratio: ratio of top-2 bins to total
+        sorted_hist = np.sort(hist_norm)[::-1]
+        top2_ratio = float(sorted_hist[:2].sum())
+
+        # Inconsistency score:
+        # - High entropy + low concentration = many shadow directions = suspicious
+        # - Low entropy + high concentration = consistent shadows = natural
+        entropy_score = float(np.clip(entropy / max_entropy, 0.0, 1.0))
+        conc_score = 1.0 - float(np.clip(top2_ratio / 0.60, 0.0, 1.0))
+
+        inconsistency = entropy_score * 0.6 + conc_score * 0.4
+
+        # Find dominant angles for evidence
+        top_bins = np.argsort(hist)[-3:]
+        bin_centers = (bins[:-1] + bins[1:]) / 2
+        dominant_angles = [round(float(np.degrees(bin_centers[b])), 1) for b in top_bins]
+
+        return {
+            "inconsistency_score": float(np.clip(inconsistency, 0.0, 1.0)),
+            "dominant_angles": dominant_angles,
+            "entropy": round(entropy, 4),
+            "top2_concentration": round(top2_ratio, 4),
         }
 
     # ------------------------------------------------------------------

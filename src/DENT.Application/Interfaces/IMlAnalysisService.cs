@@ -61,8 +61,8 @@ public record MlDamageResult
 {
     public string DamageType { get; init; } = string.Empty;
     public string CarPart { get; init; } = string.Empty;
-    public string Severity { get; init; } = string.Empty;
-    public string Description { get; init; } = string.Empty;
+    public string Severity { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public double Confidence { get; init; }
     public string? RepairMethod { get; init; }
     public decimal? EstimatedCostMin { get; init; }
@@ -70,8 +70,8 @@ public record MlDamageResult
     public double? LaborHours { get; init; }
     public string? PartsNeeded { get; init; }
     public MlBoundingBox? BoundingBox { get; init; }
-    public string? DamageCause { get; init; }
-    public string? SafetyRating { get; init; }
+    public string? DamageCause { get; set; }
+    public string? SafetyRating { get; set; }
     public string? MaterialType { get; init; }
     public string? RepairOperations { get; init; }
     public string? RepairCategory { get; init; }

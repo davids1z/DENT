@@ -215,24 +215,76 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
 
         if self._probe is not None and "weights" in self._probe:
             # Linear probe: sigmoid(w . x + b)
-            # Calibration: the probe was trained on a small set (~100 images
-            # each). Subtract 0.5 from bias to shift the sigmoid decision
-            # boundary without losing sensitivity to AI-generated content.
-            # With bias 0.95 → calibrated 0.45 → sigmoid(0.45) ≈ 0.61
-            # baseline, which is detectable but not as extreme as raw 0.72.
             calibrated_bias = float(self._probe["bias"]) - 0.5
             logit = float(np.dot(self._probe["weights"], embedding_normed)
                           + calibrated_bias)
             score = 1.0 / (1.0 + np.exp(-logit))
         else:
-            # Heuristic fallback based on CLIP embedding statistics.
-            # AI-generated images tend to have:
-            # - Lower L2 norm of raw embeddings (less "grounded" content)
-            # - Higher kurtosis in specific embedding dimensions
-            # - Different variance patterns in top principal components
             score = self._heuristic_score(embedding, embedding_normed, norm)
 
-        return float(np.clip(score, 0.0, 1.0))
+        # ── NS-Net style: strip semantics, analyze residual ──────────
+        # Zero out the top-K semantic dimensions (highest magnitude).
+        # AI images have different residual patterns independent of
+        # image content. This provides a content-agnostic signal.
+        nsnet_score = self._nsnet_residual_score(embedding_normed)
+
+        # Combine: 65% primary, 35% NS-Net residual
+        combined = score * 0.65 + nsnet_score * 0.35
+
+        return float(np.clip(combined, 0.0, 1.0))
+
+    @staticmethod
+    def _nsnet_residual_score(embedding_normed: np.ndarray, top_k: int = 50) -> float:
+        """NS-Net inspired: strip top-K semantic dimensions, analyze residual.
+
+        The top-K dimensions (by absolute magnitude) carry most of the
+        semantic meaning (what the image depicts). By zeroing them out,
+        we examine the "texture" of the embedding — the low-level
+        artifacts that differ between real and AI-generated images.
+
+        AI-generated images tend to have:
+        - Lower residual energy (fewer fine-grained details)
+        - Higher kurtosis in residual (more peaked distribution)
+        - Different entropy patterns in the residual vector
+        """
+        abs_vals = np.abs(embedding_normed)
+        # Find top-K indices (semantic dimensions to strip)
+        top_indices = np.argsort(abs_vals)[-top_k:]
+
+        # Create residual: zero out semantic dimensions
+        residual = embedding_normed.copy()
+        residual[top_indices] = 0.0
+
+        signals: list[float] = []
+
+        # Signal 1: Residual energy (L2 norm of remaining dimensions)
+        # AI images: lower residual energy (0.15-0.35)
+        # Real images: higher residual energy (0.35-0.60)
+        res_energy = float(np.linalg.norm(residual))
+        energy_score = float(np.clip((0.45 - res_energy) / 0.25, 0.0, 1.0))
+        signals.append(energy_score)
+
+        # Signal 2: Residual kurtosis
+        # AI residuals are more peaked (higher kurtosis)
+        res_std = float(residual[residual != 0].std()) if np.any(residual != 0) else 1e-8
+        if res_std > 1e-8:
+            non_zero = residual[residual != 0]
+            res_mean = float(non_zero.mean())
+            kurtosis = float(np.mean(((non_zero - res_mean) / res_std) ** 4))
+            kurt_score = float(np.clip((kurtosis - 3.0) / 8.0, 0.0, 1.0))
+            signals.append(kurt_score)
+
+        # Signal 3: Sparsity of residual
+        # AI images have sparser residuals (more near-zero values)
+        threshold = 0.01
+        non_zero_ratio = float(np.sum(np.abs(residual) > threshold) / len(residual))
+        sparsity_score = float(np.clip((0.70 - non_zero_ratio) / 0.30, 0.0, 1.0))
+        signals.append(sparsity_score * 0.7)
+
+        if not signals:
+            return 0.0
+
+        return float(np.clip(sum(signals) / len(signals), 0.0, 1.0))
 
     @staticmethod
     def _heuristic_score(

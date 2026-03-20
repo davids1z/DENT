@@ -319,6 +319,67 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         forensicResult.OverallRiskScore, inspection.UrgencyLevel, inspection.Id);
                 }
 
+                // ── C# SAFETY NET: Summary & finding consistency ─────────
+                // Defence-in-depth: even after Python enforcement, verify that
+                // the summary and individual findings don't contradict forensics.
+                if (forensicResult != null && forensicResult.OverallRiskScore >= 0.40)
+                {
+                    // Summary contradiction check (normalize: strip diacritics + lowercase)
+                    var summaryNorm = (inspection.Summary ?? "")
+                        .Normalize(System.Text.NormalizationForm.FormD);
+                    summaryNorm = new string(summaryNorm
+                        .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                            != System.Globalization.UnicodeCategory.NonSpacingMark)
+                        .ToArray()).ToLowerInvariant();
+
+                    string[] contradictions = [
+                        "autenticna", "autenticno", "autenticna fotografija",
+                        "nema sumnje", "nema manipulacije", "prava fotografija",
+                        "originalna", "slika je autenticna"
+                    ];
+
+                    if (contradictions.Any(c => summaryNorm.Contains(c)))
+                    {
+                        inspection.Summary = $"Forenzicka analiza utvrdila je visoku sumnju na manipulaciju (ukupni rizik: {forensicResult.OverallRiskScore:P0}).";
+                        logger.LogWarning(
+                            "C# safety net: summary contradicted forensics for inspection {Id}, overridden",
+                            inspection.Id);
+                    }
+
+                    // Individual damage safety_rating check
+                    foreach (var dmg in result.Damages)
+                    {
+                        if (string.Equals(dmg.SafetyRating, "Safe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dmg.SafetyRating = "Warning";
+                            if (string.Equals(dmg.Severity, "Minor", StringComparison.OrdinalIgnoreCase))
+                                dmg.Severity = "Moderate";
+                            logger.LogWarning(
+                                "C# safety net: blocked Safe→Warning on cause={Cause} for inspection {Id}",
+                                dmg.DamageCause, inspection.Id);
+                        }
+
+                        // Block "Autenticno" damage_cause when forensics says high risk
+                        var causeNorm = (dmg.DamageCause ?? "")
+                            .Normalize(System.Text.NormalizationForm.FormD);
+                        causeNorm = new string(causeNorm
+                            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                                != System.Globalization.UnicodeCategory.NonSpacingMark)
+                            .ToArray()).ToLowerInvariant().Trim();
+
+                        if (causeNorm is "autenticno" or "autenticna" or "authentic" or "autenticni")
+                        {
+                            dmg.DamageCause = "Metadata anomalija";
+                            dmg.SafetyRating = "Warning";
+                            dmg.Severity = forensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
+                            dmg.Description += " [C# safety net: forenzicki moduli ukazuju na visok rizik manipulacije.]";
+                            logger.LogWarning(
+                                "C# safety net: blocked Autenticno damage_cause for inspection {Id}",
+                                inspection.Id);
+                        }
+                    }
+                }
+
                 inspection.StructuralIntegrity = result.StructuralIntegrity;
                 inspection.LaborTotal = result.LaborTotal;
                 inspection.PartsTotal = result.PartsTotal;
