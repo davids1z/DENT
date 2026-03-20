@@ -7,6 +7,7 @@ using DENT.Domain.Entities;
 using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DENT.Application.Commands.CreateInspection;
@@ -17,17 +18,20 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
     private readonly IStorageService _storage;
     private readonly IMlAnalysisService _mlService;
     private readonly ILogger<CreateInspectionHandler> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public CreateInspectionHandler(
         IDentDbContext db,
         IStorageService storage,
         IMlAnalysisService mlService,
-        ILogger<CreateInspectionHandler> logger)
+        ILogger<CreateInspectionHandler> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _storage = storage;
         _mlService = mlService;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<InspectionDto> Handle(CreateInspectionCommand request, CancellationToken ct)
@@ -139,57 +143,92 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         inspection.ImageHashesJson = JsonSerializer.Serialize(imageHashes);
 
         _db.Inspections.Add(inspection);
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveChangesAsync(CancellationToken.None);
 
-        // ── Pipeline: FORENSICS FIRST → ANALYZE WITH CONTEXT → AGENT ──
-        // Forensic modules (CNN, ELA, semantic, etc.) are more reliable at
-        // detecting AI-generated content.  Run them first, then feed results
-        // into Gemini so it synthesizes & explains rather than guessing.
+        // ── Return immediately, process analysis in background ──────
+        // The analysis pipeline takes 60-120s which exceeds Cloudflare's
+        // ~100s timeout. By returning the inspection ID immediately, the
+        // frontend can poll GET /api/inspections/{id} for completion.
+        var backgroundData = new BackgroundAnalysisData
+        {
+            InspectionId = inspection.Id,
+            FirstImageData = firstImage.Data,
+            FirstImageFileName = firstImage.FileName,
+            AllImages = request.Images,
+            CaptureSource = inspection.CaptureSource,
+            VehicleMake = request.VehicleMake,
+            VehicleModel = request.VehicleModel,
+            VehicleYear = request.VehicleYear,
+            Mileage = request.Mileage,
+            ImageHashes = imageHashes,
+            CustodyLog = custodyLog,
+        };
+
+        _ = Task.Run(() => RunAnalysisInBackground(backgroundData));
+
+        return MapToDto(inspection);
+    }
+
+    private async Task RunAnalysisInBackground(BackgroundAnalysisData data)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IDentDbContext>();
+        var mlService = scope.ServiceProvider.GetRequiredService<IMlAnalysisService>();
+        var storage = scope.ServiceProvider.GetRequiredService<IStorageService>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<CreateInspectionHandler>>();
+
+        var inspection = await db.Inspections.FindAsync(data.InspectionId);
+        if (inspection == null)
+        {
+            logger.LogError("Background analysis: inspection {Id} not found", data.InspectionId);
+            return;
+        }
+
+        var custodyLog = data.CustodyLog;
+        var imageHashes = data.ImageHashes;
+
         try
         {
-            // ── Step 1: Run forensics FIRST ─────────────────────────────
+            // ── Step 1: Run forensics ───────────────────────────────────
             MlForensicResult? forensicResult = null;
             try
             {
-                forensicResult = await _mlService.RunForensicsAsync(firstImage.Data, firstImage.FileName, ct);
+                forensicResult = await mlService.RunForensicsAsync(
+                    data.FirstImageData, data.FirstImageFileName, CancellationToken.None);
 
-                // Store ELA heatmap in MinIO if present
                 string? elaUrl = null;
                 if (forensicResult.ElaHeatmapB64 is not null)
                 {
                     var elaBytes = Convert.FromBase64String(forensicResult.ElaHeatmapB64);
                     using var elaStream = new MemoryStream(elaBytes);
-                    var elaKey = await _storage.UploadAsync(
-                        elaStream, $"ela_{inspection.Id}.png", "image/png", ct);
-                    elaUrl = _storage.GetPublicUrl(elaKey);
+                    var elaKey = await storage.UploadAsync(
+                        elaStream, $"ela_{inspection.Id}.png", "image/png", CancellationToken.None);
+                    elaUrl = storage.GetPublicUrl(elaKey);
                 }
 
-                // Store FFT spectrum in MinIO if present
                 string? fftUrl = null;
                 if (forensicResult.FftSpectrumB64 is not null)
                 {
                     var fftBytes = Convert.FromBase64String(forensicResult.FftSpectrumB64);
                     using var fftStream = new MemoryStream(fftBytes);
-                    var fftKey = await _storage.UploadAsync(
-                        fftStream, $"fft_{inspection.Id}.png", "image/png", ct);
-                    fftUrl = _storage.GetPublicUrl(fftKey);
+                    var fftKey = await storage.UploadAsync(
+                        fftStream, $"fft_{inspection.Id}.png", "image/png", CancellationToken.None);
+                    fftUrl = storage.GetPublicUrl(fftKey);
                 }
 
-                // Store spectral heatmap in MinIO if present
                 string? spectralUrl = null;
                 if (forensicResult.SpectralHeatmapB64 is not null)
                 {
                     var spectralBytes = Convert.FromBase64String(forensicResult.SpectralHeatmapB64);
                     using var spectralStream = new MemoryStream(spectralBytes);
-                    var spectralKey = await _storage.UploadAsync(
-                        spectralStream, $"spectral_{inspection.Id}.png", "image/png", ct);
-                    spectralUrl = _storage.GetPublicUrl(spectralKey);
+                    var spectralKey = await storage.UploadAsync(
+                        spectralStream, $"spectral_{inspection.Id}.png", "image/png", CancellationToken.None);
+                    spectralUrl = storage.GetPublicUrl(spectralKey);
                 }
 
                 inspection.FraudRiskScore = forensicResult.OverallRiskScore;
                 inspection.FraudRiskLevel = forensicResult.OverallRiskLevel;
 
-                // Explicitly add ForensicResult to DbContext
                 var fr = new ForensicResult
                 {
                     Id = Guid.NewGuid(),
@@ -203,10 +242,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     SpectralHeatmapUrl = spectralUrl,
                     TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                 };
-                _db.ForensicResults.Add(fr);
+                db.ForensicResults.Add(fr);
                 inspection.ForensicResult = fr;
 
-                // Hash forensic results
                 var forensicJson = fr.ModuleResultsJson ?? "[]";
                 inspection.ForensicResultHash = ComputeSha256(forensicJson);
                 custodyLog.Add(new EvidenceCustodyEvent
@@ -219,37 +257,35 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             }
             catch (Exception fex)
             {
-                _logger.LogWarning(fex,
+                logger.LogWarning(fex,
                     "Forensic analysis failed for inspection {Id}, continuing without context",
                     inspection.Id);
             }
 
             // ── Step 2: Run AI analysis WITH forensic context ───────────
             MlAnalysisResult result;
-            if (forensicResult != null && request.Images.Count == 1)
+            if (forensicResult != null && data.AllImages.Count == 1)
             {
-                // Context-aware: pass forensic results to Gemini
-                result = await _mlService.AnalyzeImageWithContextAsync(
-                    firstImage.Data, firstImage.FileName, forensicResult,
-                    inspection.CaptureSource, ct);
+                result = await mlService.AnalyzeImageWithContextAsync(
+                    data.FirstImageData, data.FirstImageFileName, forensicResult,
+                    data.CaptureSource, CancellationToken.None);
             }
-            else if (request.Images.Count == 1)
+            else if (data.AllImages.Count == 1)
             {
-                // Fallback: no forensic context available
-                using var mlStream = new MemoryStream(firstImage.Data);
-                result = await _mlService.AnalyzeImageAsync(mlStream, firstImage.FileName, ct);
+                using var mlStream = new MemoryStream(data.FirstImageData);
+                result = await mlService.AnalyzeImageAsync(mlStream, data.FirstImageFileName, CancellationToken.None);
             }
             else
             {
-                var mlImages = request.Images.Select(img => new MlImageInput
+                var mlImages = data.AllImages.Select(img => new MlImageInput
                 {
                     Data = img.Data,
                     FileName = img.FileName,
                 }).ToList();
-                result = await _mlService.AnalyzeMultipleImagesAsync(
+                result = await mlService.AnalyzeMultipleImagesAsync(
                     mlImages,
-                    request.VehicleMake, request.VehicleModel, request.VehicleYear, request.Mileage,
-                    ct);
+                    data.VehicleMake, data.VehicleModel, data.VehicleYear, data.Mileage,
+                    CancellationToken.None);
             }
 
             if (result.Success)
@@ -267,15 +303,13 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 inspection.UrgencyLevel = result.UrgencyLevel;
 
                 // Safety net: override urgency if forensic risk is high
-                // but ML service returned Low (e.g. fallback to /analyze
-                // without forensic context when /analyze-with-context fails)
                 if (forensicResult != null
                     && forensicResult.OverallRiskScore >= 0.40
                     && (inspection.UrgencyLevel == null || inspection.UrgencyLevel == "Low"))
                 {
                     inspection.UrgencyLevel = forensicResult.OverallRiskScore >= 0.65
                         ? "Critical" : "High";
-                    _logger.LogWarning(
+                    logger.LogWarning(
                         "Urgency safety net: forensic risk {Risk:F2} overrode ML urgency to {Urgency} for inspection {Id}",
                         forensicResult.OverallRiskScore, inspection.UrgencyLevel, inspection.Id);
                 }
@@ -291,15 +325,8 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     var lineItemsJson = damage.RepairLineItems.Count > 0
                         ? JsonSerializer.Serialize(damage.RepairLineItems.Select(li => new
                         {
-                            li.LineNumber,
-                            li.PartName,
-                            li.Operation,
-                            li.LaborType,
-                            li.LaborHours,
-                            li.PartType,
-                            li.Quantity,
-                            li.UnitCost,
-                            li.TotalCost,
+                            li.LineNumber, li.PartName, li.Operation, li.LaborType,
+                            li.LaborHours, li.PartType, li.Quantity, li.UnitCost, li.TotalCost,
                         }))
                         : null;
 
@@ -335,13 +362,8 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     Details = $"{inspection.Damages.Count} findings detected",
                 });
 
-                // ── DETERMINISTIC DECISION ──────────────────────────────
-                // DecisionEngine is the PRIMARY decision maker (deterministic
-                // fusion of forensic module scores).  Agent LLM provides
-                // explanatory reasoning text but CANNOT override the outcome.
                 var (ruleOutcome, ruleReason, ruleTraceJson) = DecisionEngine.Evaluate(inspection);
 
-                // Run Agent for explanation/reasoning (advisory only)
                 string agentSummary = "";
                 try
                 {
@@ -388,11 +410,10 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                             .ToList(),
                     };
 
-                    var agentResult = await _mlService.RunAgentEvaluationAsync(agentRequest, ct);
+                    var agentResult = await mlService.RunAgentEvaluationAsync(agentRequest, CancellationToken.None);
 
                     if (agentResult != null && !agentResult.FallbackUsed)
                     {
-                        // Store agent data for UI (reasoning steps, weather, etc.)
                         inspection.AgentDecisionJson = JsonSerializer.Serialize(agentResult,
                             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
                         inspection.AgentConfidence = agentResult.Confidence;
@@ -400,28 +421,24 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                         inspection.AgentStpEligible = agentResult.StpEligible;
                         inspection.AgentFallbackUsed = false;
                         inspection.AgentProcessingTimeMs = agentResult.ProcessingTimeMs;
-
-                        // Use agent's summary text for human-readable explanation
                         agentSummary = agentResult.SummaryHr;
                     }
                     else
                     {
-                        _logger.LogWarning("Agent returned fallback for inspection {Id}", inspection.Id);
+                        logger.LogWarning("Agent returned fallback for inspection {Id}", inspection.Id);
                         inspection.AgentFallbackUsed = true;
                     }
                 }
                 catch (Exception agentEx)
                 {
-                    _logger.LogWarning(agentEx, "Agent failed for inspection {Id}, continuing with deterministic decision", inspection.Id);
+                    logger.LogWarning(agentEx, "Agent failed for inspection {Id}, continuing with deterministic decision", inspection.Id);
                     inspection.AgentFallbackUsed = true;
                 }
 
-                // DecisionEngine outcome is ALWAYS final (deterministic)
                 inspection.DecisionOutcome = ruleOutcome;
                 inspection.DecisionReason = !string.IsNullOrEmpty(agentSummary) ? agentSummary : ruleReason;
                 inspection.DecisionTraceJson = ruleTraceJson;
 
-                // Hash agent decision (Phase 8)
                 if (inspection.AgentDecisionJson != null)
                     inspection.AgentDecisionHash = ComputeSha256(inspection.AgentDecisionJson);
                 custodyLog.Add(new EvidenceCustodyEvent
@@ -432,7 +449,6 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     Details = inspection.DecisionOutcome,
                 });
 
-                // Compute combined evidence hash (Phase 8)
                 var allHashes = imageHashes
                     .Select(h => (string)((dynamic)h).sha256)
                     .ToList();
@@ -441,10 +457,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 allHashes.Sort();
                 inspection.EvidenceHash = ComputeSha256(string.Join(":", allHashes));
 
-                // Obtain RFC 3161 timestamp
                 try
                 {
-                    var tsResult = await _mlService.ObtainTimestampAsync(inspection.EvidenceHash, ct);
+                    var tsResult = await mlService.ObtainTimestampAsync(inspection.EvidenceHash, CancellationToken.None);
                     if (tsResult.Success)
                     {
                         inspection.TimestampToken = tsResult.TimestampToken;
@@ -461,7 +476,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     }
                     else
                     {
-                        _logger.LogWarning("Timestamp failed: {Error}", tsResult.Error);
+                        logger.LogWarning("Timestamp failed: {Error}", tsResult.Error);
                         custodyLog.Add(new EvidenceCustodyEvent
                         {
                             Event = "timestamp_failed",
@@ -472,7 +487,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 }
                 catch (Exception tsEx)
                 {
-                    _logger.LogWarning(tsEx, "Timestamp call failed for inspection {Id}", inspection.Id);
+                    logger.LogWarning(tsEx, "Timestamp call failed for inspection {Id}", inspection.Id);
                     custodyLog.Add(new EvidenceCustodyEvent
                     {
                         Event = "timestamp_failed",
@@ -492,18 +507,12 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ML analysis failed for inspection {Id}", inspection.Id);
+            logger.LogError(ex, "Background analysis failed for inspection {Id}", inspection.Id);
             inspection.Status = InspectionStatus.Failed;
             inspection.ErrorMessage = ex.Message;
         }
 
-        // Use CancellationToken.None to ensure the final save always
-        // completes, even if the HTTP request was cancelled (e.g.
-        // Cloudflare 524 timeout). Without this, inspections get stuck
-        // in "Analyzing" state when the client disconnects mid-processing.
-        await _db.SaveChangesAsync(CancellationToken.None);
-
-        return MapToDto(inspection);
+        await db.SaveChangesAsync(CancellationToken.None);
     }
 
     internal static InspectionDto MapToDto(Inspection i) => new()
@@ -725,6 +734,22 @@ internal record DeviceData
     public int ScreenWidth { get; init; }
     public int ScreenHeight { get; init; }
     public string? CaptureTimestamp { get; init; }
+}
+
+// Background analysis data (carried from handler to background task)
+internal record BackgroundAnalysisData
+{
+    public Guid InspectionId { get; init; }
+    public byte[] FirstImageData { get; init; } = [];
+    public string FirstImageFileName { get; init; } = "";
+    public List<ImageInput> AllImages { get; init; } = [];
+    public string? CaptureSource { get; init; }
+    public string? VehicleMake { get; init; }
+    public string? VehicleModel { get; init; }
+    public int? VehicleYear { get; init; }
+    public int? Mileage { get; init; }
+    public List<object> ImageHashes { get; init; } = [];
+    public List<EvidenceCustodyEvent> CustodyLog { get; init; } = [];
 }
 
 // Evidence chain of custody (Phase 8)

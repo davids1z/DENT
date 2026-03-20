@@ -236,8 +236,14 @@ export interface VehicleContext {
   mileage?: number;
 }
 
-/** 3-minute timeout for analysis requests (CPU-only server can be slow). */
-const ANALYSIS_TIMEOUT_MS = 180_000;
+/** 30s timeout for upload (server returns immediately now, analysis runs in background). */
+const UPLOAD_TIMEOUT_MS = 30_000;
+
+/** Poll interval for checking analysis completion. */
+const POLL_INTERVAL_MS = 3_000;
+
+/** Max time to poll before giving up (5 minutes). */
+const POLL_MAX_MS = 300_000;
 
 export async function uploadInspectionWithMetadata(
   files: File[],
@@ -253,7 +259,7 @@ export async function uploadInspectionWithMetadata(
   formData.append("captureMetadata", JSON.stringify(captureMetadata));
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${API_BASE}/inspections`, {
@@ -270,7 +276,7 @@ export async function uploadInspectionWithMetadata(
     return res.json();
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("Analiza je istekla — server nije odgovorio unutar 3 minute. Pokusajte ponovo.");
+      throw new Error("Upload nije uspio — server nije odgovorio. Pokusajte ponovo.");
     }
     throw e;
   } finally {
@@ -290,7 +296,7 @@ export async function uploadInspection(
   if (vehicle?.mileage) formData.append("mileage", String(vehicle.mileage));
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${API_BASE}/inspections`, {
@@ -307,12 +313,31 @@ export async function uploadInspection(
     return res.json();
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("Analiza je istekla — server nije odgovorio unutar 3 minute. Pokusajte ponovo.");
+      throw new Error("Upload nije uspio — server nije odgovorio. Pokusajte ponovo.");
     }
     throw e;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Poll GET /api/inspections/{id} until status is no longer "Analyzing".
+ * Returns the completed (or failed) inspection.
+ */
+export async function pollInspectionUntilComplete(id: string): Promise<Inspection> {
+  const start = Date.now();
+
+  while (Date.now() - start < POLL_MAX_MS) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+    const inspection = await getInspection(id);
+    if (inspection.status !== "Analyzing") {
+      return inspection;
+    }
+  }
+
+  throw new Error("Analiza traje predugo. Provjerite rezultat na popisu inspekcija.");
 }
 
 export async function overrideDecision(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { uploadInspection, type Inspection } from "@/lib/api";
+import { uploadInspection, pollInspectionUntilComplete, type Inspection } from "@/lib/api";
 import { ImageUpload } from "@/components/ImageUpload";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
@@ -29,8 +29,16 @@ export default function InspectPage() {
     setSelectedDamageIndex(null);
 
     try {
-      // No captureMetadata → backend sets captureSource = "upload"
-      const inspection = await uploadInspection(files);
+      // Upload returns immediately with status=Analyzing
+      const created = await uploadInspection(files);
+
+      // Poll until analysis completes in background
+      const inspection = await pollInspectionUntilComplete(created.id);
+
+      if (inspection.status === "Failed") {
+        throw new Error(inspection.errorMessage || "Analiza nije uspjela");
+      }
+
       forensicProgress.complete();
       setResult(inspection);
       setActiveImageUrl(inspection.imageUrl);
