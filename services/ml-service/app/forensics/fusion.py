@@ -1,4 +1,8 @@
+import logging
+
 from .base import ModuleResult, RiskLevel
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_WEIGHTS: dict[str, float] = {
     "ai_generation_detection": 0.14,
@@ -81,110 +85,102 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
     overall = weighted_score / total_weight
 
     # ── Max-signal override ──────────────────────────────────────────
-    # Prevent strong single-module signals from being diluted by the
-    # weighted average.  One CRITICAL module should never produce a LOW
-    # overall score.
+    # Only boost for VERY strong single-module signals.
     active_modules = [m for m in modules if not m.error]
     if active_modules:
         max_module_score = max(m.risk_score for m in active_modules)
 
-        # Single CRITICAL module → boost overall to at least HIGH
-        if max_module_score >= 0.75 and overall < 0.50:
-            overall = max(overall, 0.50 + (max_module_score - 0.75) * 0.5)
-
-        # Single strong module → floor at 0.50
-        elif max_module_score >= 0.55 and overall < 0.50:
+        # Only a single genuinely CRITICAL module (>0.80) boosts the overall
+        if max_module_score >= 0.80 and overall < 0.50:
             overall = max(overall, 0.50)
 
-        # Single moderate module → floor at 0.40
-        elif max_module_score >= 0.45 and overall < 0.40:
-            overall = max(overall, 0.40)
-
-        # Multiple high-risk modules agreeing = strong signal
-        high_risk_count = sum(1 for m in active_modules if m.risk_score >= 0.50)
-        if high_risk_count >= 2 and overall < 0.60:
-            overall = max(overall, 0.60)
+        # Multiple high-risk modules (3+) agreeing is a strong signal
+        high_risk_count = sum(1 for m in active_modules if m.risk_score >= 0.55)
+        if high_risk_count >= 3 and overall < 0.55:
+            overall = max(overall, 0.55)
 
         # ── AI generation detection override ─────────────────────────
-        # Trained classifiers for AI content are authoritative — a single
-        # high signal should dominate the overall score.
+        # Only the trained Swin classifier is authoritative enough for override
         aigen = [m for m in active_modules if m.module_name == "ai_generation_detection"]
-        if aigen and aigen[0].risk_score >= 0.55:
-            overall = max(overall, aigen[0].risk_score * 0.92)
+        aigen_score = aigen[0].risk_score if aigen else 0.0
+        if aigen and aigen_score >= 0.65:
+            overall = max(overall, aigen_score * 0.88)
 
         # ── Multi-signal AI cross-validation ────────────────────────
-        # When multiple INDEPENDENT AI detectors (Swin, CLIP, VAE, PRNU) agree,
-        # the combined confidence is much higher than any single detector.
+        # Require STRONG signals (>= 0.55) from multiple detectors.
         ai_detectors = [
             m for m in active_modules
             if m.module_name in _AI_DETECTOR_MODULES
         ]
         if ai_detectors:
-            high_ai_count = sum(1 for m in ai_detectors if m.risk_score >= 0.45)
+            high_ai_count = sum(1 for m in ai_detectors if m.risk_score >= 0.55)
             max_ai_score = max(m.risk_score for m in ai_detectors)
 
             if high_ai_count >= 4:
-                # 4+ AI detectors agree — near-certain AI content
-                overall = max(overall, 0.92)
+                overall = max(overall, 0.90)
             elif high_ai_count >= 3:
-                # Three AI detectors agree — very high confidence
-                overall = max(overall, 0.85)
+                overall = max(overall, 0.80)
             elif high_ai_count >= 2:
-                # Two independent AI detectors agree — strong signal
-                overall = max(overall, max_ai_score * 0.95)
-            elif high_ai_count == 1 and max_ai_score >= 0.55:
-                # Single detector confident — ensure floor
                 overall = max(overall, max_ai_score * 0.88)
 
         # ── PRNU + AI generation cross-validation ─────────────────
-        # When PRNU detects no camera sensor pattern AND AI classifiers
-        # detect AI content, boost confidence significantly — this is
-        # two completely independent methods (physics vs ML) agreeing.
         prnu = [m for m in active_modules if m.module_name == "prnu_detection"]
         prnu_score = prnu[0].risk_score if prnu else 0.0
-        aigen_score = aigen[0].risk_score if aigen else 0.0
 
-        if prnu_score >= 0.50 and aigen_score >= 0.50:
-            # Both PRNU (no sensor) and AI classifier agree → near-certain
-            overall = max(overall, 0.90)
-        elif prnu_score >= 0.60 and aigen_score < 0.40:
-            # PRNU strong but classifier didn't fire — still suspicious
-            overall = max(overall, prnu_score * 0.80)
+        if prnu_score >= 0.55 and aigen_score >= 0.55:
+            overall = max(overall, 0.88)
+        elif prnu_score >= 0.65 and aigen_score < 0.40:
+            overall = max(overall, prnu_score * 0.70)
 
         # ── Metadata + AI cross-validation ───────────────────────
-        # When metadata shows AI generator software AND classifiers agree.
         metadata = [m for m in active_modules if m.module_name == "metadata_analysis"]
-        if metadata and aigen_score >= 0.40:
+        if metadata and aigen_score >= 0.50:
             meta_findings = metadata[0].findings
             has_ai_software = any(
                 f.code == "META_EDITING_SOFTWARE" and f.risk_score >= 0.30
                 for f in meta_findings
             )
             if has_ai_software:
-                overall = max(overall, 0.90)
+                overall = max(overall, 0.85)
 
         # ── Spectral + AI generation cross-validation ─────────────
-        # When two INDEPENDENT approaches (trained NN + frequency analysis)
-        # both detect AI content, boost confidence significantly.
         spectral = [m for m in active_modules if m.module_name == "spectral_forensics"]
         spectral_score = spectral[0].risk_score if spectral else 0.0
 
-        if aigen_score >= 0.40 and spectral_score >= 0.30:
-            # Cross-validated AI detection — two independent methods agree
+        if aigen_score >= 0.55 and spectral_score >= 0.40:
             cross_score = aigen_score * 0.60 + spectral_score * 0.40
             overall = max(overall, cross_score)
-        elif aigen_score >= 0.45 and spectral_score < 0.30:
-            # AI detector strong but spectral doesn't confirm — still trust NN
-            overall = max(overall, aigen_score * 0.85)
-        elif spectral_score >= 0.60 and aigen_score < 0.40:
-            # Spectral-only strong signal — novel AI generators may evade NN
-            # but leave frequency artifacts.  Don't let it be diluted.
-            overall = max(overall, spectral_score * 0.75)
+        elif spectral_score >= 0.65 and aigen_score < 0.40:
+            overall = max(overall, spectral_score * 0.65)
 
         # ── Text AI detection boost ──────────────────────────────────
         text_ai = [m for m in active_modules if m.module_name == "text_ai_detection"]
-        if text_ai and text_ai[0].risk_score >= 0.50:
-            overall = max(overall, text_ai[0].risk_score * 0.90)
+        if text_ai and text_ai[0].risk_score >= 0.55:
+            overall = max(overall, text_ai[0].risk_score * 0.88)
+
+        # ── VLM authenticity dampening ────────────────────────────────
+        # When the semantic/VLM module explicitly finds the image authentic,
+        # this is strong negative evidence that should reduce the overall
+        # score. VLM analysis considers lighting, shadows, perspective,
+        # debris physics — holistic features that simple detectors miss.
+        semantic = [m for m in active_modules if m.module_name == "semantic_forensics"]
+        if semantic:
+            sem_findings = semantic[0].findings
+            # Check if VLM found explicit authenticity markers
+            authentic_finding = next(
+                (f for f in sem_findings
+                 if f.code == "SEM_VLM_AUTHENTIC"
+                 and f.confidence >= 0.80),
+                None,
+            )
+            if authentic_finding and overall > 0.30:
+                # VLM says authentic with high confidence — dampen by 30%
+                dampened = overall * 0.70
+                overall = max(dampened, 0.25)  # Floor at 0.25
+                logger.debug(
+                    "VLM authenticity dampening: %.2f → %.2f (finding: %s)",
+                    overall / 0.70, overall, authentic_finding.code,
+                )
 
     overall = max(0.0, min(1.0, overall))
     overall_100 = round(overall * 100)
