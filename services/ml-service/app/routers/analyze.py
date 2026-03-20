@@ -382,7 +382,15 @@ def _enforce_forensic_severity(
     Upload images get stricter thresholds (lowered by 0.15) because
     they bypass live camera anti-fraud controls.
     """
-    risk = forensic_data.get("overall_risk_score", 0)
+    risk = forensic_data.get("overall_risk_score", 0) or 0
+    # Fallback: compute risk from modules if top-level is missing
+    if risk == 0:
+        modules = forensic_data.get("modules", [])
+        if modules:
+            scores = [m.get("risk_score", 0) or 0 for m in modules if not m.get("error")]
+            if scores:
+                risk = max(scores)
+                logger.info("enforce: overall_risk_score was 0, computed from max module: %.2f", risk)
     logger.info(
         "enforce_forensic_severity: risk=%.2f, capture_source=%s, damages=%d",
         risk, capture_source, len(response.damages),
@@ -880,12 +888,9 @@ async def analyze_with_context(
     # ── Deterministic severity enforcement ─────────────────────
     # Post-process Gemini output: fusion scores override severity
     # ratings to prevent LLM from contradicting forensic evidence.
-    _risk = forensic_data.get("overall_risk_score", 0)
-    logger.info(
-        "analyze_with_context: success=%s, overall_risk_score=%s, will_enforce=%s",
-        result.success, _risk, result.success and _risk > 0,
-    )
-    if result.success and _risk > 0:
+    # Always run when we have forensic data — the function uses
+    # the risk score internally to determine thresholds.
+    if result.damages and forensic_data.get("modules"):
         result = _enforce_forensic_severity(
             result, forensic_data, capture_source=capture_source or None
         )
