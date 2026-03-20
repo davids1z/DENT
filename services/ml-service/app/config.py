@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     # PRNU sensor noise analysis (camera fingerprinting)
     forensics_prnu_enabled: bool = True
 
+    # Content validation (OCR + OIB/IBAN check for Croatian documents)
+    forensics_content_validation_enabled: bool = True
+    forensics_content_validation_ocr_lang: str = "hrv+eng"
+
+    # GHOST calibration file (JSON with calibrated thresholds)
+    forensics_calibration_file: str = ""
+
+    # Stacking meta-learner (replaces hand-crafted fusion rules when trained)
+    forensics_stacking_meta_enabled: bool = False
+    forensics_stacking_meta_weights: str = ""
+
     # Agent settings (Phase 7)
     agent_enabled: bool = True
     agent_model: str = ""

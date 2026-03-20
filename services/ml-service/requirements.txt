@@ -33,3 +33,5 @@ fpdf2>=2.8.0
 # CLIP AI detection (UniversalFakeDetect style — model downloaded via transformers)
 # VAE reconstruction error detection (DIRE/CO-SPY style)
 diffusers>=0.27.0
+# Content validation (OCR for scanned documents)
+pytesseract>=0.3.10

@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from ..config import settings
 from ..forensics.base import ForensicReport
 from ..forensics.pipeline import ForensicPipeline
+from ..forensics.thresholds import get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ def get_pipeline() -> ForensicPipeline:
     """Return the singleton ForensicPipeline, creating it once if needed."""
     global _pipeline
     if _pipeline is None:
+        # Initialize threshold registry (loads calibration file if configured)
+        get_registry(settings.forensics_calibration_file)
         _pipeline = ForensicPipeline(
             ela_quality=settings.forensics_ela_quality,
             ela_scale=settings.forensics_ela_scale,
@@ -43,6 +46,8 @@ def get_pipeline() -> ForensicPipeline:
             vae_recon_enabled=settings.forensics_vae_recon_enabled,
             text_ai_enabled=settings.forensics_text_ai_enabled,
             prnu_enabled=settings.forensics_prnu_enabled,
+            content_validation_enabled=settings.forensics_content_validation_enabled,
+            content_validation_ocr_lang=settings.forensics_content_validation_ocr_lang,
         )
     return _pipeline
 

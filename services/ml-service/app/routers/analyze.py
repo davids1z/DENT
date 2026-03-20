@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from ..config import settings
 from ..forensics.fusion import _AI_DETECTOR_MODULES
 from ..forensics.fusion import DEFAULT_WEIGHTS
+from ..forensics.thresholds import get_registry
 from ..schemas import (
     AnalysisResponse,
     BoundingBox,
@@ -446,9 +447,10 @@ def _enforce_forensic_severity(
 
     # Upload images get stricter thresholds
     is_upload = capture_source == "upload"
-    t_critical = 0.50 if is_upload else 0.65
-    t_high = 0.30 if is_upload else 0.40
-    t_medium = 0.12 if is_upload else 0.20
+    reg = get_registry()
+    t_critical = reg.enforcement.upload_critical if is_upload else reg.enforcement.critical
+    t_high = reg.enforcement.upload_high if is_upload else reg.enforcement.high
+    t_medium = reg.enforcement.upload_medium if is_upload else reg.enforcement.medium
 
     FRAUD_CAUSES = {
         "AI generiranje",
@@ -504,7 +506,7 @@ def _enforce_forensic_severity(
     # that fire with risk >= 0.45 must block "Autenticno" findings.
     modules = forensic_data.get("modules", [])
     any_ai_high = any(
-        m.get("risk_score", 0) >= 0.45
+        m.get("risk_score", 0) >= reg.enforcement.ai_detector_override
         for m in modules
         if m.get("module_name") in _AI_DETECTOR_MODULES
     )
@@ -582,9 +584,10 @@ def _enforce_forensic_severity(
 # Module → damage mapping: deterministic forensic verdict
 # ──────────────────────────────────────────────────────────────────────
 
-_MODULE_DAMAGE_MAP: dict[str, dict] = {
+# Static part of the damage map (descriptions, severity labels).
+# Thresholds are injected from ThresholdRegistry at call time.
+_MODULE_DAMAGE_STATIC: dict[str, dict] = {
     "ai_generation_detection": {
-        "threshold": 0.50,
         "damage_cause": "AI generiranje",
         "severity_high": "Critical",
         "severity_low": "Severe",
@@ -594,7 +597,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "clip_ai_detection": {
-        "threshold": 0.45,
         "damage_cause": "AI generiranje",
         "severity_high": "Severe",
         "severity_low": "Moderate",
@@ -604,7 +606,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "prnu_detection": {
-        "threshold": 0.45,
         "damage_cause": "Metadata anomalija",
         "severity_high": "Severe",
         "severity_low": "Moderate",
@@ -614,7 +615,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "vae_reconstruction": {
-        "threshold": 0.45,
         "damage_cause": "Sumnjiva tekstura",
         "severity_high": "Severe",
         "severity_low": "Moderate",
@@ -624,7 +624,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "spectral_forensics": {
-        "threshold": 0.35,
         "damage_cause": "Spektralna anomalija",
         "severity_high": "Severe",
         "severity_low": "Moderate",
@@ -634,7 +633,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "deep_modification_detection": {
-        "threshold": 0.45,
         "damage_cause": "Digitalna manipulacija",
         "severity_high": "Severe",
         "severity_low": "Moderate",
@@ -644,7 +642,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "modification_detection": {
-        "threshold": 0.25,
         "damage_cause": "Rekompresijski artefakti",
         "severity_high": "Moderate",
         "severity_low": "Moderate",
@@ -654,7 +651,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "metadata_analysis": {
-        "threshold": 0.30,
         "damage_cause": "Metadata anomalija",
         "severity_high": "Moderate",
         "severity_low": "Moderate",
@@ -664,7 +660,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "semantic_forensics": {
-        "threshold": 0.40,
         "damage_cause": "Statisticka anomalija",
         "severity_high": "Moderate",
         "severity_low": "Moderate",
@@ -674,7 +669,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "optical_forensics": {
-        "threshold": 0.40,
         "damage_cause": "Nekonzistentno osvjetljenje",
         "severity_high": "Moderate",
         "severity_low": "Moderate",
@@ -684,7 +678,6 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
         ),
     },
     "text_ai_detection": {
-        "threshold": 0.45,
         "damage_cause": "AI generiranje",
         "severity_high": "Severe",
         "severity_low": "Moderate",
@@ -693,7 +686,30 @@ _MODULE_DAMAGE_MAP: dict[str, dict] = {
             "ima karakteristike strojno generiranog sadrzaja."
         ),
     },
+    "content_validation": {
+        "damage_cause": "Krivotvoreni identifikatori",
+        "severity_high": "Critical",
+        "severity_low": "Severe",
+        "fallback_desc": (
+            "Validacija sadrzaja otkrila je nevazece identifikacijske brojeve "
+            "(OIB ili IBAN) u dokumentu, sto ukazuje na krivotvorenje."
+        ),
+    },
 }
+
+
+def _get_module_damage_map() -> dict[str, dict]:
+    """Build module damage map with thresholds from the registry."""
+    reg = get_registry()
+    result = {}
+    for mod_name, static in _MODULE_DAMAGE_STATIC.items():
+        entry = dict(static)
+        if mod_name in reg.module_damage:
+            entry["threshold"] = reg.module_damage[mod_name].threshold
+        else:
+            entry["threshold"] = 0.40  # safe default
+        result[mod_name] = entry
+    return result
 
 
 def _compute_deterministic_verdict(
@@ -726,7 +742,8 @@ def _compute_deterministic_verdict(
 
     # ── Generate mandatory findings from modules that exceed thresholds ──
     findings: list[dict] = []
-    for mod_name, mapping in _MODULE_DAMAGE_MAP.items():
+    damage_map = _get_module_damage_map()
+    for mod_name, mapping in damage_map.items():
         mod = mod_lookup.get(mod_name)
         if not mod:
             continue
@@ -736,9 +753,11 @@ def _compute_deterministic_verdict(
             mod_risk = 0.0
 
         threshold = mapping["threshold"]
-        # Upload images: lower thresholds by 0.10
+        # Upload images: lower thresholds by upload_offset
         if is_upload:
-            threshold = max(0.10, threshold - 0.10)
+            md = reg.module_damage.get(mod_name)
+            offset = md.upload_offset if md else 0.10
+            threshold = max(0.10, threshold - offset)
 
         if mod_risk >= threshold:
             severity = mapping["severity_high"] if mod_risk >= 0.60 else mapping["severity_low"]
@@ -758,19 +777,20 @@ def _compute_deterministic_verdict(
             })
 
     # ── Determine overall verdict ──
-    if risk >= 0.60 or len(findings) >= 3:
+    reg = get_registry()
+    if risk >= reg.verdict.forged_risk or len(findings) >= reg.verdict.forged_min_findings:
         overall_verdict = "Krivotvoreno"
-    elif risk >= 0.30 or len(findings) >= 1:
+    elif risk >= reg.verdict.suspicious_risk or len(findings) >= reg.verdict.suspicious_min_findings:
         overall_verdict = "Sumnjivo"
     else:
         overall_verdict = "Autenticno"
 
     # ── Urgency ──
-    if risk >= 0.60:
+    if risk >= reg.verdict.urgency_critical:
         urgency = "Critical"
-    elif risk >= 0.40:
+    elif risk >= reg.verdict.urgency_high:
         urgency = "High"
-    elif risk >= 0.20:
+    elif risk >= reg.verdict.urgency_medium:
         urgency = "Medium"
     else:
         urgency = "Low"

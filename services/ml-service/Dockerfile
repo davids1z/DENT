@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
     libjpeg-dev \
+    tesseract-ocr \
+    tesseract-ocr-hrv \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

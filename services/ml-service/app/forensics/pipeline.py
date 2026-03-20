@@ -14,6 +14,7 @@ from .analyzers.office import OfficeForensicsAnalyzer
 from .analyzers.optical import OpticalForensicsAnalyzer
 from .analyzers.semantic import SemanticForensicsAnalyzer
 from .analyzers.text_ai_detection import TextAiDetectionAnalyzer
+from .analyzers.content_validation import ContentValidationAnalyzer
 from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
@@ -46,6 +47,8 @@ class ForensicPipeline:
         vae_recon_enabled: bool = True,
         text_ai_enabled: bool = True,
         prnu_enabled: bool = True,
+        content_validation_enabled: bool = True,
+        content_validation_ocr_lang: str = "hrv+eng",
     ):
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
@@ -96,6 +99,11 @@ class ForensicPipeline:
         self._prnu: PrnuDetectionAnalyzer | None = (
             PrnuDetectionAnalyzer() if prnu_enabled else None
         )
+        self._content_val: ContentValidationAnalyzer | None = (
+            ContentValidationAnalyzer(ocr_lang=content_validation_ocr_lang)
+            if content_validation_enabled
+            else None
+        )
 
     def _count_active_modules(self, skip: set, file_category: str) -> int:
         """Count how many modules will actually run (for progress tracking)."""
@@ -105,12 +113,16 @@ class ForensicPipeline:
                 count += 1
             if self._text_ai and self._text_ai.MODULE_NAME not in skip:
                 count += 1
+            if self._content_val and self._content_val.MODULE_NAME not in skip:
+                count += 1
             return count
         if file_category in ("docx", "xlsx"):
             count = 0
             if self._office and self._office.MODULE_NAME not in skip:
                 count += 1
             if self._text_ai and self._text_ai.MODULE_NAME not in skip:
+                count += 1
+            if self._content_val and self._content_val.MODULE_NAME not in skip:
                 count += 1
             return count
         # Image modules
@@ -198,6 +210,11 @@ class ForensicPipeline:
                     self._text_ai.MODULE_NAME,
                     asyncio.ensure_future(self._text_ai.analyze_document(file_bytes, filename)),
                 ))
+            if self._content_val and self._content_val.MODULE_NAME not in skip:
+                doc_tasks.append((
+                    self._content_val.MODULE_NAME,
+                    asyncio.ensure_future(self._content_val.analyze_document(file_bytes, filename)),
+                ))
             if doc_tasks:
                 results = await asyncio.gather(
                     *[t for _, t in doc_tasks], return_exceptions=True
@@ -225,6 +242,11 @@ class ForensicPipeline:
                 office_tasks.append((
                     self._text_ai.MODULE_NAME,
                     asyncio.ensure_future(self._text_ai.analyze_document(file_bytes, filename)),
+                ))
+            if self._content_val and self._content_val.MODULE_NAME not in skip:
+                office_tasks.append((
+                    self._content_val.MODULE_NAME,
+                    asyncio.ensure_future(self._content_val.analyze_document(file_bytes, filename)),
                 ))
             if office_tasks:
                 results = await asyncio.gather(
