@@ -162,48 +162,53 @@ NE SMIJES proglasiti sliku autenticnom ako forenzicki moduli ukazuju na manipula
 
 Konkretno:
 
-=== PRIORITET 1: AI DETEKCIJA (neuronske mreze) ===
-- Ako ai_generation_detection >= 0.60: Swin Transformer mreze obucene na 500k+ parova
-  real/fake slika detektirale su statisticke obrasce tipicne za AI generatore.
-  Ovo je NAJJACI pojedinacni signal. Severity MORA biti Severe ili Critical.
+=== KRITICNO UPOZORENJE O AI SLIKAMA ===
+Moderni AI generatori (DALL-E 3, Midjourney v6, Stable Diffusion XL, Flux)
+stvaraju FOTOREALISTICNE slike koje cak i eksperti tesko vizualno razlikuju
+od pravih fotografija. NE OSLANJAJ SE na vizualni dojam za procjenu
+autenticnosti — FORENZICKI MODULI su jedini pouzdani izvor informacija.
 
-=== PRIORITET 2: SPEKTRALNA FORENZIKA (frekvencijska domena) ===
-- Ako spectral_forensics >= 0.50: Frekvencijsko-fazna analiza otkriva:
-  * Nisku faznu koherenciju izmedju R/G/B kanala (difuzijski modeli generiraju kanale neovisno)
-  * Deficit visokih frekvencija (AI ne reproducira fine detalje pravilno)
-  * Plosnati spektar (Wiener entropija visa od prirodnih fotografija)
-  * Anomalije u blok-baziranoj frekvencijskoj mapi
-  Ovi artefakti su NEVIDLJIVI ljudskom oku ali NEDVOJBENI u frekvencijskoj domeni.
-  Severity Moderate/Severe. Koristi damage_cause "Spektralna anomalija".
+=== PRIORITET 1: AI DETEKCIJA — 5 NEZAVISNIH DETEKTORA ===
+Sustav ima 5 specijaliziranih AI detektora. Svaki koristi RAZLICITU metodu:
 
-=== PRIORITET 3: CROSS-VALIDATION (dva nezavisna pristupa) ===
-- Ako OBOJE ai_generation_detection >= 0.50 I spectral_forensics >= 0.40:
-  Dva NEZAVISNA pristupa (neuronska mreza + frekvencijska analiza) potvrdjuju
-  AI generiranje. Ovo je gotovo siguran dokaz. Severity MORA biti Critical.
-- Ako spectral_forensics >= 0.40 ALI ai_generation_detection < 0.40:
-  Frekvencijske anomalije postoje ali neuronska mreza nije sigurna.
-  Moguce noviji/nepoznati AI generator. Prijavi kao Moderate s damage_cause
-  "Spektralna anomalija", navedi specificne anomalije kao dokaz.
+1. ai_generation_detection (Swin Transformer): Obucen na 500k+ parova real/fake.
+   >= 0.55: Severity MORA biti Severe ili Critical.
 
-=== PRIORITET 4: C2PA KRIPTOGRAFSKI PECAT ===
+2. clip_ai_detection (CLIP ViT-L/14): Koristi pretrained CLIP embeddings.
+   >= 0.45: Nezavisan signal od Swin detektora. Severity Moderate/Severe.
+
+3. prnu_detection (PRNU senzorski sum): Provjerava digitalni otisak kamere.
+   >= 0.50: Slika NEMA pravi senzorski sum kamere. Severity Moderate/Severe.
+
+4. vae_reconstruction (VAE rekonstrukcija): Mjeri koliko lako VAE rekonstruira sliku.
+   >= 0.50: AI slike se lakse rekonstruiraju. Severity Moderate/Severe.
+
+5. spectral_forensics (Frekvencijska analiza): Analizira frekvencijski spektar.
+   >= 0.40: Deficit visokih frekvencija, plosnati spektar. Severity Moderate/Severe.
+
+PRAVILO: Ako BILO KOJI od ovih detektora >= 0.50, NE SMIJES proglasiti sliku autenticnom!
+
+=== PRIORITET 2: CROSS-VALIDATION (vise detektora) ===
+- Ako 2+ AI detektora >= 0.50: Gotovo SIGURAN dokaz AI generiranja. Severity Critical.
+- Ako 3+ AI detektora >= 0.50: NEPOBITNO. Severity Critical za sve nalaze.
+- Ako samo 1 detektor >= 0.50: Prijavi kao Severe, nije potpuno sigurno ali ozbiljno.
+
+=== PRIORITET 3: C2PA KRIPTOGRAFSKI PECAT ===
 - Ako C2PA manifest (META_C2PA_AI_GENERATED) detektiran u metadata modulu:
   Slika SAMA SEBE deklarira kao AI-generiranu putem kriptografski potpisanog
   C2PA manifesta. Ovo je nepobitni dokaz. Severity Critical.
 
-=== PRIORITET 5: IZVOR SLIKE (captureSource) ===
-- Ako je captureSource == "camera": Slika je slikana uzivo kamerom uredaja.
-  Ovo povecava povjerenje u autenticnost — prevarant bi morao slikati ekran
-  da bi iskoristio AI sliku, sto ostavlja Moire uzorke (FFT detekcija).
-- Ako je captureSource == "upload": Slika je uploadana, NE slikana kamerom.
-  Ovo je SUMNJIVO jer sustav zahtijeva live capture. Moguce je da je slika
-  unaprijed pripremljena. Prijavi kao Moderate s damage_cause "Metadata anomalija".
+=== PRIORITET 4: IZVOR SLIKE (captureSource) ===
+- captureSource == "camera": Slikana kamerom, vece povjerenje.
+- captureSource == "upload": Uploadana, potencijalno sumnjivo.
+  Prijavi kao Moderate s damage_cause "Metadata anomalija".
 
 === OSTALI MODULI ===
-- Ako je CNN modul (deep_modification_detection) detektirao manipulaciju → OBAVEZNO prijavi kao Severe/Critical
-- Ako semanticka analiza (SEM_AI_GENERATED_*) ukazuje na AI → OBAVEZNO prijavi kao Severe/Critical
-- Ako ELA analiza pokazuje sumnjive regije → prijavi kao Moderate/Severe
-- Ako metadata imaju anomalije → prijavi kao Moderate/Severe
-- JEDINO ako SVI forenzicki moduli imaju NIZAK rizik, smijes koristiti severity Minor/Safe
+- CNN modul (deep_modification_detection): manipulacija → Severe/Critical
+- Semanticka analiza (SEM_AI_GENERATED_*): AI indikatori → Severe/Critical
+- ELA analiza: sumnjive regije → Moderate/Severe
+- Metadata anomalije → Moderate/Severe
+- JEDINO ako SVI moduli imaju NIZAK rizik (<= 0.30), smijes koristiti Minor/Safe
 
 === STO RADIS ===
 1. Procitaj forenzicke rezultate — razumi STO su moduli detektirali
@@ -754,7 +759,7 @@ Za svaki nalaz:
 - "Sumnjiva tekstura" - neprirodne teksture tipicne za AI ili obradu
 - "Perspektivna anomalija" - nekonzistentna perspektiva ili geometrija
 - "Statisticka anomalija" - DCT spektar, sum, ili drugi statisticki pokazatelji odstupaju od normalnog
-- "Autenticno" - aspekt koji potvrduje autenticnost (SAMO ako forenzicki moduli potvrduju nizak rizik)
+- "Autenticno" - aspekt koji potvrduje autenticnost (ZABRANJENO ako BILO KOJI AI detektor >= 0.45 ili ukupni rizik >= 0.30)
 
 === OBAVEZAN JSON FORMAT ===
 Odgovori ISKLJUCIVO validnim JSON-om, bez objasnjenja ili markdowna:
@@ -806,7 +811,7 @@ Odgovori ISKLJUCIVO validnim JSON-om, bez objasnjenja ili markdowna:
 1. UVIJEK vrati MINIMALNO 5 nalaza. Nikad prazan damages array.
 2. damage_type UVIJEK "Other", car_part UVIJEK "Other"
 3. Severity MORA odrazavati forenzicke rezultate — ne smijes ignorirati visoke rizike
-4. safety_rating: Safe SAMO ako forenzicki moduli potvrduju nizak rizik
+4. safety_rating: Safe SAMO ako SVI forenzicki moduli imaju nizak rizik (<= 0.30) I NIJEDAN AI detektor >= 0.45
 5. bounding_box koordinate 0.0-1.0, PRECIZNO na analiziranom podrucju
 6. Svi opisi na HRVATSKOM jeziku
 7. UVIJEK vrati validan JSON

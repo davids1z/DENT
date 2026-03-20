@@ -354,13 +354,36 @@ class SemanticForensicsAnalyzer(BaseAnalyzer):
 
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        prompt = """Analiziraj ovu sliku kao forenzicki strucnjak za otkrivanje prijevara. Trazi sljedece:
+        prompt = """Ti si forenzicki strucnjak specijaliziran za otkrivanje AI-generiranih slika i digitalnih krivotvorina.
 
-1. FIZIKALNE NEPRAVILNOSTI: Nemoguce osvjetljenje, sjene, refleksije ili perspektiva
-2. AI ARTEFAKTI: Ponavljajuce teksture, anatomske greske, iskrivljen tekst, neprirodni prijelazi
-3. EKRANSKA REKAPTURA: Vidljivi rubovi ekrana, Moire uzorci, odsjaj ekrana, pikseli ekrana
-4. DIGITALNA MANIPULACIJA: Nekonzistentne razine kompresije, klonirani dijelovi, neprirodni rubovi
-5. SINTETICKI SADRZAJ: Znakovi generiranja difuzijskim modelima (DALL-E, Stable Diffusion, Midjourney)
+VAZNO: Moderni AI generatori (DALL-E 3, Midjourney v6, Stable Diffusion XL, Flux) stvaraju FOTOREALISTICNE slike koje na prvi pogled izgledaju potpuno autenticno. NE PRETPOSTAVLJAJ da je slika autenticna samo zato sto izgleda uvjerljivo. Budi SKEPTICAN i trazi suptilne znakove.
+
+Detaljno analiziraj sliku za SVAKI od ovih pokazatelja:
+
+1. AI GENERIRANJE (NAJVAZNIJE):
+   - Previse savrsene/glatke povrsine bez realnog suma kamere
+   - Neprirodni prijelazi izmedu objekata i pozadine
+   - Previse savrseno ili previse kaotično osvjetljenje bez realnog rasprsivanja svjetla
+   - Ponavljajuce mikro-teksture ili uzorci u pozadini
+   - Neprirodni detalji na rukama, prstima, zubima, ocima, tekstu
+   - "Plastican" ili "renderiran" izgled materijala (metal, staklo, drvo)
+   - Geometrijske nemogucnosti (perspektiva, proporcije, simetrija)
+   - Nedostatak senzorskog suma kamere (suma je previse uniforman ili ga nema)
+   - Nedostatak kromatske aberacije i optičkih nesavršenosti leće
+   - Previse oster fokus svugdje (realna fotografija ima dubinu polja)
+
+2. FIZIKALNE NEPRAVILNOSTI:
+   - Sjene koje ne odgovaraju izvoru svjetla
+   - Refleksije koje ne odgovaraju sceni
+   - Fizicki nemoguce situacije
+
+3. DIGITALNA MANIPULACIJA:
+   - Nekonzistentne razine kompresije
+   - Klonirani/kopirani dijelovi slike
+   - Neprirodni rubovi oko objekata (montaza)
+
+4. EKRANSKA REKAPTURA:
+   - Moire uzorci, pikseli ekrana, odsjaj
 
 Odgovori ISKLJUCIVO u JSON formatu:
 {
@@ -377,7 +400,11 @@ Odgovori ISKLJUCIVO u JSON formatu:
   "explanation": "Kratko objasnjenje na hrvatskom (2-3 recenice)"
 }
 
-Ako slika izgleda autenticno, postavi is_suspicious=false i objasni zasto."""
+PRAVILA:
+- Ako pronadjes BILO KOJI znak AI generiranja, postavi is_suspicious=true
+- Budi SKEPTICAN prema fotorealisticnim slikama — moderni AI ih lako stvara
+- Ako nisi siguran, radije postavi is_suspicious=true s umjerenom confidence
+- SAMO ako si POTPUNO SIGURAN da je slika autenticna fotografija prave kamere, postavi is_suspicious=false"""
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -476,13 +503,20 @@ Ako slika izgleda autenticno, postavi is_suspicious=false i objasni zasto."""
                 )
             )
         elif not is_suspicious:
+            # NOTE: VLMs are NOT reliable for detecting modern AI-generated
+            # images. An "authentic" verdict from the VLM should carry very
+            # little weight and should NEVER override dedicated AI detectors.
             findings.append(
                 AnalyzerFinding(
                     code="SEM_VLM_AUTHENTIC",
                     title="VLM: Slika djeluje autenticno",
-                    description=explanation or "VLM analiza nije pronasla sumnjive karakteristike.",
-                    risk_score=-0.05,
-                    confidence=confidence,
+                    description=(
+                        (explanation or "VLM analiza nije pronasla sumnjive karakteristike.")
+                        + " NAPOMENA: VLM nije specijalizirani detektor AI sadrzaja — "
+                        "moderni generatori mogu prevariti opce modele."
+                    ),
+                    risk_score=0.0,  # Neutral, not negative — VLM should not reduce scores
+                    confidence=max(0.0, confidence * 0.5),  # Halve confidence for "authentic"
                     evidence=evidence,
                 )
             )

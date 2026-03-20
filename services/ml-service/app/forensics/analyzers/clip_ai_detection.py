@@ -215,12 +215,12 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
 
         if self._probe is not None and "weights" in self._probe:
             # Linear probe: sigmoid(w . x + b)
-            # Calibration fix: the probe was trained on a small set (~100 images
-            # each) and has an inflated bias (0.95 → sigmoid baseline = 0.72).
-            # This makes EVERY image start at 72% "AI probability" before the
-            # dot product is even considered — massive false positive rate.
-            # Subtract 1.0 from bias so a typical real photo scores ~0.40.
-            calibrated_bias = float(self._probe["bias"]) - 1.0
+            # Calibration: the probe was trained on a small set (~100 images
+            # each). Subtract 0.5 from bias to shift the sigmoid decision
+            # boundary without losing sensitivity to AI-generated content.
+            # With bias 0.95 → calibrated 0.45 → sigmoid(0.45) ≈ 0.61
+            # baseline, which is detectable but not as extreme as raw 0.72.
+            calibrated_bias = float(self._probe["bias"]) - 0.5
             logit = float(np.dot(self._probe["weights"], embedding_normed)
                           + calibrated_bias)
             score = 1.0 / (1.0 + np.exp(-logit))
@@ -297,7 +297,7 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
     def _emit_findings(
         score: float, findings: list[AnalyzerFinding]
     ) -> None:
-        if score > 0.75:
+        if score > 0.70:
             findings.append(
                 AnalyzerFinding(
                     code="CLIP_AI_DETECTED",
@@ -309,12 +309,12 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
                         f"CLIP embeddinzi razlikuju realne fotografije od sintetickih "
                         f"slika neovisno o specificnom generatoru."
                     ),
-                    risk_score=min(0.80, max(0.60, score * 0.85)),
-                    confidence=min(0.90, 0.60 + score * 0.20),
+                    risk_score=min(0.90, max(0.65, score * 0.90)),
+                    confidence=min(0.90, 0.60 + score * 0.25),
                     evidence={"clip_score": round(score, 4), "method": "clip_vit_l14"},
                 )
             )
-        elif score > 0.55:
+        elif score > 0.45:
             findings.append(
                 AnalyzerFinding(
                     code="CLIP_AI_SUSPECTED",
@@ -324,12 +324,12 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
                         f"({score:.0%}) da je slika umjetno generirana. "
                         f"Signal je nezavisan od Swin Transformer detektora."
                     ),
-                    risk_score=max(0.35, score * 0.70),
-                    confidence=min(0.75, 0.45 + score * 0.25),
+                    risk_score=max(0.40, score * 0.75),
+                    confidence=min(0.80, 0.45 + score * 0.30),
                     evidence={"clip_score": round(score, 4), "method": "clip_vit_l14"},
                 )
             )
-        elif score > 0.35:
+        elif score > 0.25:
             findings.append(
                 AnalyzerFinding(
                     code="CLIP_AI_LOW",
@@ -338,8 +338,8 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
                         f"CLIP embedding analiza pokazuje blage indikatore "
                         f"({score:.0%}) moguceg AI generiranja."
                     ),
-                    risk_score=score * 0.45,
-                    confidence=0.40 + score * 0.10,
+                    risk_score=score * 0.50,
+                    confidence=0.40 + score * 0.15,
                     evidence={"clip_score": round(score, 4), "method": "clip_vit_l14"},
                 )
             )

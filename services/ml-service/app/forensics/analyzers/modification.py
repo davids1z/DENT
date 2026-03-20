@@ -422,8 +422,9 @@ class ModificationAnalyzer(BaseAnalyzer):
             return
 
         # ── Filter out low-variance blocks (uniform areas) ─────────
-        # Uniform regions (sky, asphalt, dark areas, debris) naturally have
-        # high cosine similarity and cause massive false positives.
+        # Uniform regions (sky, asphalt, dark areas) naturally have high
+        # cosine similarity. Filter them to reduce false positives, but
+        # keep threshold low enough to detect real copy-move in textured areas.
         n_blocks = len(blocks)
         features = np.array([b[2] for b in blocks])
 
@@ -434,9 +435,8 @@ class ModificationAnalyzer(BaseAnalyzer):
             block_variances.append(float(np.var(blk)))
         block_variances = np.array(block_variances)
 
-        # Only keep blocks with enough texture (variance > 10th percentile
-        # AND absolute variance > 100 — skip very flat blocks)
-        var_threshold = max(np.percentile(block_variances, 25), 150.0)
+        # Keep blocks with enough texture (above 10th percentile AND > 80)
+        var_threshold = max(np.percentile(block_variances, 10), 80.0)
         textured_mask = block_variances >= var_threshold
         textured_indices = np.where(textured_mask)[0]
 
@@ -458,19 +458,19 @@ class ModificationAnalyzer(BaseAnalyzer):
         sim_matrix = features @ features.T
 
         # Find pairs with very high similarity but large spatial distance
-        min_distance = block_size * 2  # Require 2x block distance (was 1x)
+        min_distance = int(block_size * 1.5)
         matching_pairs: list[tuple[int, int, float]] = []
 
         for i in range(n_blocks):
             for j in range(i + 1, n_blocks):
-                if sim_matrix[i, j] > 0.98:  # Raised from 0.95
+                if sim_matrix[i, j] > 0.97:
                     y1, x1 = blocks[i][0], blocks[i][1]
                     y2, x2 = blocks[j][0], blocks[j][1]
                     dist = np.sqrt((y1 - y2) ** 2 + (x1 - x2) ** 2)
                     if dist > min_distance:
                         matching_pairs.append((i, j, float(sim_matrix[i, j])))
 
-        if len(matching_pairs) >= 8:
+        if len(matching_pairs) >= 5:
             avg_sim = np.mean([p[2] for p in matching_pairs])
             findings.append(
                 AnalyzerFinding(
@@ -482,8 +482,8 @@ class ModificationAnalyzer(BaseAnalyzer):
                         "pozicijama. Ovo snazno ukazuje da je dio slike kopiran "
                         "i zalijepljen na drugo mjesto."
                     ),
-                    risk_score=min(0.55, 0.25 + len(matching_pairs) * 0.01),
-                    confidence=0.70,
+                    risk_score=min(0.65, 0.30 + len(matching_pairs) * 0.015),
+                    confidence=0.75,
                     evidence={
                         "matching_pairs": len(matching_pairs),
                         "average_similarity": round(avg_sim, 4),
@@ -491,7 +491,7 @@ class ModificationAnalyzer(BaseAnalyzer):
                     },
                 )
             )
-        elif len(matching_pairs) >= 3:
+        elif len(matching_pairs) >= 2:
             avg_sim = np.mean([p[2] for p in matching_pairs])
             findings.append(
                 AnalyzerFinding(
@@ -502,8 +502,8 @@ class ModificationAnalyzer(BaseAnalyzer):
                         f"blokova na razlicitim pozicijama (prosj. slicnost {avg_sim:.3f}). "
                         "Moguci pokazatelj copy-move uredivanja."
                     ),
-                    risk_score=0.15,
-                    confidence=0.50,
+                    risk_score=0.20,
+                    confidence=0.55,
                     evidence={
                         "matching_pairs": len(matching_pairs),
                         "average_similarity": round(avg_sim, 4),
