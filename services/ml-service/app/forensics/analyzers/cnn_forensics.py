@@ -90,9 +90,13 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             try:
                 from photoholmes.methods.catnet import CatNet
 
-                self._catnet_method = CatNet.load()
-                self._catnet_method.eval()
-                logger.info("CAT-Net model loaded successfully")
+                weights_path = os.path.join(cache_dir, "cnn", "catnet", "weights.pth")
+                if os.path.exists(weights_path):
+                    self._catnet_method = CatNet("pretrained", weights=weights_path)
+                    self._catnet_method.eval()
+                    logger.info("CAT-Net loaded from %s", weights_path)
+                else:
+                    logger.warning("CatNet weights not found at %s", weights_path)
             except Exception as e:
                 logger.warning("Failed to load CAT-Net: %s", e)
                 self._catnet_method = None
@@ -101,9 +105,13 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             try:
                 from photoholmes.methods.trufor import TruFor
 
-                self._trufor_method = TruFor.load()
-                self._trufor_method.eval()
-                logger.info("TruFor model loaded successfully")
+                weights_path = os.path.join(cache_dir, "cnn", "trufor", "trufor.pth.tar")
+                if os.path.exists(weights_path):
+                    self._trufor_method = TruFor(weights=weights_path)
+                    self._trufor_method.eval()
+                    logger.info("TruFor loaded from %s", weights_path)
+                else:
+                    logger.warning("TruFor weights not found at %s", weights_path)
             except Exception as e:
                 logger.warning("Failed to load TruFor: %s", e)
                 self._trufor_method = None
@@ -178,12 +186,12 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 tmp_path = tmp.name
 
             try:
-                # CAT-Net processes from file path for DCT extraction
+                # Use PhotoHolmes preprocessing to extract DCT coefficients
+                preprocessing = default_preprocessing("catnet")
+                image_data = preprocessing(image=img_arr, dct_coefficients=tmp_path)
+
                 with torch.no_grad():
-                    output = self._catnet_method.predict(
-                        image=torch.from_numpy(img_arr).permute(2, 0, 1).unsqueeze(0).float() / 255.0,
-                        dct_coefficients=tmp_path,
-                    )
+                    output = self._catnet_method.predict(**image_data)
             finally:
                 os.unlink(tmp_path)
 
@@ -260,16 +268,16 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         """Run TruFor for transformer-based tampering localization."""
         try:
             import torch
+            from photoholmes.preprocessing import default_preprocessing
 
             img_arr = np.array(img)
 
+            # Use PhotoHolmes preprocessing for TruFor input format
+            preprocessing = default_preprocessing("trufor")
+            image_data = preprocessing(image=img_arr)
+
             with torch.no_grad():
-                # TruFor expects RGB tensor normalized to [0, 1]
-                img_tensor = (
-                    torch.from_numpy(img_arr).permute(2, 0, 1).unsqueeze(0).float()
-                    / 255.0
-                )
-                output = self._trufor_method.predict(image=img_tensor)
+                output = self._trufor_method.predict(**image_data)
 
             # Extract confidence map and integrity score
             if hasattr(output, "heatmap"):

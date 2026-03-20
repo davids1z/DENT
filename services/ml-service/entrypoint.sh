@@ -48,6 +48,58 @@ AutoTokenizer.from_pretrained('distilgpt2', cache_dir=d)
 AutoModelForCausalLM.from_pretrained('distilgpt2', cache_dir=d)
 "
 
+# ── CNN forensics model weights (PhotoHolmes: CatNet + TruFor) ────────
+# These are NOT on HuggingFace — downloaded from original author servers.
+catnet_path="/app/models/cnn/catnet/weights.pth"
+if [ ! -f "$catnet_path" ]; then
+    echo "[entrypoint] Downloading CatNet weights (~110 MB)..."
+    mkdir -p "$(dirname "$catnet_path")"
+    python3 -c "
+import sys
+try:
+    import gdown
+    gdown.download(id='1tyOKVdx6UMys2OcNpUj9r6scxNIpcoLE', output='$catnet_path', quiet=False)
+    print('[entrypoint] CatNet weights downloaded')
+except Exception as e:
+    print(f'[entrypoint] WARNING: CatNet download failed: {e}', file=sys.stderr)
+" || true
+else
+    echo "[entrypoint] CatNet weights already cached"
+fi
+
+trufor_path="/app/models/cnn/trufor/trufor.pth.tar"
+if [ ! -f "$trufor_path" ]; then
+    echo "[entrypoint] Downloading TruFor weights (~200 MB)..."
+    mkdir -p "$(dirname "$trufor_path")"
+    python3 -c "
+import urllib.request, zipfile, shutil, os, sys
+try:
+    urllib.request.urlretrieve(
+        'https://www.grip.unina.it/download/prog/TruFor/TruFor_weights.zip',
+        '/tmp/trufor_weights.zip'
+    )
+    with zipfile.ZipFile('/tmp/trufor_weights.zip') as z:
+        z.extractall('/tmp/trufor_extract')
+    # Find the weights file in the extracted archive
+    for root, dirs, files in os.walk('/tmp/trufor_extract'):
+        for f in files:
+            if f.endswith('.pth.tar') or f.endswith('.pth'):
+                shutil.copy(os.path.join(root, f), '$trufor_path')
+                break
+    shutil.rmtree('/tmp/trufor_extract', ignore_errors=True)
+    os.remove('/tmp/trufor_weights.zip')
+    print('[entrypoint] TruFor weights downloaded')
+except Exception as e:
+    print(f'[entrypoint] WARNING: TruFor download failed: {e}', file=sys.stderr)
+    for p in ['/tmp/trufor_extract', '/tmp/trufor_weights.zip']:
+        try:
+            shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+        except: pass
+" || true
+else
+    echo "[entrypoint] TruFor weights already cached"
+fi
+
 # ── Ensure probe weights are in the volume ───────────────────────────
 if [ -f "/app/models_stage/clip_ai/probe_weights.npz" ] && [ ! -f "/app/models/clip_ai/probe_weights.npz" ]; then
     echo "[entrypoint] Copying CLIP probe weights to volume"

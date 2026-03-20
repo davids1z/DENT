@@ -27,6 +27,9 @@ RUN pip install --no-cache-dir transformers>=4.36.0
 # Install Diffusers for VAE reconstruction error detection (separate layer for caching)
 RUN pip install --no-cache-dir diffusers>=0.27.0
 
+# gdown for reliable Google Drive model weight downloads (CatNet weights)
+RUN pip install --no-cache-dir gdown>=5.0.0
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
