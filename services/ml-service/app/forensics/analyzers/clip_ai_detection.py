@@ -197,8 +197,14 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         inputs = self._processor(images=img, return_tensors="pt")
 
         with torch.no_grad():
-            outputs = self._model.get_image_features(**inputs)
-            embedding = outputs[0].cpu().numpy()  # (768,)
+            # Extract image features — handle different transformers versions.
+            # get_image_features should return (batch, projection_dim) tensor,
+            # but some versions wrap it in a dataclass.
+            pixel_values = inputs.get("pixel_values", inputs.get("pixel_values"))
+            vision_out = self._model.vision_model(pixel_values=pixel_values)
+            pooled = vision_out.pooler_output  # (1, hidden_size)
+            projected = self._model.visual_projection(pooled)  # (1, 768)
+            embedding = projected.squeeze(0).cpu().numpy()  # (768,)
 
         # Normalise
         norm = np.linalg.norm(embedding)
