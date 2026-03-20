@@ -265,6 +265,21 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 inspection.TotalEstimatedCostMax = result.TotalEstimatedCostMax;
                 inspection.IsDriveable = result.IsDriveable;
                 inspection.UrgencyLevel = result.UrgencyLevel;
+
+                // Safety net: override urgency if forensic risk is high
+                // but ML service returned Low (e.g. fallback to /analyze
+                // without forensic context when /analyze-with-context fails)
+                if (forensicResult != null
+                    && forensicResult.OverallRiskScore >= 0.40
+                    && (inspection.UrgencyLevel == null || inspection.UrgencyLevel == "Low"))
+                {
+                    inspection.UrgencyLevel = forensicResult.OverallRiskScore >= 0.65
+                        ? "Critical" : "High";
+                    _logger.LogWarning(
+                        "Urgency safety net: forensic risk {Risk:F2} overrode ML urgency to {Urgency} for inspection {Id}",
+                        forensicResult.OverallRiskScore, inspection.UrgencyLevel, inspection.Id);
+                }
+
                 inspection.StructuralIntegrity = result.StructuralIntegrity;
                 inspection.LaborTotal = result.LaborTotal;
                 inspection.PartsTotal = result.PartsTotal;
@@ -482,7 +497,11 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             inspection.ErrorMessage = ex.Message;
         }
 
-        await _db.SaveChangesAsync(ct);
+        // Use CancellationToken.None to ensure the final save always
+        // completes, even if the HTTP request was cancelled (e.g.
+        // Cloudflare 524 timeout). Without this, inspections get stuck
+        // in "Analyzing" state when the client disconnects mid-processing.
+        await _db.SaveChangesAsync(CancellationToken.None);
 
         return MapToDto(inspection);
     }
