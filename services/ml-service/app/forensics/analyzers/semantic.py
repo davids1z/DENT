@@ -354,57 +354,76 @@ class SemanticForensicsAnalyzer(BaseAnalyzer):
 
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        prompt = """Ti si forenzicki strucnjak specijaliziran za otkrivanje AI-generiranih slika i digitalnih krivotvorina.
+        prompt = """Ti si forenzicki strucnjak za otkrivanje AI-generiranih slika. Koristis AnomReason okvir — strukturiranu analizu anomalija.
 
-VAZNO: Moderni AI generatori (DALL-E 3, Midjourney v6, Stable Diffusion XL, Flux) stvaraju FOTOREALISTICNE slike koje na prvi pogled izgledaju potpuno autenticno. NE PRETPOSTAVLJAJ da je slika autenticna samo zato sto izgleda uvjerljivo. Budi SKEPTICAN i trazi suptilne znakove.
+=== KRITICNO UPOZORENJE ===
+Moderni AI generatori (DALL-E 3, Midjourney v6, SDXL, Flux) stvaraju FOTOREALISTICNE slike sa SAVRSENIM pikselima. NE OSLANJAJ SE na vizualni dojam — trazi FIZIKALNE i LOGICKE greske.
 
-Detaljno analiziraj sliku za SVAKI od ovih pokazatelja:
+=== AnomReason OKVIR: 4-koracna analiza ===
+Za SVAKI objekt/regiju na slici provedi:
+1. IMENOVANJE: Sto je objekt? (npr. "prednji branik", "znak STOP", "sjena vozila")
+2. FENOMEN: Sto nije u redu? (npr. "branik se stapa s kotacem", "tekst na znaku je necitljiv")
+3. FIZICKO OBJASNJENJE: Zasto je to fizicki nemoguce? (npr. "u stvarnom sudaru metal se guzva, ne stapa")
+4. OZBILJNOST: Low/Medium/High — koliko je greska ocita?
 
-1. AI GENERIRANJE (NAJVAZNIJE):
-   - Previse savrsene/glatke povrsine bez realnog suma kamere
-   - Neprirodni prijelazi izmedu objekata i pozadine
-   - Previse savrseno ili previse kaotično osvjetljenje bez realnog rasprsivanja svjetla
-   - Ponavljajuce mikro-teksture ili uzorci u pozadini
-   - Neprirodni detalji na rukama, prstima, zubima, ocima, tekstu
-   - "Plastican" ili "renderiran" izgled materijala (metal, staklo, drvo)
-   - Geometrijske nemogucnosti (perspektiva, proporcije, simetrija)
-   - Nedostatak senzorskog suma kamere (suma je previse uniforman ili ga nema)
-   - Nedostatak kromatske aberacije i optičkih nesavršenosti leće
-   - Previse oster fokus svugdje (realna fotografija ima dubinu polja)
+=== STO KONKRETNO TRAZITI ===
 
-2. FIZIKALNE NEPRAVILNOSTI:
-   - Sjene koje ne odgovaraju izvoru svjetla
-   - Refleksije koje ne odgovaraju sceni
-   - Fizicki nemoguce situacije
+A) FIZIKA OSVJETLJENJA (najvazniji signal):
+   - Identificiraj SVE izvore svjetla na slici (ulicne svjetiljke, sunce, refleksije)
+   - Povuci virtualne linije od predmeta do njihovih sjena
+   - Ako se smjerovi sjena NE SIJEKU u istom izvoru svjetla → AI generirana slika
+   - Provjeri: refleksije na metalu/staklu — odgovaraju li poziciji izvora svjetla?
 
-3. DIGITALNA MANIPULACIJA:
-   - Nekonzistentne razine kompresije
-   - Klonirani/kopirani dijelovi slike
-   - Neprirodni rubovi oko objekata (montaza)
+B) GEOMETRIJA I PERSPEKTIVA:
+   - Provjeri tocke nedogleda (vanishing points) — svi paralelni rubovi moraju konvergirati
+   - AI cesto stvara blago zakrivljene linije koje bi trebale biti ravne
+   - Proporcije objekata — jesu li konzistentne s udaljenosti?
 
-4. EKRANSKA REKAPTURA:
-   - Moire uzorci, pikseli ekrana, odsjaj
+C) SEMANTICKE ANOMALIJE (AnomReason):
+   - Tekst i natpisi: Mogu li se STVARNO procitati? Imaju li smisla?
+   - Prsti, ruke, zubi: Pravilni broj? Pravilni zglobovi?
+   - Materijali: Ponasa li se metal/staklo/tekucina realno?
+   - Krhotine/ostecenja: Slijede li fiziku loma? Ili su "dekorativne"?
+   - Pozadina: Postoje li neodredeni/ponavljajuci uzorci?
 
-Odgovori ISKLJUCIVO u JSON formatu:
+D) GROUNDING PROVJERA:
+   - Za SVAKI objekt koji opisujes, MORAS dati TOCNE bounding_box koordinate (0.0-1.0)
+   - Ako tvrdi da postoji "znak STOP" — navedi TOCNO GDJE na slici (x, y, w, h)
+   - Ako ne mozes locirati objekt s koordinatama, NE SPOMINJI ga
+
+=== OBAVEZAN JSON FORMAT ===
 {
   "is_suspicious": true/false,
   "confidence": 0.0-1.0,
   "risk_level": "Low/Medium/High/Critical",
-  "findings": [
+  "anomalies": [
     {
-      "category": "naziv kategorije",
-      "description": "opis na hrvatskom",
+      "object": "naziv objekta",
+      "bounding_box": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.25},
+      "phenomenon": "sto nije u redu",
+      "physics_explanation": "zasto je to fizicki nemoguce",
       "severity": "Low/Medium/High"
     }
   ],
+  "shadow_analysis": {
+    "light_sources_identified": ["opis izvora 1", "opis izvora 2"],
+    "shadow_directions_consistent": true/false,
+    "explanation": "objasnjenje konzistentnosti sjena"
+  },
+  "text_verification": {
+    "texts_found": [
+      {"text": "sadrzaj", "readable": true/false, "makes_sense": true/false, "bounding_box": {"x":0,"y":0,"w":0,"h":0}}
+    ]
+  },
   "explanation": "Kratko objasnjenje na hrvatskom (2-3 recenice)"
 }
 
-PRAVILA:
-- Ako pronadjes BILO KOJI znak AI generiranja, postavi is_suspicious=true
-- Budi SKEPTICAN prema fotorealisticnim slikama — moderni AI ih lako stvara
-- Ako nisi siguran, radije postavi is_suspicious=true s umjerenom confidence
-- SAMO ako si POTPUNO SIGURAN da je slika autenticna fotografija prave kamere, postavi is_suspicious=false"""
+=== KRITICNA PRAVILA ===
+- NIKAD ne pretpostavljaj autenticnost — DOKAZUJ je
+- Ako nemas fizikalni dokaz autenticnosti, postavi is_suspicious=true
+- Budi konkretan: "metal na braniku se stapa s asfaltom na koordinatama (0.7, 0.8)"
+- SVAKI objekt koji opisujes MORA imati bounding_box koordinate
+- Ako tekst na slici nije citljiv ili nema smisla → to je AI indikator"""
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -464,8 +483,33 @@ PRAVILA:
         is_suspicious = vlm_result.get("is_suspicious", False)
         confidence = float(vlm_result.get("confidence", 0.5))
         confidence = max(0.0, min(1.0, confidence))
-        vlm_findings = vlm_result.get("findings", [])
         explanation = vlm_result.get("explanation", "")
+
+        # Parse AnomReason anomalies
+        anomalies = vlm_result.get("anomalies", [])
+        # Backwards compat: support old "findings" key too
+        if not anomalies:
+            anomalies = vlm_result.get("findings", [])
+
+        # Parse shadow analysis
+        shadow = vlm_result.get("shadow_analysis", {})
+        shadow_consistent = shadow.get("shadow_directions_consistent", True)
+
+        # Parse text verification
+        text_ver = vlm_result.get("text_verification", {})
+        texts_found = text_ver.get("texts_found", [])
+        unreadable_texts = [t for t in texts_found
+                           if not t.get("readable", True) or not t.get("makes_sense", True)]
+
+        # Count high-severity anomalies
+        high_anomalies = [a for a in anomalies if a.get("severity") == "High"]
+        med_anomalies = [a for a in anomalies if a.get("severity") == "Medium"]
+
+        # Build anomaly descriptions for evidence
+        anomaly_descs = []
+        for a in anomalies[:8]:
+            desc = f"[{a.get('object', '?')}] {a.get('phenomenon', '')} — {a.get('physics_explanation', '')}"
+            anomaly_descs.append(desc)
 
         evidence = {
             "vlm_model": self._vlm_model,
@@ -473,51 +517,127 @@ PRAVILA:
             "vlm_confidence": round(confidence, 3),
             "vlm_risk_level": vlm_result.get("risk_level", "Low"),
             "vlm_explanation": explanation,
-            "vlm_findings_count": len(vlm_findings),
-            "vlm_findings": [
-                {"category": f.get("category", ""), "description": f.get("description", "")}
-                for f in vlm_findings[:5]  # Cap at 5 findings
-            ],
+            "anomaly_count": len(anomalies),
+            "high_severity_anomalies": len(high_anomalies),
+            "anomalies": anomaly_descs[:5],
+            "shadow_consistent": shadow_consistent,
+            "shadow_explanation": shadow.get("explanation", ""),
+            "unreadable_texts": len(unreadable_texts),
         }
 
-        if is_suspicious and confidence > 0.7:
+        # ── Score based on structured anomalies (not just is_suspicious) ──
+        # Each high anomaly adds 0.15, medium adds 0.08
+        anomaly_score = (len(high_anomalies) * 0.15 + len(med_anomalies) * 0.08)
+        # Shadow inconsistency adds 0.15
+        if not shadow_consistent:
+            anomaly_score += 0.15
+        # Unreadable texts add 0.10 each
+        anomaly_score += len(unreadable_texts) * 0.10
+        # Cap at 1.0
+        anomaly_score = min(1.0, anomaly_score)
+
+        # Use MAX of VLM confidence and anomaly score
+        effective_score = max(confidence if is_suspicious else 0.0, anomaly_score)
+
+        if effective_score > 0.60:
+            desc_parts = []
+            if high_anomalies:
+                desc_parts.append(
+                    f"Pronadjeno {len(high_anomalies)} ozbiljnih fizikalnih anomalija: "
+                    + "; ".join(
+                        f"{a.get('object', '?')}: {a.get('phenomenon', '')}"
+                        for a in high_anomalies[:3]
+                    )
+                )
+            if not shadow_consistent:
+                desc_parts.append(
+                    f"Smjerovi sjena su nekonzistentni: {shadow.get('explanation', 'vise izvora svjetla')}"
+                )
+            if unreadable_texts:
+                desc_parts.append(
+                    f"Pronadjen(o) {len(unreadable_texts)} necitljivih/besmislenih tekstova na slici"
+                )
+            if not desc_parts:
+                desc_parts.append(explanation or "VLM analiza detektirala sumnjive karakteristike.")
+
             findings.append(
                 AnalyzerFinding(
                     code="SEM_VLM_SYNTHETIC_DETECTED",
-                    title="VLM: Sinteticki sadrzaj detektiran",
-                    description=explanation or "VLM analiza detektirala sumnjive karakteristike slike.",
-                    risk_score=round(confidence * 0.75, 3),
-                    confidence=confidence,
+                    title="VLM AnomReason: Sinteticki sadrzaj detektiran",
+                    description=" ".join(desc_parts),
+                    risk_score=round(min(0.90, effective_score * 0.85), 3),
+                    confidence=min(0.92, effective_score),
                     evidence=evidence,
                 )
             )
-        elif is_suspicious and confidence > 0.4:
+        elif effective_score > 0.30:
             findings.append(
                 AnalyzerFinding(
                     code="SEM_VLM_SYNTHETIC_SUSPECTED",
-                    title="VLM: Sumnjive karakteristike",
-                    description=explanation or "VLM analiza pronasla sumnjive elemente u slici.",
-                    risk_score=0.35,
-                    confidence=confidence,
+                    title="VLM AnomReason: Sumnjive anomalije",
+                    description=(
+                        explanation
+                        or f"Pronadjeno {len(anomalies)} anomalija: "
+                        + "; ".join(a.get("phenomenon", "") for a in anomalies[:3])
+                    ),
+                    risk_score=round(max(0.35, effective_score * 0.70), 3),
+                    confidence=effective_score,
                     evidence=evidence,
                 )
             )
-        elif not is_suspicious:
-            # NOTE: VLMs are NOT reliable for detecting modern AI-generated
-            # images. An "authentic" verdict from the VLM should carry very
-            # little weight and should NEVER override dedicated AI detectors.
+        elif not is_suspicious and anomaly_score < 0.10:
+            # VLM found nothing AND no structured anomalies → cautious authentic
             findings.append(
                 AnalyzerFinding(
                     code="SEM_VLM_AUTHENTIC",
-                    title="VLM: Slika djeluje autenticno",
+                    title="VLM: Nema detektiranih anomalija",
                     description=(
-                        (explanation or "VLM analiza nije pronasla sumnjive karakteristike.")
+                        (explanation or "VLM AnomReason analiza nije pronasla fizikalne anomalije.")
                         + " NAPOMENA: VLM nije specijalizirani detektor AI sadrzaja — "
                         "moderni generatori mogu prevariti opce modele."
                     ),
-                    risk_score=0.0,  # Neutral, not negative — VLM should not reduce scores
-                    confidence=max(0.0, confidence * 0.5),  # Halve confidence for "authentic"
+                    risk_score=0.0,
+                    confidence=max(0.0, confidence * 0.4),  # Low confidence for authentic
                     evidence=evidence,
+                )
+            )
+
+        # ── Separate shadow finding if inconsistent ──
+        if not shadow_consistent:
+            findings.append(
+                AnalyzerFinding(
+                    code="SEM_SHADOW_INCONSISTENT",
+                    title="Nekonzistentni smjerovi sjena",
+                    description=(
+                        f"Analiza sjena otkrila je nekonzistentne smjerove: "
+                        f"{shadow.get('explanation', 'sjene ukazuju na vise izvora svjetla koji nisu realni')}. "
+                        f"Identificirani izvori: {', '.join(shadow.get('light_sources_identified', [])[:3])}. "
+                        "AI generatori redovito griješe u renderiranju konzistentnih sjena jer ne modeliraju 3D prostor."
+                    ),
+                    risk_score=0.55,
+                    confidence=0.70,
+                    evidence={"shadow_analysis": shadow},
+                )
+            )
+
+        # ── Separate text anomaly findings ──
+        if unreadable_texts:
+            text_descs = []
+            for t in unreadable_texts[:3]:
+                txt = t.get("text", "?")
+                text_descs.append(f'"{txt}" — {"necitljiv" if not t.get("readable") else "besmislen"}')
+            findings.append(
+                AnalyzerFinding(
+                    code="SEM_TEXT_ANOMALY",
+                    title="Anomalije u tekstu na slici",
+                    description=(
+                        f"Pronadjeno {len(unreadable_texts)} tekstualnih anomalija: "
+                        + "; ".join(text_descs) + ". "
+                        "AI generatori ne mogu reproducirati citljive i smislene natpise."
+                    ),
+                    risk_score=min(0.70, 0.30 + len(unreadable_texts) * 0.15),
+                    confidence=0.80,
+                    evidence={"texts": unreadable_texts[:5]},
                 )
             )
 

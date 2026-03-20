@@ -179,6 +179,45 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
                     )
                 )
 
+            # --- Vanishing point consistency (AI perspective errors) ---
+            try:
+                vp_result = self._vanishing_point_analysis(gray_resized)
+                vp_inconsistency = vp_result.get("inconsistency_score", 0.0)
+                if vp_inconsistency > 0.6:
+                    findings.append(
+                        AnalyzerFinding(
+                            code="OPT_VANISHING_POINT_INCONSISTENT",
+                            title="Nekonzistentne tocke nedogleda",
+                            description=(
+                                f"Analiza linija perspektive detektirala je nekonzistentne "
+                                f"tocke nedogleda (nekonzistentnost: {vp_inconsistency:.0%}). "
+                                f"Pronadjeno {vp_result.get('line_count', 0)} dominantnih linija "
+                                f"koje konvergiraju prema {vp_result.get('cluster_count', 0)} "
+                                f"razlicitim tockama. U realnoj fotografiji, paralelne linije "
+                                f"konvergiraju prema jednoj tocki nedogleda."
+                            ),
+                            risk_score=min(0.70, vp_inconsistency * 0.80),
+                            confidence=min(0.75, 0.40 + vp_inconsistency * 0.30),
+                            evidence=vp_result,
+                        )
+                    )
+                elif vp_inconsistency > 0.35:
+                    findings.append(
+                        AnalyzerFinding(
+                            code="OPT_VANISHING_POINT_SUSPECT",
+                            title="Sumnjiva perspektiva",
+                            description=(
+                                f"Analiza perspektive pokazuje blage nekonzistentnosti "
+                                f"({vp_inconsistency:.0%}). Moguce AI greske u geometriji."
+                            ),
+                            risk_score=0.25,
+                            confidence=0.50,
+                            evidence=vp_result,
+                        )
+                    )
+            except Exception as vp_err:
+                logger.debug("Vanishing point analysis failed: %s", vp_err)
+
         except Exception as e:
             logger.warning("Optical forensics error: %s", e)
             elapsed = int((time.monotonic() - start) * 1000)
@@ -428,6 +467,153 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
             "hh_ratios": hh_ratios,
             "anisotropy": anisotropy,
             "cross_scale_corr": cross_scale_corr,
+        }
+
+    # ------------------------------------------------------------------
+    # Vanishing Point Consistency Analysis
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _vanishing_point_analysis(gray: np.ndarray) -> dict:
+        """Detect vanishing point inconsistencies.
+
+        Real photographs have consistent vanishing points where parallel
+        lines in 3D space converge. AI generators often produce lines
+        that converge to multiple conflicting vanishing points.
+
+        Uses Hough Line Transform to detect dominant lines, then
+        clusters their intersection points.
+        """
+        from scipy.ndimage import gaussian_filter
+
+        h, w = gray.shape
+
+        # Scale to reasonable size for processing
+        max_dim = 512
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            new_h, new_w = int(h * scale), int(w * scale)
+            # Simple resize via decimation
+            step_h = max(1, h // new_h)
+            step_w = max(1, w // new_w)
+            gray_small = gray[::step_h, ::step_w]
+        else:
+            gray_small = gray
+
+        sh, sw = gray_small.shape
+
+        # Edge detection via Canny-like approach (gradient magnitude thresholding)
+        smoothed = gaussian_filter(gray_small, sigma=1.5)
+        from scipy.ndimage import sobel
+        gx = sobel(smoothed, axis=1)
+        gy = sobel(smoothed, axis=0)
+        mag = np.sqrt(gx ** 2 + gy ** 2)
+
+        # Threshold at 85th percentile
+        edge_thresh = np.percentile(mag, 85)
+        edges = (mag > edge_thresh).astype(np.uint8) * 255
+
+        # Use OpenCV HoughLinesP for line detection
+        try:
+            import cv2
+            lines = cv2.HoughLinesP(
+                edges, rho=1, theta=np.pi / 180,
+                threshold=50, minLineLength=max(30, min(sh, sw) // 8),
+                maxLineGap=10
+            )
+        except Exception:
+            return {"inconsistency_score": 0.0, "line_count": 0, "cluster_count": 0}
+
+        if lines is None or len(lines) < 4:
+            return {"inconsistency_score": 0.0, "line_count": 0, "cluster_count": 0}
+
+        # Filter out nearly horizontal/vertical lines (less informative for VP)
+        filtered_lines = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            dx = x2 - x1
+            dy = y2 - y1
+            angle = abs(np.arctan2(dy, dx))
+            # Keep lines between 10° and 80° from horizontal
+            if 0.17 < angle < 1.40 or 1.74 < angle < 2.97:
+                filtered_lines.append((x1, y1, x2, y2))
+
+        if len(filtered_lines) < 3:
+            return {"inconsistency_score": 0.0, "line_count": len(filtered_lines), "cluster_count": 0}
+
+        # Compute pairwise intersections
+        intersections: list[tuple[float, float]] = []
+        for i in range(len(filtered_lines)):
+            for j in range(i + 1, min(len(filtered_lines), i + 20)):
+                x1, y1, x2, y2 = filtered_lines[i]
+                x3, y3, x4, y4 = filtered_lines[j]
+
+                denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+                if abs(denom) < 1e-6:
+                    continue  # Parallel lines
+
+                t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+
+                ix = x1 + t * (x2 - x1)
+                iy = y1 + t * (y2 - y1)
+
+                # Keep only intersections reasonably close to image
+                margin = max(sh, sw) * 2
+                if abs(ix) < margin and abs(iy) < margin:
+                    intersections.append((ix, iy))
+
+        if len(intersections) < 3:
+            return {"inconsistency_score": 0.0, "line_count": len(filtered_lines), "cluster_count": 0}
+
+        # Cluster intersections using simple distance-based clustering
+        points = np.array(intersections)
+
+        # Normalize to image size
+        points_norm = points / max(sh, sw)
+
+        # Simple clustering: iteratively find clusters
+        cluster_radius = 0.15  # 15% of image size
+        used = np.zeros(len(points_norm), dtype=bool)
+        clusters: list[list[int]] = []
+
+        for idx in range(len(points_norm)):
+            if used[idx]:
+                continue
+            # Find all nearby points
+            dists = np.sqrt(np.sum((points_norm - points_norm[idx]) ** 2, axis=1))
+            nearby = np.where((dists < cluster_radius) & ~used)[0]
+            if len(nearby) >= 2:
+                clusters.append(nearby.tolist())
+                used[nearby] = True
+
+        cluster_count = len(clusters)
+
+        # Inconsistency: more clusters = more vanishing points = suspicious
+        # Real images: 1-2 clusters (1-2 vanishing points)
+        # AI images: 3+ clusters (inconsistent perspective)
+        if cluster_count <= 1:
+            inconsistency = 0.0
+        elif cluster_count == 2:
+            # 2 VPs is normal for two-point perspective
+            inconsistency = 0.1
+        elif cluster_count == 3:
+            inconsistency = 0.35
+        else:
+            inconsistency = min(1.0, 0.35 + (cluster_count - 3) * 0.20)
+
+        # Also check: are the cluster sizes balanced?
+        # One dominant + scattered = normal; multiple balanced = suspicious
+        if clusters:
+            sizes = sorted([len(c) for c in clusters], reverse=True)
+            if len(sizes) >= 2 and sizes[1] > sizes[0] * 0.5:
+                # Second cluster is large relative to first → multiple VPs
+                inconsistency = min(1.0, inconsistency + 0.15)
+
+        return {
+            "inconsistency_score": round(inconsistency, 4),
+            "line_count": len(filtered_lines),
+            "cluster_count": cluster_count,
+            "intersection_count": len(intersections),
         }
 
     # ------------------------------------------------------------------
