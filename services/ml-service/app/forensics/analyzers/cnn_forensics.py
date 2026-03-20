@@ -86,19 +86,27 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         # Set PhotoHolmes/torch cache dirs
         os.environ.setdefault("TORCH_HOME", cache_dir)
 
+        self._load_errors: list[str] = []
+
         if "catnet" in enabled_methods:
             try:
                 from photoholmes.methods.catnet import CatNet
 
                 weights_path = os.path.join(cache_dir, "cnn", "catnet", "weights.pth")
                 if os.path.exists(weights_path):
+                    sz = os.path.getsize(weights_path)
+                    logger.info("CatNet weights found: %s (%d bytes)", weights_path, sz)
                     self._catnet_method = CatNet("pretrained", weights=weights_path)
                     self._catnet_method.eval()
-                    logger.info("CAT-Net loaded from %s", weights_path)
+                    logger.info("CAT-Net loaded successfully")
                 else:
-                    logger.warning("CatNet weights not found at %s", weights_path)
+                    msg = f"CatNet weights not found at {weights_path}"
+                    logger.warning(msg)
+                    self._load_errors.append(msg)
             except Exception as e:
-                logger.warning("Failed to load CAT-Net: %s", e)
+                msg = f"CatNet constructor failed: {e}"
+                logger.warning(msg)
+                self._load_errors.append(msg)
                 self._catnet_method = None
 
         if "trufor" in enabled_methods:
@@ -107,13 +115,19 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
 
                 weights_path = os.path.join(cache_dir, "cnn", "trufor", "trufor.pth.tar")
                 if os.path.exists(weights_path):
+                    sz = os.path.getsize(weights_path)
+                    logger.info("TruFor weights found: %s (%d bytes)", weights_path, sz)
                     self._trufor_method = TruFor(weights=weights_path)
                     self._trufor_method.eval()
-                    logger.info("TruFor loaded from %s", weights_path)
+                    logger.info("TruFor loaded successfully")
                 else:
-                    logger.warning("TruFor weights not found at %s", weights_path)
+                    msg = f"TruFor weights not found at {weights_path}"
+                    logger.warning(msg)
+                    self._load_errors.append(msg)
             except Exception as e:
-                logger.warning("Failed to load TruFor: %s", e)
+                msg = f"TruFor constructor failed: {e}"
+                logger.warning(msg)
+                self._load_errors.append(msg)
                 self._trufor_method = None
 
         self._models_loaded = True
@@ -140,7 +154,8 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
 
             if self._catnet_method is None and self._trufor_method is None:
                 elapsed = int((time.monotonic() - start) * 1000)
-                return self._make_result([], elapsed, error="No CNN models loaded (CAT-Net, TruFor)")
+                details = "; ".join(getattr(self, "_load_errors", []) or ["unknown"])
+                return self._make_result([], elapsed, error=f"No CNN models loaded: {details}")
 
             img = Image.open(io.BytesIO(image_bytes))
             if img.mode != "RGB":
