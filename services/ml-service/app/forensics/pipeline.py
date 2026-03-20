@@ -375,7 +375,7 @@ class ForensicPipeline:
 
         return ForensicReport(
             overall_risk_score=round(overall_score, 4),
-            overall_risk_score_100=overall_score_100,
+            overall_risk_score100=overall_score_100,
             overall_risk_level=overall_level,
             modules=modules,
             total_processing_time_ms=total_time,
