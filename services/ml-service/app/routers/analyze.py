@@ -22,6 +22,50 @@ from ..schemas import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+def _normalize_forensic_keys(data: dict) -> dict:
+    """Normalize forensic data keys from camelCase (C# API) to snake_case.
+
+    The C# API deserializes the ForensicReport (snake_case from Python)
+    into C# objects and re-serializes as camelCase. This helper ensures
+    _format_forensic_context and _enforce_forensic_severity work
+    regardless of which convention arrives.
+    """
+    _TOP = {
+        "overallRiskScore": "overall_risk_score",
+        "overallRiskLevel": "overall_risk_level",
+        "totalProcessingTimeMs": "total_processing_time_ms",
+        "elaHeatmapB64": "ela_heatmap_b64",
+        "fftSpectrumB64": "fft_spectrum_b64",
+        "spectralHeatmapB64": "spectral_heatmap_b64",
+    }
+    _MOD = {
+        "moduleName": "module_name",
+        "moduleLabel": "module_label",
+        "riskScore": "risk_score",
+        "riskLevel": "risk_level",
+        "processingTimeMs": "processing_time_ms",
+    }
+    _FINDING = {
+        "riskScore": "risk_score",
+    }
+
+    out = {_TOP.get(k, k): v for k, v in data.items()}
+
+    if "modules" in out:
+        modules = []
+        for m in out["modules"]:
+            mod = {_MOD.get(k, k): v for k, v in m.items()}
+            if "findings" in mod:
+                mod["findings"] = [
+                    {_FINDING.get(k, k): v for k, v in f.items()}
+                    for f in mod["findings"]
+                ]
+            modules.append(mod)
+        out["modules"] = modules
+
+    return out
+
 # Valid enum values that match C# domain exactly
 VALID_DAMAGE_TYPES = {
     "Scratch", "Dent", "Crack", "PaintDamage", "BrokenGlass",
@@ -400,9 +444,9 @@ def _enforce_forensic_severity(
     # that fire with risk >= 0.45 must block "Autenticno" findings.
     modules = forensic_data.get("modules", [])
     any_ai_high = any(
-        m.get("riskScore", 0) >= 0.45
+        m.get("risk_score", 0) >= 0.45
         for m in modules
-        if m.get("moduleName") in _AI_DETECTOR_MODULES
+        if m.get("module_name") in _AI_DETECTOR_MODULES
     )
     if any_ai_high:
         for d in response.damages:
@@ -760,9 +804,9 @@ async def analyze_with_context(
             detail=f"Image too large: {size_mb:.1f}MB (max {settings.max_image_size_mb}MB)",
         )
 
-    # Parse forensic context
+    # Parse forensic context (C# API sends camelCase keys, normalize to snake_case)
     try:
-        forensic_data = json.loads(forensic_context)
+        forensic_data = _normalize_forensic_keys(json.loads(forensic_context))
     except json.JSONDecodeError:
         logger.warning("Invalid forensic_context JSON, falling back to no-context analysis")
         forensic_data = {}
