@@ -88,6 +88,17 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
 
         self._load_errors: list[str] = []
 
+        # PyTorch 2.6+ defaults to weights_only=True in torch.load().
+        # PhotoHolmes model checkpoints contain numpy globals that aren't
+        # in the safe list, so we need to temporarily patch torch.load
+        # to use weights_only=False for these trusted academic weights.
+        import torch
+        _original_torch_load = torch.load
+
+        def _patched_load(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return _original_torch_load(*args, **kwargs)
+
         if "catnet" in enabled_methods:
             try:
                 from photoholmes.methods.catnet import CatNet
@@ -96,7 +107,9 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 if os.path.exists(weights_path):
                     sz = os.path.getsize(weights_path)
                     logger.info("CatNet weights found: %s (%d bytes)", weights_path, sz)
+                    torch.load = _patched_load
                     self._catnet_method = CatNet("pretrained", weights=weights_path)
+                    torch.load = _original_torch_load
                     self._catnet_method.eval()
                     logger.info("CAT-Net loaded successfully")
                 else:
@@ -104,6 +117,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                     logger.warning(msg)
                     self._load_errors.append(msg)
             except Exception as e:
+                torch.load = _original_torch_load
                 msg = f"CatNet constructor failed: {e}"
                 logger.warning(msg)
                 self._load_errors.append(msg)
@@ -117,7 +131,9 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 if os.path.exists(weights_path):
                     sz = os.path.getsize(weights_path)
                     logger.info("TruFor weights found: %s (%d bytes)", weights_path, sz)
+                    torch.load = _patched_load
                     self._trufor_method = TruFor(weights=weights_path)
+                    torch.load = _original_torch_load
                     self._trufor_method.eval()
                     logger.info("TruFor loaded successfully")
                 else:
@@ -125,6 +141,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                     logger.warning(msg)
                     self._load_errors.append(msg)
             except Exception as e:
+                torch.load = _original_torch_load
                 msg = f"TruFor constructor failed: {e}"
                 logger.warning(msg)
                 self._load_errors.append(msg)
