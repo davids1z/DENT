@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import boto3
@@ -80,14 +81,23 @@ def download_image_from_s3(s3_client, bucket: str, key: str) -> bytes | None:
         return None
 
 
-def analyze_image(api_url: str, image_bytes: bytes, filename: str) -> dict | None:
+def analyze_image(
+    api_url: str,
+    image_bytes: bytes,
+    filename: str,
+    skip_modules: str | None = None,
+) -> dict | None:
     """Send image to /forensics endpoint with retry logic."""
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            params = {}
+            if skip_modules:
+                params["skip_modules"] = skip_modules
             resp = requests.post(
                 f"{api_url}/forensics",
                 files={"file": (filename, io.BytesIO(image_bytes))},
+                params=params,
                 timeout=300,
             )
             if resp.status_code == 200:
@@ -145,6 +155,30 @@ def load_existing_results(output_path: str) -> set[str]:
     return done
 
 
+def _prefetch_images(
+    s3_client,
+    bucket: str,
+    items: list[tuple[str, str]],
+    batch_size: int = 4,
+) -> Iterator[tuple[str, str, bytes | None]]:
+    """Prefetch images from S3 using thread pool for parallelism."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _download(fn_gt: tuple[str, str]) -> tuple[str, str, bytes | None]:
+        fn, gt = fn_gt
+        key = f"{S3_PREFIX_PROCESSED}/{fn}"
+        data = download_image_from_s3(s3_client, bucket, key)
+        return fn, gt, data
+
+    # Process in batches to avoid overwhelming S3
+    for i in range(0, len(items), batch_size):
+        batch = items[i:i + batch_size]
+        with ThreadPoolExecutor(max_workers=batch_size) as pool:
+            futures = {pool.submit(_download, item): item for item in batch}
+            for future in as_completed(futures):
+                yield future.result()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build calibration dataset from S3 images")
     parser.add_argument("--bucket", required=True, help="S3 bucket with processed images")
@@ -152,9 +186,19 @@ def main() -> None:
     parser.add_argument("--api-url", default="http://localhost:8000", help="ML service URL")
     parser.add_argument("--region", default="eu-central-1", help="AWS region")
     parser.add_argument("--resume", action="store_true", help="Skip already-processed images")
+    parser.add_argument(
+        "--skip-gemini", action="store_true", default=True,
+        help="Skip Gemini VLM module (saves $0.023/image and ~10s/image)",
+    )
+    parser.add_argument("--workers", type=int, default=2, help="Concurrent analysis workers")
     args = parser.parse_args()
 
     s3 = boto3.client("s3", region_name=args.region)
+
+    # Modules to skip during calibration (save API cost + time)
+    skip_modules = "semantic_forensics" if args.skip_gemini else None
+    if skip_modules:
+        print(f"Skipping modules: {skip_modules} (saves ~$40 API cost)")
 
     # Load labels
     labels = load_labels_from_s3(s3, args.bucket)
@@ -177,7 +221,7 @@ def main() -> None:
         print("Nothing to do!")
         return
 
-    # Process images
+    # Process images with parallel S3 prefetch
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -186,17 +230,16 @@ def main() -> None:
     errors = 0
 
     with open(output_path, mode, encoding="utf-8") as out_f:
-        for filename, ground_truth in tqdm(to_process, desc="Analyzing", total=len(to_process)):
-            s3_key = f"{S3_PREFIX_PROCESSED}/{filename}"
-
-            # Download from S3
-            image_bytes = download_image_from_s3(s3, args.bucket, s3_key)
+        for filename, ground_truth, image_bytes in tqdm(
+            _prefetch_images(s3, args.bucket, to_process),
+            desc="Analyzing", total=len(to_process),
+        ):
             if image_bytes is None:
                 errors += 1
                 continue
 
-            # Analyze through forensic pipeline
-            report = analyze_image(args.api_url, image_bytes, filename)
+            # Analyze through forensic pipeline (skip Gemini for calibration)
+            report = analyze_image(args.api_url, image_bytes, filename, skip_modules)
             if report is None:
                 errors += 1
                 continue
