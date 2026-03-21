@@ -23,9 +23,9 @@ class VerdictThresholds:
     """Thresholds used by _compute_deterministic_verdict() in analyze.py."""
 
     forged_risk: float = 0.60
-    forged_min_findings: int = 3
+    forged_min_findings: int = 5
     suspicious_risk: float = 0.30
-    suspicious_min_findings: int = 1
+    suspicious_min_findings: int = 2
     urgency_critical: float = 0.60
     urgency_high: float = 0.40
     urgency_medium: float = 0.20
@@ -124,12 +124,12 @@ _DEFAULT_MODULE_DAMAGE: dict[str, float] = {
     "clip_ai_detection": 0.45,
     "prnu_detection": 0.45,
     "vae_reconstruction": 0.45,
-    "spectral_forensics": 0.35,
-    "deep_modification_detection": 0.45,
-    "modification_detection": 0.25,
-    "metadata_analysis": 0.30,
-    "semantic_forensics": 0.40,
-    "optical_forensics": 0.40,
+    "spectral_forensics": 0.45,
+    "deep_modification_detection": 0.50,
+    "modification_detection": 0.45,
+    "metadata_analysis": 0.45,
+    "semantic_forensics": 0.50,
+    "optical_forensics": 0.50,
     "text_ai_detection": 0.45,
     "content_validation": 0.40,
 }

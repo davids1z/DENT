@@ -764,6 +764,15 @@ def _compute_deterministic_verdict(
         if name and not m.get("error"):
             mod_lookup[name] = m
 
+    # ── AI-aware suppression: if no AI detector has a signal, require
+    # stronger evidence from support modules to avoid false positives ──
+    _AI_MODULES = {"ai_generation_detection", "clip_ai_detection", "vae_reconstruction"}
+    max_ai_score = max(
+        (float(mod_lookup.get(m, {}).get("risk_score", 0) or 0) for m in _AI_MODULES),
+        default=0.0,
+    )
+    ai_is_low = max_ai_score < 0.40
+
     # ── Generate mandatory findings from modules that exceed thresholds ──
     findings: list[dict] = []
     damage_map = _get_module_damage_map()
@@ -784,6 +793,10 @@ def _compute_deterministic_verdict(
             threshold = max(0.10, threshold - offset)
 
         if mod_risk >= threshold:
+            # Suppress weak findings from support modules when AI detectors
+            # don't corroborate — prevents false positives on real images
+            if ai_is_low and mod_name not in _AI_MODULES and mod_risk < 0.60:
+                continue
             severity = mapping["severity_high"] if mod_risk >= 0.60 else mapping["severity_low"]
             safety = "Critical" if mod_risk >= 0.60 else "Warning"
             confidence = min(0.95, 0.50 + mod_risk * 0.40)
