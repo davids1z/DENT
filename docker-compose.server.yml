@@ -51,6 +51,9 @@ services:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
       TORCH_HOME: "/app/models"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: eu-central-1
       DENT_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       DENT_MODEL: google/gemini-2.5-pro-preview
       DENT_FORENSICS_ENABLED: "true"

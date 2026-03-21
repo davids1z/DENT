@@ -8,26 +8,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - name: Run calibration build
+      - name: Setup and run calibration
         uses: appleboy/ssh-action@v1
+        env:
+          AKEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          ASECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           port: ${{ secrets.DEPLOY_PORT || '22' }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 360m
+          envs: AKEY,ASECRET
           script: |
             cd /opt/dent
+
+            # Add AWS credentials to .env file on server
+            grep -q "AWS_ACCESS_KEY_ID" .env 2>/dev/null || echo "AWS_ACCESS_KEY_ID=$AKEY" >> .env
+            grep -q "AWS_SECRET_ACCESS_KEY" .env 2>/dev/null || echo "AWS_SECRET_ACCESS_KEY=$ASECRET" >> .env
+
+            # Restart ml-service with new env vars
+            docker compose -f docker-compose.server.yml up -d ml-service
+
+            # Wait for service to be ready
+            sleep 30
+
+            # Install deps
             docker compose -f docker-compose.server.yml exec -T ml-service pip install boto3 tqdm 2>/dev/null || true
-            docker compose -f docker-compose.server.yml exec -T ml-service python -c "
-            import os
-            os.makedirs('/root/.aws', exist_ok=True)
-            with open('/root/.aws/credentials', 'w') as f:
-                f.write('[default]\n')
-                f.write('aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}\n')
-                f.write('aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}\n')
-                f.write('region = eu-central-1\n')
-            print('AWS credentials written')
-            "
+
+            # Run calibration build
+            echo "=== Starting calibration build ==="
             docker compose -f docker-compose.server.yml exec -T ml-service python -m scripts.build_calibration_dataset --bucket dent-calibration-data --output /app/data/labeled_dataset.jsonl --api-url http://localhost:8000 --skip-gemini --resume
+
+            echo "=== Build complete ==="
             docker compose -f docker-compose.server.yml exec -T ml-service wc -l /app/data/labeled_dataset.jsonl
