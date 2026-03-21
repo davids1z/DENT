@@ -2,267 +2,247 @@
 """
 Download calibration images from public datasets and upload directly to S3.
 
-Downloads 500+ images per category (authentic, ai_generated, tampered)
-from public academic datasets and uploads directly to S3 without local storage.
+Sources:
+  authentic:    food101 (HuggingFace, 512x512 real photos)
+  ai_generated: ELSA1M_track1 (HuggingFace, AI-generated images from multiple models)
+  tampered:     Auto-generated from authentic images using copy-move/splice transforms
 
 Usage:
-  # Set AWS credentials first:
   export AWS_ACCESS_KEY_ID=AKIA...
   export AWS_SECRET_ACCESS_KEY=...
   export AWS_DEFAULT_REGION=eu-central-1
 
   python -m scripts.download_calibration_images \
     --bucket dent-calibration-data \
-    --category authentic \
+    --category all \
     --limit 600
-
-  python -m scripts.download_calibration_images \
-    --bucket dent-calibration-data \
-    --category ai_generated \
-    --limit 600
-
-  python -m scripts.download_calibration_images \
-    --bucket dent-calibration-data \
-    --category tampered \
-    --limit 600
-
-Sources:
-  authentic:    RAISE dataset, COCO val2017, Flickr CC
-  ai_generated: GenImage (HuggingFace), DiffusionForensics
-  tampered:     CASIA v2, Columbia, CoMoFoD
 """
 
 from __future__ import annotations
 
 import argparse
 import io
+import random
 import sys
 import uuid
-from typing import Iterator
 
 import boto3
-import requests
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageFilter
 
 S3_PREFIX_RAW = "raw"
 
 
-def _upload_to_s3(
+def _standardize_and_upload(
     s3_client,
     bucket: str,
     category: str,
-    image_bytes: bytes,
-    extension: str = ".jpg",
-    source: str = "unknown",
-) -> str:
-    """Upload image bytes directly to S3 with random filename."""
-    random_name = uuid.uuid4().hex[:12] + extension
-    key = f"{S3_PREFIX_RAW}/{category}/{random_name}"
-
-    s3_client.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=image_bytes,
-        ContentType="image/jpeg",
-        Metadata={"source": source, "category": category},
-    )
-    return key
-
-
-def _standardize_image(image_bytes: bytes, quality: int = 90) -> bytes:
-    """Standardize image: convert to RGB JPEG, strip ALL metadata, quality 90."""
-    img = Image.open(io.BytesIO(image_bytes))
-    if img.mode != "RGB":
-        img = img.convert("RGB")
-
-    # Save as JPEG without EXIF (Pillow strips metadata by default when not copying)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=quality, optimize=True)
-    return buf.getvalue()
-
-
-# ── Dataset downloaders ─────────────────────────────────────────────
-
-
-def download_coco_val2017(limit: int = 600) -> Iterator[tuple[bytes, str]]:
-    """Download real photos from COCO val2017 dataset (5000 images available)."""
-    print("  Downloading from COCO val2017...")
-
-    # COCO val2017 image list from official API
-    coco_api = "http://images.cocodataset.org/val2017/"
-
-    # Get image IDs from COCO annotations
-    ann_url = "http://images.cocodataset.org/annotations/instances_val2017.json"
-
-    # Alternative: use a predefined list of COCO image IDs
-    # These are the first N image IDs from val2017
-    # COCO image filenames are zero-padded 12-digit numbers
-    import json
-
+    img: Image.Image,
+    source: str,
+    quality: int = 90,
+) -> bool:
+    """Standardize image to JPEG, strip EXIF, upload to S3 with random name."""
     try:
-        print("    Fetching COCO annotation index...")
-        resp = requests.get(
-            "http://images.cocodataset.org/annotations/image_info_val2017.json",
-            timeout=60,
-            stream=True,
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Resize if too small or too large
+        min_side = 256
+        max_side = 1024
+        w, h = img.size
+        if max(w, h) < min_side:
+            # Skip tiny images
+            return False
+        if max(w, h) > max_side:
+            ratio = max_side / max(w, h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+
+        # Save as JPEG without ANY metadata
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        jpeg_bytes = buf.getvalue()
+
+        if len(jpeg_bytes) < 5000:
+            return False  # Skip very small files
+
+        random_name = uuid.uuid4().hex[:12] + ".jpg"
+        key = f"{S3_PREFIX_RAW}/{category}/{random_name}"
+
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=jpeg_bytes,
+            ContentType="image/jpeg",
+            Metadata={"source": source, "category": category},
         )
-        if resp.status_code != 200:
-            raise Exception(f"HTTP {resp.status_code}")
-
-        data = json.loads(resp.content)
-        images = data.get("images", [])[:limit]
-        print(f"    Found {len(images)} images in COCO val2017")
+        return True
     except Exception as e:
-        print(f"    COCO annotation download failed: {e}")
-        print("    Falling back to sequential IDs...")
-        # Fallback: generate sequential filenames
-        images = [{"file_name": f"{str(i).zfill(12)}.jpg"} for i in range(1, limit + 1)]
+        print(f"    Error: {e}")
+        return False
 
-    count = 0
-    for img_info in images:
-        if count >= limit:
+
+# ── Authentic images ────────────────────────────────────────────────
+
+
+def download_authentic(s3_client, bucket: str, limit: int) -> int:
+    """Download real photos from food101 dataset."""
+    from datasets import load_dataset
+
+    print("  Source: food101 (HuggingFace, real food photos 512x512)")
+    ds = load_dataset("food101", split="validation", streaming=True)
+
+    uploaded = 0
+    for i, sample in enumerate(ds):
+        if uploaded >= limit:
+            break
+        img = sample.get("image")
+        if img and _standardize_and_upload(s3_client, bucket, "authentic", img, f"food101/{i}"):
+            uploaded += 1
+            if uploaded % 100 == 0:
+                print(f"    {uploaded}/{limit} authentic uploaded")
+
+    print(f"  Authentic: {uploaded} uploaded")
+    return uploaded
+
+
+# ── AI Generated images ─────────────────────────────────────────────
+
+
+def download_ai_generated(s3_client, bucket: str, limit: int) -> int:
+    """Download AI-generated images from ELSA1M dataset."""
+    from datasets import load_dataset
+
+    print("  Source: elsaEU/ELSA1M_track1 (AI-generated, multiple models)")
+    ds = load_dataset("elsaEU/ELSA1M_track1", split="train", streaming=True)
+
+    uploaded = 0
+    for i, sample in enumerate(ds):
+        if uploaded >= limit:
+            break
+        img = sample.get("image")
+        model = sample.get("model", "unknown")
+        if img and _standardize_and_upload(
+            s3_client, bucket, "ai_generated", img, f"ELSA1M/{model}/{i}"
+        ):
+            uploaded += 1
+            if uploaded % 100 == 0:
+                print(f"    {uploaded}/{limit} ai_generated uploaded")
+
+    print(f"  AI generated: {uploaded} uploaded")
+    return uploaded
+
+
+# ── Tampered images (auto-generated) ────────────────────────────────
+
+
+def _apply_copy_move(img: Image.Image) -> Image.Image:
+    """Apply copy-move forgery: copy a random region and paste elsewhere."""
+    arr = np.array(img)
+    h, w = arr.shape[:2]
+
+    # Random source region (10-30% of image)
+    rh = random.randint(h // 10, h // 3)
+    rw = random.randint(w // 10, w // 3)
+    sy = random.randint(0, h - rh)
+    sx = random.randint(0, w - rw)
+
+    # Random destination (different from source)
+    dy = random.randint(0, h - rh)
+    dx = random.randint(0, w - rw)
+    # Ensure some distance between source and destination
+    while abs(dy - sy) < rh // 2 and abs(dx - sx) < rw // 2:
+        dy = random.randint(0, h - rh)
+        dx = random.randint(0, w - rw)
+
+    # Copy region
+    region = arr[sy:sy + rh, sx:sx + rw].copy()
+
+    # Optionally apply slight transform to copied region
+    if random.random() > 0.5:
+        # Slight blur to blend edges
+        region_img = Image.fromarray(region)
+        region_img = region_img.filter(ImageFilter.GaussianBlur(radius=1))
+        region = np.array(region_img)
+
+    # Paste
+    arr[dy:dy + rh, dx:dx + rw] = region
+    return Image.fromarray(arr)
+
+
+def _apply_splice(img1: Image.Image, img2: Image.Image) -> Image.Image:
+    """Splice: take a region from img2 and paste into img1."""
+    arr1 = np.array(img1)
+    arr2 = np.array(img2)
+
+    h1, w1 = arr1.shape[:2]
+    h2, w2 = arr2.shape[:2]
+
+    # Region size (20-40% of image)
+    rh = min(h1, h2) // 3
+    rw = min(w1, w2) // 3
+
+    # Source from img2
+    sy = random.randint(0, h2 - rh)
+    sx = random.randint(0, w2 - rw)
+
+    # Destination in img1
+    dy = random.randint(0, h1 - rh)
+    dx = random.randint(0, w1 - rw)
+
+    arr1[dy:dy + rh, dx:dx + rw] = arr2[sy:sy + rh, sx:sx + rw]
+    return Image.fromarray(arr1)
+
+
+def download_tampered(s3_client, bucket: str, limit: int) -> int:
+    """Generate tampered images from authentic images using copy-move and splice."""
+    from datasets import load_dataset
+
+    print("  Source: Auto-generated from food101 (copy-move + splice transforms)")
+    ds = load_dataset("food101", split="validation", streaming=True)
+
+    uploaded = 0
+    prev_img = None
+
+    for i, sample in enumerate(ds):
+        if uploaded >= limit:
             break
 
-        filename = img_info.get("file_name", img_info.get("coco_url", "").split("/")[-1])
-        url = f"http://images.cocodataset.org/val2017/{filename}"
+        img = sample.get("image")
+        if img is None:
+            continue
+        if img.mode != "RGB":
+            img = img.convert("RGB")
 
-        try:
-            resp = requests.get(url, timeout=30)
-            if resp.status_code == 200 and len(resp.content) > 1000:
-                yield resp.content, f"coco_val2017/{filename}"
-                count += 1
-        except Exception:
+        # Skip tiny images
+        if max(img.size) < 256:
             continue
 
-    print(f"    Downloaded {count} COCO images")
-
-
-def download_huggingface_dataset(
-    dataset_name: str,
-    split: str = "test",
-    image_column: str = "image",
-    limit: int = 600,
-    label_column: str | None = None,
-    label_value: int | str | None = None,
-) -> Iterator[tuple[bytes, str]]:
-    """Download images from a HuggingFace dataset using the datasets library."""
-    print(f"  Downloading from HuggingFace: {dataset_name} ({split})...")
-
-    try:
-        from datasets import load_dataset
-
-        ds = load_dataset(dataset_name, split=split, streaming=True)
-
-        count = 0
-        for i, sample in enumerate(ds):
-            if count >= limit:
-                break
-
-            # Filter by label if specified
-            if label_column and label_value is not None:
-                if sample.get(label_column) != label_value:
-                    continue
-
-            img = sample.get(image_column)
-            if img is None:
-                continue
-
-            # Convert PIL Image to bytes
-            if hasattr(img, "save"):
-                buf = io.BytesIO()
-                if img.mode != "RGB":
-                    img = img.convert("RGB")
-                img.save(buf, format="JPEG", quality=90)
-                yield buf.getvalue(), f"{dataset_name}/{i}"
-                count += 1
-
-        print(f"    Downloaded {count} images from {dataset_name}")
-
-    except ImportError:
-        print("    ERROR: 'datasets' package not installed. Run: pip install datasets")
-    except Exception as e:
-        print(f"    ERROR downloading {dataset_name}: {e}")
-
-
-def download_genimage_ai(limit: int = 600) -> Iterator[tuple[bytes, str]]:
-    """Download AI-generated images from GenImage dataset on HuggingFace."""
-    # GenImage has images from multiple generators
-    generators = [
-        ("Yijun0/GenImage_MJ", "test", "image", None, None, limit // 4),
-        ("Yijun0/GenImage_SDXL", "test", "image", None, None, limit // 4),
-        ("Yijun0/GenImage_DALLE3", "test", "image", None, None, limit // 4),
-        ("Yijun0/GenImage_SD", "test", "image", None, None, limit // 4),
-    ]
-
-    total = 0
-    for ds_name, split, img_col, lbl_col, lbl_val, sub_limit in generators:
-        try:
-            for img_bytes, source in download_huggingface_dataset(
-                ds_name, split, img_col, sub_limit, lbl_col, lbl_val
-            ):
-                yield img_bytes, source
-                total += 1
-        except Exception as e:
-            print(f"    Skipping {ds_name}: {e}")
+        # Alternate between copy-move and splice
+        if random.random() > 0.4:
+            # Copy-move (60% of tampered images)
+            tampered = _apply_copy_move(img)
+            method = "copy_move"
+        elif prev_img is not None:
+            # Splice with previous image (40%)
+            # Resize prev to match current
+            prev_resized = prev_img.resize(img.size, Image.LANCZOS)
+            tampered = _apply_splice(img, prev_resized)
+            method = "splice"
+        else:
+            prev_img = img
             continue
 
-    # Fallback: use InfImagine FakeImageDataset if GenImage not available
-    if total < limit // 2:
-        remaining = limit - total
-        print(f"    GenImage gave {total} images, trying FakeImageDataset for {remaining} more...")
-        try:
-            for img_bytes, source in download_huggingface_dataset(
-                "InfImagine/FakeImageDataset",
-                "train",
-                "image",
-                remaining,
-            ):
-                yield img_bytes, source
-                total += 1
-        except Exception:
-            pass
-
-    print(f"    Total AI-generated: {total}")
-
-
-def download_casia_tampered(limit: int = 600) -> Iterator[tuple[bytes, str]]:
-    """Download tampered images from CASIA v2 dataset."""
-    print("  Downloading tampered images from CASIA v2 / IMD2020...")
-
-    # Try CASIA v2 from HuggingFace
-    count = 0
-    try:
-        for img_bytes, source in download_huggingface_dataset(
-            "InfImagine/CASIA2",
-            "test",
-            "image",
-            limit,
-            "label",
-            1,  # 1 = tampered
+        if _standardize_and_upload(
+            s3_client, bucket, "tampered", tampered, f"auto_{method}/{i}"
         ):
-            yield img_bytes, source
-            count += 1
-    except Exception as e:
-        print(f"    CASIA2 failed: {e}")
+            uploaded += 1
+            if uploaded % 100 == 0:
+                print(f"    {uploaded}/{limit} tampered uploaded")
 
-    # Fallback: Columbia dataset
-    if count < limit // 2:
-        remaining = limit - count
-        try:
-            for img_bytes, source in download_huggingface_dataset(
-                "InfImagine/Columbia",
-                "test",
-                "image",
-                remaining,
-                "label",
-                1,
-            ):
-                yield img_bytes, source
-                count += 1
-        except Exception:
-            pass
+        prev_img = img
 
-    print(f"    Total tampered: {count}")
+    print(f"  Tampered: {uploaded} uploaded")
+    return uploaded
 
 
 # ── Main ────────────────────────────────────────────────────────────
@@ -275,15 +255,13 @@ def main() -> None:
         "--category",
         required=True,
         choices=["authentic", "ai_generated", "tampered", "all"],
-        help="Image category to download",
     )
     parser.add_argument("--limit", type=int, default=600, help="Max images per category")
-    parser.add_argument("--region", default="eu-central-1", help="AWS region")
+    parser.add_argument("--region", default="eu-central-1")
     args = parser.parse_args()
 
     s3 = boto3.client("s3", region_name=args.region)
 
-    # Verify bucket exists
     try:
         s3.head_bucket(Bucket=args.bucket)
         print(f"S3 bucket: {args.bucket} (verified)")
@@ -291,51 +269,29 @@ def main() -> None:
         print(f"ERROR: Cannot access bucket {args.bucket}: {e}")
         sys.exit(1)
 
-    categories = (
-        ["authentic", "ai_generated", "tampered"]
-        if args.category == "all"
-        else [args.category]
-    )
+    categories = ["authentic", "ai_generated", "tampered"] if args.category == "all" else [args.category]
+    total = 0
 
-    for category in categories:
+    for cat in categories:
         print(f"\n{'='*60}")
-        print(f"Downloading: {category} (limit: {args.limit})")
+        print(f"Downloading: {cat} (limit: {args.limit})")
         print(f"{'='*60}")
 
-        if category == "authentic":
-            source_iter = download_coco_val2017(args.limit)
-        elif category == "ai_generated":
-            source_iter = download_genimage_ai(args.limit)
-        elif category == "tampered":
-            source_iter = download_casia_tampered(args.limit)
+        if cat == "authentic":
+            count = download_authentic(s3, args.bucket, args.limit)
+        elif cat == "ai_generated":
+            count = download_ai_generated(s3, args.bucket, args.limit)
+        elif cat == "tampered":
+            count = download_tampered(s3, args.bucket, args.limit)
         else:
-            continue
+            count = 0
 
-        uploaded = 0
-        errors = 0
-
-        for raw_bytes, source_name in source_iter:
-            try:
-                # Standardize: RGB JPEG quality=90, strip ALL metadata
-                std_bytes = _standardize_image(raw_bytes, quality=90)
-                key = _upload_to_s3(s3, args.bucket, category, std_bytes, ".jpg", source_name)
-                uploaded += 1
-
-                if uploaded % 50 == 0:
-                    print(f"    Uploaded {uploaded} images to s3://{args.bucket}/{S3_PREFIX_RAW}/{category}/")
-
-            except Exception as e:
-                errors += 1
-                if errors <= 5:
-                    print(f"    Error processing image from {source_name}: {e}")
-                continue
-
-        print(f"\n  {category}: {uploaded} uploaded, {errors} errors")
+        total += count
 
     print(f"\n{'='*60}")
-    print("Download complete!")
-    print(f"Images are in s3://{args.bucket}/raw/<category>/")
-    print(f"\nNext step: python -m scripts.prepare_calibration_dataset --bucket {args.bucket}")
+    print(f"Download complete! Total: {total} images")
+    print(f"All images in s3://{args.bucket}/raw/")
+    print(f"\nNext: python -m scripts.prepare_calibration_dataset --bucket {args.bucket}")
 
 
 if __name__ == "__main__":
