@@ -23,9 +23,11 @@ jobs:
           script: |
             cd /opt/dent
 
-            # Add AWS credentials to .env file on server
-            grep -q "AWS_ACCESS_KEY_ID" .env 2>/dev/null || echo "AWS_ACCESS_KEY_ID=$AKEY" >> .env
-            grep -q "AWS_SECRET_ACCESS_KEY" .env 2>/dev/null || echo "AWS_SECRET_ACCESS_KEY=$ASECRET" >> .env
+            # Clean old AWS lines and add new ones (quoted for special chars)
+            sed -i '/AWS_ACCESS_KEY_ID/d' .env 2>/dev/null || true
+            sed -i '/AWS_SECRET_ACCESS_KEY/d' .env 2>/dev/null || true
+            echo "AWS_ACCESS_KEY_ID='$AKEY'" >> .env
+            echo "AWS_SECRET_ACCESS_KEY='$ASECRET'" >> .env
 
             # Restart ml-service with new env vars
             docker compose -f docker-compose.server.yml up -d ml-service
