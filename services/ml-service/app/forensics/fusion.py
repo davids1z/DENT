@@ -35,6 +35,15 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "content_validation": 0.03,
 }
 
+# Module names that are dedicated AI / synthetic-content detectors
+# (exported for use by analyze.py enforcement logic)
+_AI_DETECTOR_MODULES = frozenset({
+    "ai_generation_detection",
+    "clip_ai_detection",
+    "vae_reconstruction",
+    "prnu_detection",
+})
+
 # Core AI detection modules — only these determine AI generation score
 _CORE_AI_WEIGHTS = {
     "ai_generation_detection": 0.50,
