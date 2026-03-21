@@ -99,7 +99,27 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
             overall = max(0.0, min(1.0, meta_score))
             return overall, round(overall * 100), _risk_level(overall)
 
-    # ── Step 1: Core AI score (only dedicated AI detectors) ───────────
+    # ── Step 0: Gemini VLM verdict (PRIMARY signal, 60% weight) ─────
+    # semantic_forensics already calls Gemini and returns findings:
+    #   SEM_VLM_AUTHENTIC → image is real (low risk)
+    #   SEM_VLM_SYNTHETIC_DETECTED → image is AI-generated (high risk)
+    #   SEM_VLM_SYNTHETIC_SUSPECTED → possibly AI (moderate risk)
+    sem = _get_module(active, "semantic_forensics")
+    gemini_score: float | None = None
+
+    if sem is not None and sem.findings:
+        for f in sem.findings:
+            if f.code == "SEM_VLM_SYNTHETIC_DETECTED":
+                gemini_score = sem.risk_score
+                break
+            if f.code == "SEM_VLM_SYNTHETIC_SUSPECTED":
+                gemini_score = sem.risk_score * 0.80
+                break
+            if f.code == "SEM_VLM_AUTHENTIC":
+                gemini_score = 0.10
+                break
+
+    # ── Step 1: Core AI pixel score (secondary signal, 40% weight) ───
     core_weighted = 0.0
     core_total_w = 0.0
     for m in active:
@@ -109,29 +129,33 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
-    # ── Step 2: Context modifiers from metadata + PRNU findings ───────
+    # Context modifiers from metadata + PRNU findings
     meta = _get_module(active, "metadata_analysis")
     prnu = _get_module(active, "prnu_detection")
 
-    # Positive authenticity signals → reduce AI risk
     has_authentic_sensor = prnu is not None and any(
         f.code == "PRNU_AUTHENTIC_SENSOR" for f in prnu.findings
     )
     has_c2pa_valid = meta is not None and any(
         f.code == "META_C2PA_VALID" for f in meta.findings
     )
-
-    # Negative signals → increase AI risk
     has_ai_tool = meta is not None and any(
         f.code in ("META_XMP_AI_TOOL_HISTORY", "META_C2PA_AI_GENERATED")
         for f in meta.findings
     )
 
     if has_authentic_sensor or has_c2pa_valid:
-        core_score *= 0.50  # Strong camera/provenance evidence halves AI risk
-
+        core_score *= 0.50
     if has_ai_tool:
-        core_score = max(core_score, 0.80)  # AI tool in metadata = strong signal
+        core_score = max(core_score, 0.80)
+
+    # ── Step 2: Combine Gemini + pixel scores ─────────────────────────
+    if gemini_score is not None:
+        # Gemini has 60% vote, pixel modules have 40%
+        ai_combined = gemini_score * 0.60 + core_score * 0.40
+    else:
+        # VLM didn't run or had no findings — fallback to pixel-only
+        ai_combined = core_score
 
     # ── Step 3: Tampering score (separate from AI generation) ─────────
     deep_mod = _get_module(active, "deep_modification_detection")
@@ -141,20 +165,18 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
         (mod_det.risk_score * 0.70) if mod_det else 0.0,
     )
 
-    # ── Step 4: Text AI detection (for documents) ─────────────────────
+    # ── Step 4: Document signals ──────────────────────────────────────
     text_ai = _get_module(active, "text_ai_detection")
     text_ai_score = text_ai.risk_score if text_ai and text_ai.risk_score >= 0.50 else 0.0
-
-    # Content validation (OIB/IBAN forgery)
     content_val = _get_module(active, "content_validation")
     content_score = content_val.risk_score if content_val and content_val.risk_score >= 0.40 else 0.0
 
-    # ── Step 5: Final risk = max of all signal channels ───────────────
-    overall = max(core_score, tampering, text_ai_score, content_score)
+    # ── Step 5: Final risk = max of all channels ──────────────────────
+    overall = max(ai_combined, tampering, text_ai_score, content_score)
 
     # ── Step 6: Cross-validation floor ────────────────────────────────
-    # When 2+ core AI detectors independently agree at >= 0.60,
-    # this is very strong evidence — enforce a minimum floor.
+    # When 2+ core AI pixel detectors independently agree at >= 0.60,
+    # this overrides even Gemini's "authentic" verdict (safety net).
     high_ai_count = sum(
         1 for m in active
         if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.60
