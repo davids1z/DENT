@@ -764,14 +764,34 @@ def _compute_deterministic_verdict(
         if name and not m.get("error"):
             mod_lookup[name] = m
 
-    # ── AI-aware suppression: if no AI detector has a signal, require
-    # stronger evidence from support modules to avoid false positives ──
+    # ── Registry must be loaded FIRST (used for thresholds below) ──
+    reg = get_registry()
+
+    # ── Realness signals: metadata + PRNU indicate real camera ────────
+    # When metadata is clean (low risk) AND PRNU is clean, the image
+    # likely comes from a real camera. Support modules (metadata, optical,
+    # semantic, modification) produce noise on real images that should not
+    # generate findings. Only strong signals (>=0.60) should pass through.
     _AI_MODULES = {"ai_generation_detection", "clip_ai_detection", "vae_reconstruction"}
-    max_ai_score = max(
-        (float(mod_lookup.get(m, {}).get("risk_score", 0) or 0) for m in _AI_MODULES),
-        default=0.0,
-    )
-    ai_is_low = max_ai_score < 0.40
+    _SUPPORT_MODULES = {
+        "metadata_analysis", "modification_detection", "deep_modification_detection",
+        "spectral_forensics", "optical_forensics", "semantic_forensics",
+    }
+
+    def _get_mod_risk(name: str) -> float:
+        try:
+            return float(mod_lookup.get(name, {}).get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    max_ai_score = max((_get_mod_risk(m) for m in _AI_MODULES), default=0.0)
+    meta_risk = _get_mod_risk("metadata_analysis")
+    prnu_risk = _get_mod_risk("prnu_detection")
+
+    # Camera realness: metadata clean + PRNU clean = likely real photo
+    camera_is_real = meta_risk < 0.30 and prnu_risk < 0.30
+    # AI detectors not confident = no strong AI signal
+    ai_not_confident = max_ai_score < 0.60
 
     # ── Generate mandatory findings from modules that exceed thresholds ──
     findings: list[dict] = []
@@ -780,10 +800,7 @@ def _compute_deterministic_verdict(
         mod = mod_lookup.get(mod_name)
         if not mod:
             continue
-        try:
-            mod_risk = float(mod.get("risk_score", 0) or 0)
-        except (TypeError, ValueError):
-            mod_risk = 0.0
+        mod_risk = _get_mod_risk(mod_name)
 
         threshold = mapping["threshold"]
         # Upload images: lower thresholds by upload_offset
@@ -793,10 +810,13 @@ def _compute_deterministic_verdict(
             threshold = max(0.10, threshold - offset)
 
         if mod_risk >= threshold:
-            # Suppress weak findings from support modules when AI detectors
-            # don't corroborate — prevents false positives on real images
-            if ai_is_low and mod_name not in _AI_MODULES and mod_risk < 0.60:
-                continue
+            # ── Realness suppression: suppress weak support-module findings
+            # when camera signals indicate a real photo AND AI detectors
+            # are not confident. Only strong signals (>=0.60) pass through.
+            if camera_is_real and ai_not_confident:
+                if mod_name in _SUPPORT_MODULES and mod_risk < 0.60:
+                    continue
+
             severity = mapping["severity_high"] if mod_risk >= 0.60 else mapping["severity_low"]
             safety = "Critical" if mod_risk >= 0.60 else "Warning"
             confidence = min(0.95, 0.50 + mod_risk * 0.40)
@@ -809,12 +829,10 @@ def _compute_deterministic_verdict(
                 "module_name": mod_name,
                 "module_risk": round(mod_risk, 4),
                 "fallback_description": mapping["fallback_desc"],
-                # LLM will fill description; this is fallback
                 "description": "",
             })
 
     # ── Determine overall verdict ──
-    reg = get_registry()
     if risk >= reg.verdict.forged_risk or len(findings) >= reg.verdict.forged_min_findings:
         overall_verdict = "Krivotvoreno"
     elif risk >= reg.verdict.suspicious_risk or len(findings) >= reg.verdict.suspicious_min_findings:
