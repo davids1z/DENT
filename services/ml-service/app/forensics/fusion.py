@@ -99,27 +99,8 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
             overall = max(0.0, min(1.0, meta_score))
             return overall, round(overall * 100), _risk_level(overall)
 
-    # ── Step 0: Gemini VLM verdict (PRIMARY signal, 60% weight) ─────
-    # semantic_forensics already calls Gemini and returns findings:
-    #   SEM_VLM_AUTHENTIC → image is real (low risk)
-    #   SEM_VLM_SYNTHETIC_DETECTED → image is AI-generated (high risk)
-    #   SEM_VLM_SYNTHETIC_SUSPECTED → possibly AI (moderate risk)
-    sem = _get_module(active, "semantic_forensics")
-    gemini_score: float | None = None
-
-    if sem is not None and sem.findings:
-        for f in sem.findings:
-            if f.code == "SEM_VLM_SYNTHETIC_DETECTED":
-                gemini_score = sem.risk_score
-                break
-            if f.code == "SEM_VLM_SYNTHETIC_SUSPECTED":
-                gemini_score = sem.risk_score * 0.80
-                break
-            if f.code == "SEM_VLM_AUTHENTIC":
-                gemini_score = 0.10
-                break
-
-    # ── Step 1: Core AI pixel score (secondary signal, 40% weight) ───
+    # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
+    # Trained classifiers (Swin, CLIP, VAE) are the primary decision makers.
     core_weighted = 0.0
     core_total_w = 0.0
     for m in active:
@@ -129,7 +110,7 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
-    # Context modifiers from metadata + PRNU findings
+    # ── Step 2: Context modifiers from metadata + PRNU ────────────────
     meta = _get_module(active, "metadata_analysis")
     prnu = _get_module(active, "prnu_detection")
 
@@ -148,21 +129,37 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
     )
 
     if has_authentic_sensor or has_c2pa_valid:
-        core_score *= 0.50
+        core_score *= 0.50  # Strong camera/provenance evidence halves AI risk
     if has_ai_tool or has_ai_filename:
-        # AI tool in metadata/filename = definitive signal, override everything
-        core_score = max(core_score, 0.90)
+        core_score = max(core_score, 0.90)  # Definitive AI metadata signal
 
-    # ── Step 2: Combine Gemini + pixel scores ─────────────────────────
-    # If metadata has definitive AI signal (filename/tool), skip Gemini weighting
+    # ── Step 3: Gemini VLM as SUPPLEMENTARY signal (additive, not dominant)
+    # VLMs are great for describing anomalies but unreliable for binary
+    # AI classification. Gemini can nudge the score slightly but NEVER
+    # override pixel detectors. Max adjustment: ±0.10
+    sem = _get_module(active, "semantic_forensics")
+    gemini_adjustment = 0.0
+
+    if sem is not None and sem.findings:
+        for f in sem.findings:
+            if f.code == "SEM_VLM_SYNTHETIC_DETECTED":
+                # Gemini agrees it's AI — small boost (max +0.10)
+                gemini_adjustment = min(0.10, sem.risk_score * 0.15)
+                break
+            if f.code == "SEM_VLM_SYNTHETIC_SUSPECTED":
+                gemini_adjustment = min(0.05, sem.risk_score * 0.10)
+                break
+            if f.code == "SEM_VLM_AUTHENTIC":
+                # Gemini thinks it's real — small reduction (max -0.05)
+                # This CANNOT flip a high pixel score to "safe"
+                gemini_adjustment = -0.05
+                break
+
+    # ── Step 4: Combine — pixel-first with Gemini adjustment ─────────
     if has_ai_tool or has_ai_filename:
-        ai_combined = core_score  # Metadata is definitive, don't dilute with Gemini
-    elif gemini_score is not None:
-        # Gemini has 60% vote, pixel modules have 40%
-        ai_combined = gemini_score * 0.60 + core_score * 0.40
+        ai_combined = core_score  # Metadata definitive, skip Gemini
     else:
-        # VLM didn't run or had no findings — fallback to pixel-only
-        ai_combined = core_score
+        ai_combined = core_score + gemini_adjustment
 
     # ── Step 3: Tampering score (separate from AI generation) ─────────
     deep_mod = _get_module(active, "deep_modification_detection")
