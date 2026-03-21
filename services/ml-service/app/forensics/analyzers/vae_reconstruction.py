@@ -49,6 +49,26 @@ except ImportError:
 
 _VAE_MODEL_ID = "stabilityai/sd-vae-ft-mse"
 
+# Lazy-loaded VGG16 feature extractor for LPIPS-style perceptual distance
+_vgg_features = None
+
+
+def _get_vgg_features():
+    """Lazy-load VGG16 feature extractor (first 16 layers = through relu3_3)."""
+    global _vgg_features
+    if _vgg_features is None:
+        try:
+            from torchvision.models import vgg16, VGG16_Weights
+            model = vgg16(weights=VGG16_Weights.DEFAULT)
+            _vgg_features = torch.nn.Sequential(*list(model.features[:16]))
+            _vgg_features.eval()
+            for p in _vgg_features.parameters():
+                p.requires_grad = False
+            logger.info("VGG16 feature extractor loaded for LPIPS")
+        except Exception as e:
+            logger.warning("Failed to load VGG16 for LPIPS: %s", e)
+    return _vgg_features
+
 # Thresholds derived from empirical testing:
 # Real images: mean_error ~0.06-0.12, uniformity ~0.3-0.6
 # AI images:   mean_error ~0.02-0.05, uniformity ~0.6-0.9
@@ -213,20 +233,29 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
         else:
             high_freq_loss = 0.0
 
-        # Compute AI probability from error statistics
+        # ── FFT error frequency analysis ──────────────────────────────
+        error_gray = per_pixel_error  # already (H, W)
+        fft_energy = self._compute_fft_error_energy(error_gray)
+
+        # ── LPIPS and SSIM for base reconstruction ────────────────────
+        lpips_distance = self._compute_lpips(original_01, recon_01)
+        ssim_value = self._compute_ssim(orig_gray, recon_gray)
+
+        # Compute AI probability from error statistics (now with FFT)
         ai_prob = self._error_to_probability(
-            mean_error, spatial_uniformity, high_freq_loss
+            mean_error, spatial_uniformity, high_freq_loss,
+            fft_mid=fft_energy["mid"],
         )
 
         # ── Multi-noise snap-back analysis ────────────────────────────
-        # Add noise at multiple levels, re-encode→decode, measure how
+        # Add noise at multiple levels, re-encode->decode, measure how
         # quickly the image "snaps back" to the VAE manifold.
-        # AI images snap back faster (lower snap-back distance).
+        # AI images snap back faster (lower distance).
         snap_back = self._multi_noise_snap_back(tensor)
         ai_prob_snapback = snap_back.get("snap_back_score", 0.0)
 
-        # Combine: weighted average of original method and snap-back
-        combined_prob = ai_prob * 0.55 + ai_prob_snapback * 0.45
+        # Combine: snap-back with LPIPS is more reliable, give it more weight
+        combined_prob = ai_prob * 0.40 + ai_prob_snapback * 0.60
 
         return {
             "mean_error": round(mean_error, 6),
@@ -234,67 +263,104 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
             "percentile_95": round(p95, 6),
             "spatial_uniformity": round(spatial_uniformity, 4),
             "high_freq_loss": round(high_freq_loss, 4),
+            "fft_energy": {k: round(v, 4) for k, v in fft_energy.items()},
+            "lpips_distance": round(lpips_distance, 6),
+            "ssim": round(ssim_value, 4),
             "ai_probability": round(combined_prob, 4),
             "snap_back_score": round(ai_prob_snapback, 4),
             "snap_back_coefficients": snap_back.get("coefficients", []),
+            "snap_back_metrics": snap_back.get("per_level_metrics", []),
         }
 
     def _multi_noise_snap_back(self, original_tensor: torch.Tensor) -> dict:
         """Multi-noise snap-back analysis (Diffusion Snap-Back).
 
-        For each noise level σ:
+        For each noise level sigma:
           1. Add Gaussian noise to the image
-          2. Encode→decode through VAE
+          2. Encode->decode through VAE
           3. Measure distance from reconstructed to ORIGINAL (not noisy)
           4. AI images snap back to original faster (lower distance)
 
-        The snap-back coefficient = noisy_distance / reconstructed_distance.
+        Uses three complementary metrics:
+          - MAE: pixel-level reconstruction accuracy
+          - LPIPS: perceptual similarity (most discriminative)
+          - SSIM: structural similarity improvement
+
+        The snap-back coefficient = 1 - (recon_dist / noisy_dist).
         High coefficient = fast snap-back = likely AI.
         """
-        noise_levels = [0.01, 0.05, 0.10, 0.15]
-        coefficients: list[float] = []
+        noise_levels = [0.01, 0.03, 0.06, 0.10, 0.15, 0.20]
+        # Weights per noise level: higher noise = more informative
+        level_weights = [0.05, 0.10, 0.15, 0.20, 0.25, 0.25]
+
+        per_level_metrics: list[dict] = []
 
         with torch.no_grad():
             original_01 = (original_tensor + 1.0) / 2.0
+            orig_gray = original_01.squeeze(0).mean(dim=0).cpu().numpy()
 
             for sigma in noise_levels:
-                # Add noise
                 noise = torch.randn_like(original_tensor) * sigma
                 noisy = (original_tensor + noise).clamp(-1.0, 1.0)
+                noisy_01 = ((noisy + 1.0) / 2.0).clamp(0.0, 1.0)
 
-                # Distance from noisy to original (in [0,1] space)
-                noisy_01 = (noisy + 1.0) / 2.0
-                noisy_dist = float(torch.abs(original_01 - noisy_01).mean())
-
-                # Reconstruct the noisy image through VAE
+                # Reconstruct noisy image through VAE
                 latent = self._vae.encode(noisy).latent_dist.mean
                 recon = self._vae.decode(latent).sample
                 recon_01 = ((recon + 1.0) / 2.0).clamp(0.0, 1.0)
 
-                # Distance from reconstruction to ORIGINAL
-                recon_dist = float(torch.abs(original_01 - recon_01).mean())
+                # MAE distances
+                mae_noisy = float(torch.abs(original_01 - noisy_01).mean())
+                mae_recon = float(torch.abs(original_01 - recon_01).mean())
 
-                # Snap-back coefficient: how much closer did VAE bring it?
-                if noisy_dist > 1e-8:
-                    snap_coeff = 1.0 - (recon_dist / noisy_dist)
-                else:
-                    snap_coeff = 0.0
+                # LPIPS distances
+                lpips_noisy = self._compute_lpips(original_01, noisy_01)
+                lpips_recon = self._compute_lpips(original_01, recon_01)
 
-                coefficients.append(round(snap_coeff, 4))
+                # SSIM (grayscale)
+                noisy_gray = noisy_01.squeeze(0).mean(dim=0).cpu().numpy()
+                recon_gray = recon_01.squeeze(0).mean(dim=0).cpu().numpy()
+                ssim_noisy = self._compute_ssim(orig_gray, noisy_gray)
+                ssim_recon = self._compute_ssim(orig_gray, recon_gray)
 
-        # AI images have high snap-back coefficients (VAE "pulls" them back)
-        # Real images have low coefficients (VAE can't find the manifold)
-        if coefficients:
-            avg_coeff = sum(coefficients) / len(coefficients)
-            # Map to probability: high coeff → high AI probability
-            # Empirical: real ~0.10-0.40, AI ~0.50-0.85
-            score = float(np.clip((avg_coeff - 0.20) / 0.50, 0.0, 1.0))
+                # Snap-back coefficients per metric
+                mae_coeff = (1.0 - mae_recon / mae_noisy) if mae_noisy > 1e-8 else 0.0
+                lpips_coeff = (1.0 - lpips_recon / lpips_noisy) if lpips_noisy > 1e-8 else 0.0
+                # SSIM gain: how much structural similarity improved
+                ssim_gain = float(np.clip(ssim_recon - ssim_noisy, 0.0, 1.0))
+
+                per_level_metrics.append({
+                    "sigma": sigma,
+                    "mae_coeff": round(mae_coeff, 4),
+                    "lpips_coeff": round(lpips_coeff, 4),
+                    "ssim_gain": round(ssim_gain, 4),
+                })
+
+        # Compute weighted score across levels
+        if per_level_metrics:
+            weighted_score = 0.0
+            for m, w in zip(per_level_metrics, level_weights):
+                # Per-level combined score: LPIPS is most discriminative
+                level_score = (
+                    m["mae_coeff"] * 0.30 +
+                    m["lpips_coeff"] * 0.45 +
+                    m["ssim_gain"] * 0.25
+                )
+                weighted_score += level_score * w
+
+            # Normalize and map to probability
+            # Empirical: real ~0.05-0.30, AI ~0.40-0.80
+            score = float(np.clip((weighted_score - 0.15) / 0.50, 0.0, 1.0))
         else:
             score = 0.0
+
+        # Legacy-compatible coefficients (MAE-based for evidence)
+        coefficients = [m["mae_coeff"] for m in per_level_metrics]
 
         return {
             "snap_back_score": score,
             "coefficients": coefficients,
+            "per_level_metrics": per_level_metrics,
         }
 
     @staticmethod
@@ -309,10 +375,61 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
         return float(np.mean(laplacian ** 2))
 
     @staticmethod
+    def _compute_lpips(img1: torch.Tensor, img2: torch.Tensor) -> float:
+        """LPIPS-style perceptual distance using VGG16 features.
+
+        Args:
+            img1, img2: tensors in [0, 1] range, shape (1, 3, H, W)
+        """
+        vgg = _get_vgg_features()
+        if vgg is None:
+            return 0.0
+
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        with torch.no_grad():
+            feat1 = vgg((img1 - mean) / std)
+            feat2 = vgg((img2 - mean) / std)
+        return float(torch.mean((feat1 - feat2) ** 2))
+
+    @staticmethod
+    def _compute_ssim(img1_np: np.ndarray, img2_np: np.ndarray) -> float:
+        """Compute SSIM between two grayscale images in [0, 1] range."""
+        from scipy.ndimage import uniform_filter
+        C1 = 0.01 ** 2
+        C2 = 0.03 ** 2
+        mu1 = uniform_filter(img1_np, size=11)
+        mu2 = uniform_filter(img2_np, size=11)
+        sigma1_sq = uniform_filter(img1_np ** 2, size=11) - mu1 ** 2
+        sigma2_sq = uniform_filter(img2_np ** 2, size=11) - mu2 ** 2
+        sigma12 = uniform_filter(img1_np * img2_np, size=11) - mu1 * mu2
+        num = (2 * mu1 * mu2 + C1) * (2 * sigma12 + C2)
+        den = (mu1 ** 2 + mu2 ** 2 + C1) * (sigma1_sq + sigma2_sq + C2)
+        ssim_map = num / den
+        return float(ssim_map.mean())
+
+    @staticmethod
+    def _compute_fft_error_energy(error_gray: np.ndarray) -> dict:
+        """Analyze FFT of error map — AI images concentrate error in mid frequencies."""
+        fft = np.fft.fft2(error_gray)
+        magnitude = np.abs(np.fft.fftshift(fft))
+        h, w = magnitude.shape
+        cy, cx = h // 2, w // 2
+        Y, X = np.ogrid[:h, :w]
+        r = np.sqrt((Y - cy) ** 2 + (X - cx) ** 2)
+        r_max = min(cy, cx)
+        total = magnitude.sum() + 1e-10
+        low = float(magnitude[r < r_max * 0.33].sum() / total)
+        mid = float(magnitude[(r >= r_max * 0.33) & (r < r_max * 0.66)].sum() / total)
+        high = float(magnitude[r >= r_max * 0.66].sum() / total)
+        return {"low": low, "mid": mid, "high": high}
+
+    @staticmethod
     def _error_to_probability(
         mean_error: float,
         spatial_uniformity: float,
         high_freq_loss: float,
+        fft_mid: float = 0.0,
     ) -> float:
         """
         Convert reconstruction error statistics to AI probability.
@@ -320,22 +437,27 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
         Low mean_error = image is on VAE manifold = likely AI.
         High spatial_uniformity = error is evenly distributed = AI pattern.
         Low high_freq_loss = VAE preserves detail well = AI (native content).
+        High fft_mid = error concentrated in mid frequencies = AI pattern.
         """
-        # Error signal: lower error → higher AI probability
+        # Error signal: lower error -> higher AI probability
         # Sigmoid-shaped mapping centred around _THRESH_SUSPECTED
         error_signal = 1.0 / (1.0 + np.exp(30.0 * (mean_error - 0.055)))
 
-        # Uniformity signal: higher uniformity → more likely AI
+        # Uniformity signal: higher uniformity -> more likely AI
         uniform_signal = np.clip((spatial_uniformity - 0.40) / 0.40, 0.0, 1.0)
 
-        # High-freq signal: lower loss (VAE preserves HF) → more likely AI
+        # High-freq signal: lower loss (VAE preserves HF) -> more likely AI
         hf_signal = 1.0 - np.clip(high_freq_loss, 0.0, 1.0)
+
+        # FFT signal: AI errors concentrate in mid frequencies
+        fft_signal = float(np.clip((fft_mid - 0.15) / 0.30, 0.0, 1.0))
 
         # Weighted combination
         probability = (
-            error_signal * 0.50 +
-            uniform_signal * 0.30 +
-            hf_signal * 0.20
+            error_signal * 0.40 +
+            uniform_signal * 0.25 +
+            hf_signal * 0.15 +
+            fft_signal * 0.20
         )
 
         return float(np.clip(probability, 0.0, 1.0))
