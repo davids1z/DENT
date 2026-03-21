@@ -13,8 +13,7 @@ jobs:
           AWS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          mkdir -p /tmp/creds
-          printf '[default]\naws_access_key_id = %s\naws_secret_access_key = %s\nregion = eu-central-1\n' "$AWS_KEY" "$AWS_SECRET" > /tmp/creds/credentials
+          printf '[default]\naws_access_key_id = %s\naws_secret_access_key = %s\nregion = eu-central-1\n' "$AWS_KEY" "$AWS_SECRET" > $GITHUB_WORKSPACE/aws_credentials
 
       - name: Upload credentials to server
         uses: appleboy/scp-action@v0.1.7
@@ -23,9 +22,8 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || '22' }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: /tmp/creds/credentials
+          source: aws_credentials
           target: /tmp/
-          strip_components: 2
 
       - name: Run calibration
         uses: appleboy/ssh-action@v1
