@@ -36,16 +36,21 @@ jobs:
             docker compose -f docker-compose.server.yml exec -T ml-service \
               pip install boto3 tqdm 2>/dev/null || true
 
+            # Write AWS credentials to a file inside container (avoids shell escaping issues)
+            docker compose -f docker-compose.server.yml exec -T ml-service \
+              sh -c "mkdir -p /root/.aws && cat > /root/.aws/credentials << AWSEOF
+[default]
+aws_access_key_id = $AWS_KEY
+aws_secret_access_key = $AWS_SECRET
+region = eu-central-1
+AWSEOF"
+
             if [ "$STEP" = "build" ] || [ "$STEP" = "all" ]; then
               echo ""
               echo "=== Step 1: Build calibration dataset ==="
               echo "Sending 1802 images through forensic pipeline..."
 
-              docker compose -f docker-compose.server.yml exec -T \
-                -e AWS_ACCESS_KEY_ID="$AWS_KEY" \
-                -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET" \
-                -e AWS_DEFAULT_REGION=eu-central-1 \
-                ml-service \
+              docker compose -f docker-compose.server.yml exec -T ml-service \
                 python -m scripts.build_calibration_dataset \
                   --bucket dent-calibration-data \
                   --output /app/data/labeled_dataset.jsonl \
