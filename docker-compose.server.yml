@@ -78,8 +78,13 @@ services:
       DENT_AGENT_ESCALATION_FORENSIC_RISK: "0.75"
       DENT_EVIDENCE_ENABLED: "true"
       DENT_EVIDENCE_TSA_URL: "https://freetsa.org/tsr"
+      # Calibration — enable after running calibration pipeline
+      DENT_FORENSICS_CALIBRATION_FILE: "${DENT_CALIBRATION_FILE:-}"
+      DENT_FORENSICS_STACKING_META_ENABLED: "${DENT_STACKING_META_ENABLED:-false}"
+      DENT_FORENSICS_STACKING_META_WEIGHTS: "${DENT_STACKING_META_WEIGHTS:-}"
     volumes:
       - ml_models:/app/models
+      - ./config:/app/config:ro
     restart: unless-stopped
 
   api:
