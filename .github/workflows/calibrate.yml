@@ -11,17 +11,19 @@ jobs:
       - name: Run calibration build
         uses: appleboy/ssh-action@v1
         env:
-          AWS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          KEY_B64: ${{ secrets.AWS_KEY_B64 }}
+          SECRET_B64: ${{ secrets.AWS_SECRET_B64 }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           port: ${{ secrets.DEPLOY_PORT || '22' }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 360m
-          envs: AWS_KEY_ID,AWS_SECRET_KEY
+          envs: KEY_B64,SECRET_B64
           script: |
             cd /opt/dent
             docker compose -f docker-compose.server.yml exec -T ml-service pip install boto3 tqdm 2>/dev/null || true
-            docker compose -f docker-compose.server.yml exec -T -e AWS_ACCESS_KEY_ID=$AWS_KEY_ID -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_KEY -e AWS_DEFAULT_REGION=eu-central-1 ml-service python -m scripts.build_calibration_dataset --bucket dent-calibration-data --output /app/data/labeled_dataset.jsonl --api-url http://localhost:8000 --skip-gemini --resume
+            DECODED_KEY=$(echo $KEY_B64 | base64 -d)
+            DECODED_SECRET=$(echo $SECRET_B64 | base64 -d)
+            docker compose -f docker-compose.server.yml exec -T -e AWS_ACCESS_KEY_ID="$DECODED_KEY" -e AWS_SECRET_ACCESS_KEY="$DECODED_SECRET" -e AWS_DEFAULT_REGION=eu-central-1 ml-service python -m scripts.build_calibration_dataset --bucket dent-calibration-data --output /app/data/labeled_dataset.jsonl --api-url http://localhost:8000 --skip-gemini --resume
             docker compose -f docker-compose.server.yml exec -T ml-service wc -l /app/data/labeled_dataset.jsonl
