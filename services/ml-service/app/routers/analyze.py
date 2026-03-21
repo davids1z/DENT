@@ -907,12 +907,11 @@ def _hard_merge_with_verdict(
         llm_bbox = None
         cause = mf["damage_cause"]
 
-        # Try exact cause match first
+        # Always use fallback_description — Gemini descriptions are unreliable
+        # for forensic findings (it consistently claims authenticity even for
+        # AI-generated images). Only take bounding_box from Gemini.
         if cause in llm_by_cause and llm_by_cause[cause]:
             matched = llm_by_cause[cause].pop(0)
-            if matched.description and not _text_contradicts_forensics(matched.description):
-                llm_desc = matched.description
-            # If LLM contradicts forensics: keep fallback_description (don't use LLM text)
             llm_bbox = matched.bounding_box
 
         final_damages.append(
