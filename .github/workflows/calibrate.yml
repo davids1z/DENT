@@ -34,12 +34,12 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 360m
           script: |
-            cd /opt/dent
+            cd ${DEPLOY_DIR:-/opt/dent}
             CONTAINER_ID=$(docker compose -f docker-compose.server.yml ps -q ml-service)
             docker compose -f docker-compose.server.yml exec -T ml-service pip install boto3 tqdm 2>/dev/null || true
             docker compose -f docker-compose.server.yml exec -T ml-service mkdir -p /root/.aws
-            docker cp /tmp/credentials "$CONTAINER_ID":/root/.aws/credentials
-            rm -f /tmp/credentials
+            docker cp /tmp/aws_credentials "$CONTAINER_ID":/root/.aws/credentials
+            rm -f /tmp/aws_credentials
             echo "=== Starting calibration build ==="
             docker compose -f docker-compose.server.yml exec -T ml-service python -m scripts.build_calibration_dataset --bucket dent-calibration-data --output /app/data/labeled_dataset.jsonl --api-url http://localhost:8000 --skip-gemini --resume
             echo "=== Build complete ==="
