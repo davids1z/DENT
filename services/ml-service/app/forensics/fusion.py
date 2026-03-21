@@ -104,29 +104,62 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
             return overall, overall_100, _risk_level(overall)
 
     # ── Fallback: hand-crafted override rules ─────────────────────────
-    # ── Max-signal override ──────────────────────────────────────────
-    # A strong signal from any single module should not be drowned out.
     active_modules = [m for m in modules if not m.error]
     if active_modules:
         reg = get_registry()
         ft = reg.fusion
-        max_module_score = max(m.risk_score for m in active_modules)
+
+        # ── Realness dampening ────────────────────────────────────────
+        # When metadata shows a real camera AND PRNU is not flagged,
+        # the image is likely genuine — dampen ambiguous AI scores to
+        # prevent false positives from noisy detectors on real photos.
+        _AI_NAMES = {"ai_generation_detection", "clip_ai_detection", "vae_reconstruction"}
+        meta_mod = next((m for m in active_modules if m.module_name == "metadata_analysis"), None)
+        prnu_mod = next((m for m in active_modules if m.module_name == "prnu_detection"), None)
+        meta_is_clean = meta_mod is not None and meta_mod.risk_score < 0.30
+        prnu_is_clean = prnu_mod is not None and prnu_mod.risk_score < 0.30
+
+        # Build effective scores: dampened copies for AI modules if camera signals are clean
+        eff_scores: dict[str, float] = {}
+        for m in active_modules:
+            score = m.risk_score
+            if meta_is_clean and prnu_is_clean and m.module_name in _AI_NAMES:
+                if 0.40 <= score < 0.70:
+                    score = score * 0.5  # halve ambiguous AI scores
+            eff_scores[m.module_name] = score
+
+        # Recalculate overall with dampened scores
+        damp_weighted = 0.0
+        damp_total = 0.0
+        for m in active_modules:
+            if m.risk_score == 0.0 and not m.findings:
+                continue
+            w = DEFAULT_WEIGHTS.get(m.module_name, 0.10)
+            avg_c = (sum(f.confidence for f in m.findings) / len(m.findings)) if m.findings else 0.5
+            aw = w * avg_c
+            damp_weighted += eff_scores.get(m.module_name, m.risk_score) * aw
+            damp_total += aw
+        if damp_total > 0:
+            overall = damp_weighted / damp_total
+
+        # ── Max-signal override ──────────────────────────────────────
+        # A strong signal from any single module should not be drowned out.
+        max_module_score = max(eff_scores.get(m.module_name, m.risk_score) for m in active_modules)
 
         # A single strong module ensures a minimum floor
         if max_module_score >= ft.single_strong_module and overall < ft.single_strong_floor:
             overall = max(overall, ft.single_strong_floor)
 
         # Multiple modules (2+) agreeing is a strong signal
-        high_risk_count = sum(1 for m in active_modules if m.risk_score >= ft.multi_high_threshold)
+        high_risk_count = sum(1 for m in active_modules if eff_scores.get(m.module_name, m.risk_score) >= ft.multi_high_threshold)
         if high_risk_count >= 2 and overall < ft.multi_high_2_floor:
             overall = max(overall, ft.multi_high_2_floor)
         if high_risk_count >= 3 and overall < ft.multi_high_3_floor:
             overall = max(overall, ft.multi_high_3_floor)
 
         # ── AI generation detection override ─────────────────────────
-        # The trained Swin classifier is one of the most reliable signals
         aigen = [m for m in active_modules if m.module_name == "ai_generation_detection"]
-        aigen_score = aigen[0].risk_score if aigen else 0.0
+        aigen_score = eff_scores.get("ai_generation_detection", aigen[0].risk_score if aigen else 0.0)
         if aigen and aigen_score >= ft.aigen_direct:
             overall = max(overall, aigen_score * ft.aigen_factor)
 

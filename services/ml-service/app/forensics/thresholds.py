@@ -73,8 +73,8 @@ class FusionThresholds:
     multi_high_2_floor: float = 0.50
     multi_high_3_floor: float = 0.60
     # AI generation detection direct
-    aigen_direct: float = 0.55
-    aigen_factor: float = 0.90
+    aigen_direct: float = 0.70
+    aigen_factor: float = 0.85
     # AI cross-validation
     ai_cross_threshold: float = 0.50
     ai_cross_4_floor: float = 0.92

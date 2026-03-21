@@ -339,7 +339,10 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
 
         # Weighted combination
         score = sum(signals) / len(signals)
-        return float(score)
+        # Cap heuristic output at 0.40 — without a trained linear probe,
+        # we can flag "maybe suspicious" but not "likely AI". Hardcoded
+        # kurtosis/norm thresholds are poorly calibrated on real camera photos.
+        return float(min(score, 0.40))
 
     # ------------------------------------------------------------------
     # Findings

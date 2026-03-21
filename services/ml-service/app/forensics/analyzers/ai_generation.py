@@ -155,11 +155,13 @@ class AiGenerationAnalyzer(BaseAnalyzer):
             sdxl_srm = self._run_sdxl_detector(img_srm)
             vit_srm = self._run_vit_detector(img_srm)
 
-            # Boost original scores if SRM version confirms AI detection
+            # Combine original and SRM scores — SRM as secondary signal (30% weight).
+            # Using weighted average instead of max() to avoid false amplification:
+            # real JPEG compression boundaries appear similar to AI artefacts through SRM.
             if sdxl_score is not None and sdxl_srm is not None:
-                sdxl_score = max(sdxl_score, (sdxl_score + sdxl_srm) / 2)
+                sdxl_score = sdxl_score * 0.7 + sdxl_srm * 0.3
             if vit_score is not None and vit_srm is not None:
-                vit_score = max(vit_score, (vit_score + vit_srm) / 2)
+                vit_score = vit_score * 0.7 + vit_srm * 0.3
 
             # Compute ensemble score
             ensemble_score, model_details = self._compute_ensemble(
