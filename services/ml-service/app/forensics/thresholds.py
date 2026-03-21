@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 class VerdictThresholds:
     """Thresholds used by _compute_deterministic_verdict() in analyze.py."""
 
-    forged_risk: float = 0.60
+    forged_risk: float = 0.85
     forged_min_findings: int = 5
-    suspicious_risk: float = 0.30
-    suspicious_min_findings: int = 2
-    urgency_critical: float = 0.60
+    suspicious_risk: float = 0.40
+    suspicious_min_findings: int = 3
+    urgency_critical: float = 0.85
     urgency_high: float = 0.40
-    urgency_medium: float = 0.20
+    urgency_medium: float = 0.15
 
 
 @dataclass
@@ -98,9 +98,9 @@ class FusionThresholds:
     text_ai_threshold: float = 0.50
     text_ai_factor: float = 0.90
     # Risk level boundaries (fusion.py _risk_level)
-    risk_critical: float = 0.71
-    risk_high: float = 0.46
-    risk_medium: float = 0.21
+    risk_critical: float = 0.85
+    risk_high: float = 0.40
+    risk_medium: float = 0.15
 
 
 # ── Risk level boundaries (base.py _risk_level — per-module) ────────

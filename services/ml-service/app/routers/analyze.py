@@ -767,15 +767,19 @@ def _compute_deterministic_verdict(
     # ── Registry must be loaded FIRST (used for thresholds below) ──
     reg = get_registry()
 
-    # ── Realness signals: metadata + PRNU indicate real camera ────────
-    # When metadata is clean (low risk) AND PRNU is clean, the image
-    # likely comes from a real camera. Support modules (metadata, optical,
-    # semantic, modification) produce noise on real images that should not
-    # generate findings. Only strong signals (>=0.60) should pass through.
-    _AI_MODULES = {"ai_generation_detection", "clip_ai_detection", "vae_reconstruction"}
-    _SUPPORT_MODULES = {
-        "metadata_analysis", "modification_detection", "deep_modification_detection",
-        "spectral_forensics", "optical_forensics", "semantic_forensics",
+    # ── Only CORE + TAMPERING modules can generate mandatory findings ──
+    # Support modules (metadata, spectral, optical, semantic, PRNU) are
+    # informational — they appear in the forensic report but do NOT create
+    # mandatory findings that drive the verdict. This prevents false
+    # positives from noisy support modules on real photos.
+    _FINDING_MODULES = {
+        "ai_generation_detection",      # Core AI
+        "clip_ai_detection",            # Core AI
+        "vae_reconstruction",           # Core AI
+        "deep_modification_detection",  # Tampering
+        "modification_detection",       # Tampering (copy-move/ELA)
+        "content_validation",           # Document (OIB/IBAN)
+        "text_ai_detection",            # Document AI text
     }
 
     def _get_mod_risk(name: str) -> float:
@@ -784,39 +788,26 @@ def _compute_deterministic_verdict(
         except (TypeError, ValueError):
             return 0.0
 
-    max_ai_score = max((_get_mod_risk(m) for m in _AI_MODULES), default=0.0)
-    meta_risk = _get_mod_risk("metadata_analysis")
-    prnu_risk = _get_mod_risk("prnu_detection")
-
-    # Camera realness: metadata clean + PRNU clean = likely real photo
-    camera_is_real = meta_risk < 0.30 and prnu_risk < 0.30
-    # AI detectors not confident = no strong AI signal
-    ai_not_confident = max_ai_score < 0.60
-
-    # ── Generate mandatory findings from modules that exceed thresholds ──
+    # ── Generate mandatory findings from allowed modules only ──
     findings: list[dict] = []
     damage_map = _get_module_damage_map()
     for mod_name, mapping in damage_map.items():
+        # Skip modules not in the finding-allowed list
+        if mod_name not in _FINDING_MODULES:
+            continue
+
         mod = mod_lookup.get(mod_name)
         if not mod:
             continue
         mod_risk = _get_mod_risk(mod_name)
 
         threshold = mapping["threshold"]
-        # Upload images: lower thresholds by upload_offset
         if is_upload:
             md = reg.module_damage.get(mod_name)
             offset = md.upload_offset if md else 0.10
             threshold = max(0.10, threshold - offset)
 
         if mod_risk >= threshold:
-            # ── Realness suppression: suppress weak support-module findings
-            # when camera signals indicate a real photo AND AI detectors
-            # are not confident. Only strong signals (>=0.60) pass through.
-            if camera_is_real and ai_not_confident:
-                if mod_name in _SUPPORT_MODULES and mod_risk < 0.60:
-                    continue
-
             severity = mapping["severity_high"] if mod_risk >= 0.60 else mapping["severity_low"]
             safety = "Critical" if mod_risk >= 0.60 else "Warning"
             confidence = min(0.95, 0.50 + mod_risk * 0.40)

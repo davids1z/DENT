@@ -21,17 +21,17 @@ public static class DecisionEngine
         var spectralScore = modules.GetValueOrDefault("spectral_forensics", 0);
         var cnnScore = modules.GetValueOrDefault("deep_modification_detection", 0);
 
-        // Forensic-based fallback: AI detector 60%+ is a critical finding regardless of Gemini
-        var hasCriticalFinding = hasCriticalDamage || aiGenScore >= 0.60;
-        // Forged content: from damage SafetyRating OR elevated forensic risk + AI signal
+        // Forensic-based fallback: AI detector 75%+ is a critical finding
+        var hasCriticalFinding = hasCriticalDamage || aiGenScore >= 0.75;
+        // Forged content: from damage SafetyRating OR strong forensic + AI signal
         var fraudRiskScore = inspection.FraudRiskScore ?? 0;
         var hasSafetyCritical = hasSafetyCriticalDamage
-            || (fraudRiskScore >= 0.50 && aiGenScore >= 0.50);
+            || (fraudRiskScore >= 0.60 && aiGenScore >= 0.60);
 
-        // Rule 1: Critical forensic risk (fusion score)
-        var hasCriticalFraud = fraudRiskScore >= 0.75;
-        var hasHighFraud = fraudRiskScore >= 0.50;
-        var hasMediumFraud = fraudRiskScore >= 0.25;
+        // Rule 1: Critical forensic risk (fusion score) — aligned with Python 0.85
+        var hasCriticalFraud = fraudRiskScore >= 0.85;
+        var hasHighFraud = fraudRiskScore >= 0.40;
+        var hasMediumFraud = fraudRiskScore >= 0.15;
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Kritican forenzicki rizik",

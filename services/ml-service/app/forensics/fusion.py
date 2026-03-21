@@ -1,3 +1,14 @@
+"""
+Score fusion — combines forensic module results into a single risk score.
+
+Architecture (v2): Core-only fusion with context modifiers.
+
+Only 3 CORE AI detectors determine the AI generation score.
+Tampering is scored separately from AI generation.
+Context signals (metadata, PRNU) modify confidence but never decide alone.
+Support modules (spectral, optical, semantic) are informational only.
+"""
+
 import logging
 
 from .base import ModuleResult, RiskLevel
@@ -6,6 +17,7 @@ from .thresholds import get_registry
 
 logger = logging.getLogger(__name__)
 
+# Legacy weights kept for stacking meta-learner feature extraction
 DEFAULT_WEIGHTS: dict[str, float] = {
     "ai_generation_detection": 0.14,
     "clip_ai_detection": 0.11,
@@ -21,15 +33,14 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "office_forensics": 0.05,
     "text_ai_detection": 0.08,
     "content_validation": 0.03,
-}  # Sum = 1.00
+}
 
-# Module names that are dedicated AI / synthetic-content detectors
-_AI_DETECTOR_MODULES = frozenset({
-    "ai_generation_detection",
-    "clip_ai_detection",
-    "vae_reconstruction",
-    "prnu_detection",
-})
+# Core AI detection modules — only these determine AI generation score
+_CORE_AI_WEIGHTS = {
+    "ai_generation_detection": 0.50,
+    "clip_ai_detection": 0.25,
+    "vae_reconstruction": 0.25,
+}
 
 
 def _risk_level(score: float) -> RiskLevel:
@@ -43,52 +54,29 @@ def _risk_level(score: float) -> RiskLevel:
     return RiskLevel.LOW
 
 
+def _get_module(active: list[ModuleResult], name: str) -> ModuleResult | None:
+    return next((m for m in active if m.module_name == name), None)
+
+
 def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
     """
-    Weighted average score fusion with confidence adjustment.
+    Core-only score fusion with context modifiers.
 
     Returns (overall_float, overall_100, risk_level).
 
-    Key principles:
-    1. Modules with errors are excluded.
-    2. Modules with risk=0 and no findings are NEUTRAL — they are excluded
-       from the weighted average so they don't dilute genuine signals.
-    3. Multiple AI detectors agreeing amplifies the signal (cross-validation).
-    4. Individual strong signals are never drowned by many weak modules.
+    Architecture:
+    1. Core AI score from 3 dedicated detectors (Swin, CLIP, VAE)
+    2. Context modifiers from metadata/PRNU findings (amplify or dampen)
+    3. Tampering score from modification detectors (separate from AI)
+    4. Final risk = max(core_score, tampering_score)
+    5. Cross-validation: 2+ AI core detectors >= 0.60 → floor 0.85
     """
-    total_weight = 0.0
-    weighted_score = 0.0
+    active = [m for m in modules if not m.error]
 
-    for module in modules:
-        if module.error:
-            continue
-
-        # ── Neutral-module exclusion ────────────────────────────────
-        # A module that found NOTHING (risk=0, no findings) has no opinion.
-        # Including it with avg_confidence=0.5 would dilute genuine signals.
-        if module.risk_score == 0.0 and not module.findings:
-            continue
-
-        weight = DEFAULT_WEIGHTS.get(module.module_name, 0.10)
-
-        # Adjust weight by average confidence of findings
-        if module.findings:
-            avg_confidence = sum(f.confidence for f in module.findings) / len(
-                module.findings
-            )
-        else:
-            avg_confidence = 0.5
-
-        adjusted_weight = weight * avg_confidence
-        weighted_score += module.risk_score * adjusted_weight
-        total_weight += adjusted_weight
-
-    if total_weight <= 0:
+    if not active:
         return 0.0, 0, RiskLevel.LOW
 
-    overall = weighted_score / total_weight
-
-    # ── Stacking meta-learner (replaces override rules when trained) ──
+    # ── Stacking meta-learner (replaces everything when trained) ──────
     try:
         from ..config import settings as _settings
         meta_enabled = _settings.forensics_stacking_meta_enabled
@@ -96,133 +84,74 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
         meta_enabled = False
 
     if meta_enabled:
-        meta = get_meta_learner()
-        meta_score = meta.predict(modules)
+        meta_learner = get_meta_learner()
+        meta_score = meta_learner.predict(modules)
         if meta_score is not None:
             overall = max(0.0, min(1.0, meta_score))
-            overall_100 = round(overall * 100)
-            return overall, overall_100, _risk_level(overall)
+            return overall, round(overall * 100), _risk_level(overall)
 
-    # ── Fallback: hand-crafted override rules ─────────────────────────
-    active_modules = [m for m in modules if not m.error]
-    if active_modules:
-        reg = get_registry()
-        ft = reg.fusion
+    # ── Step 1: Core AI score (only dedicated AI detectors) ───────────
+    core_weighted = 0.0
+    core_total_w = 0.0
+    for m in active:
+        if m.module_name in _CORE_AI_WEIGHTS:
+            w = _CORE_AI_WEIGHTS[m.module_name]
+            core_weighted += m.risk_score * w
+            core_total_w += w
+    core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
-        # ── Realness dampening ────────────────────────────────────────
-        # When metadata shows a real camera AND PRNU is not flagged,
-        # the image is likely genuine — dampen ambiguous AI scores to
-        # prevent false positives from noisy detectors on real photos.
-        _AI_NAMES = {"ai_generation_detection", "clip_ai_detection", "vae_reconstruction"}
-        meta_mod = next((m for m in active_modules if m.module_name == "metadata_analysis"), None)
-        prnu_mod = next((m for m in active_modules if m.module_name == "prnu_detection"), None)
-        meta_is_clean = meta_mod is not None and meta_mod.risk_score < 0.30
-        prnu_is_clean = prnu_mod is not None and prnu_mod.risk_score < 0.30
+    # ── Step 2: Context modifiers from metadata + PRNU findings ───────
+    meta = _get_module(active, "metadata_analysis")
+    prnu = _get_module(active, "prnu_detection")
 
-        # Build effective scores: dampened copies for AI modules if camera signals are clean
-        eff_scores: dict[str, float] = {}
-        for m in active_modules:
-            score = m.risk_score
-            if meta_is_clean and prnu_is_clean and m.module_name in _AI_NAMES:
-                if 0.40 <= score < 0.70:
-                    score = score * 0.5  # halve ambiguous AI scores
-            eff_scores[m.module_name] = score
+    # Positive authenticity signals → reduce AI risk
+    has_authentic_sensor = prnu is not None and any(
+        f.code == "PRNU_AUTHENTIC_SENSOR" for f in prnu.findings
+    )
+    has_c2pa_valid = meta is not None and any(
+        f.code == "META_C2PA_VALID" for f in meta.findings
+    )
 
-        # Recalculate overall with dampened scores
-        damp_weighted = 0.0
-        damp_total = 0.0
-        for m in active_modules:
-            if m.risk_score == 0.0 and not m.findings:
-                continue
-            w = DEFAULT_WEIGHTS.get(m.module_name, 0.10)
-            avg_c = (sum(f.confidence for f in m.findings) / len(m.findings)) if m.findings else 0.5
-            aw = w * avg_c
-            damp_weighted += eff_scores.get(m.module_name, m.risk_score) * aw
-            damp_total += aw
-        if damp_total > 0:
-            overall = damp_weighted / damp_total
+    # Negative signals → increase AI risk
+    has_ai_tool = meta is not None and any(
+        f.code in ("META_XMP_AI_TOOL_HISTORY", "META_C2PA_AI_GENERATED")
+        for f in meta.findings
+    )
 
-        # ── Max-signal override ──────────────────────────────────────
-        # A strong signal from any single module should not be drowned out.
-        max_module_score = max(eff_scores.get(m.module_name, m.risk_score) for m in active_modules)
+    if has_authentic_sensor or has_c2pa_valid:
+        core_score *= 0.50  # Strong camera/provenance evidence halves AI risk
 
-        # A single strong module ensures a minimum floor
-        if max_module_score >= ft.single_strong_module and overall < ft.single_strong_floor:
-            overall = max(overall, ft.single_strong_floor)
+    if has_ai_tool:
+        core_score = max(core_score, 0.80)  # AI tool in metadata = strong signal
 
-        # Multiple modules (2+) agreeing is a strong signal
-        high_risk_count = sum(1 for m in active_modules if eff_scores.get(m.module_name, m.risk_score) >= ft.multi_high_threshold)
-        if high_risk_count >= 2 and overall < ft.multi_high_2_floor:
-            overall = max(overall, ft.multi_high_2_floor)
-        if high_risk_count >= 3 and overall < ft.multi_high_3_floor:
-            overall = max(overall, ft.multi_high_3_floor)
+    # ── Step 3: Tampering score (separate from AI generation) ─────────
+    deep_mod = _get_module(active, "deep_modification_detection")
+    mod_det = _get_module(active, "modification_detection")
+    tampering = max(
+        deep_mod.risk_score if deep_mod else 0.0,
+        (mod_det.risk_score * 0.70) if mod_det else 0.0,
+    )
 
-        # ── AI generation detection override ─────────────────────────
-        aigen = [m for m in active_modules if m.module_name == "ai_generation_detection"]
-        aigen_score = eff_scores.get("ai_generation_detection", aigen[0].risk_score if aigen else 0.0)
-        if aigen and aigen_score >= ft.aigen_direct:
-            overall = max(overall, aigen_score * ft.aigen_factor)
+    # ── Step 4: Text AI detection (for documents) ─────────────────────
+    text_ai = _get_module(active, "text_ai_detection")
+    text_ai_score = text_ai.risk_score if text_ai and text_ai.risk_score >= 0.50 else 0.0
 
-        # ── Multi-signal AI cross-validation ────────────────────────
-        # Multiple AI detectors agreeing strongly indicates AI content.
-        ai_detectors = [
-            m for m in active_modules
-            if m.module_name in _AI_DETECTOR_MODULES
-        ]
-        if ai_detectors:
-            high_ai_count = sum(1 for m in ai_detectors if m.risk_score >= ft.ai_cross_threshold)
-            max_ai_score = max(m.risk_score for m in ai_detectors)
+    # Content validation (OIB/IBAN forgery)
+    content_val = _get_module(active, "content_validation")
+    content_score = content_val.risk_score if content_val and content_val.risk_score >= 0.40 else 0.0
 
-            if high_ai_count >= 4:
-                overall = max(overall, ft.ai_cross_4_floor)
-            elif high_ai_count >= 3:
-                overall = max(overall, ft.ai_cross_3_floor)
-            elif high_ai_count >= 2:
-                overall = max(overall, max_ai_score * ft.ai_cross_2_factor)
+    # ── Step 5: Final risk = max of all signal channels ───────────────
+    overall = max(core_score, tampering, text_ai_score, content_score)
 
-        # ── PRNU + AI generation cross-validation ─────────────────
-        prnu = [m for m in active_modules if m.module_name == "prnu_detection"]
-        prnu_score = prnu[0].risk_score if prnu else 0.0
-
-        if prnu_score >= ft.prnu_aigen_threshold and aigen_score >= ft.prnu_aigen_threshold:
-            overall = max(overall, ft.prnu_aigen_floor)
-        elif prnu_score >= ft.prnu_solo_threshold and aigen_score < 0.40:
-            overall = max(overall, prnu_score * ft.prnu_solo_factor)
-
-        # ── Metadata + AI cross-validation ───────────────────────
-        metadata = [m for m in active_modules if m.module_name == "metadata_analysis"]
-        if metadata and aigen_score >= ft.meta_aigen_threshold:
-            meta_findings = metadata[0].findings
-            has_ai_software = any(
-                f.code == "META_EDITING_SOFTWARE" and f.risk_score >= ft.meta_software_threshold
-                for f in meta_findings
-            )
-            if has_ai_software:
-                overall = max(overall, ft.meta_aigen_floor)
-
-        # ── Spectral + AI generation cross-validation ─────────────
-        spectral = [m for m in active_modules if m.module_name == "spectral_forensics"]
-        spectral_score = spectral[0].risk_score if spectral else 0.0
-
-        if aigen_score >= ft.spectral_aigen_threshold and spectral_score >= ft.spectral_min:
-            cross_score = aigen_score * 0.60 + spectral_score * 0.40
-            overall = max(overall, cross_score)
-        elif spectral_score >= ft.spectral_solo_threshold and aigen_score < 0.40:
-            overall = max(overall, spectral_score * ft.spectral_solo_factor)
-
-        # ── Text AI detection boost ──────────────────────────────────
-        text_ai = [m for m in active_modules if m.module_name == "text_ai_detection"]
-        if text_ai and text_ai[0].risk_score >= ft.text_ai_threshold:
-            overall = max(overall, text_ai[0].risk_score * ft.text_ai_factor)
-
-        # ── VLM vs dedicated detectors ───────────────────────────────
-        # NOTE: The VLM (Gemini) is a general-purpose model, NOT a trained
-        # forensic classifier. Modern AI generators fool VLMs into thinking
-        # images are authentic. The VLM's "authentic" verdict should NEVER
-        # override or reduce scores from dedicated AI detectors (Swin,
-        # CLIP, PRNU, VAE). The VLM is only trusted when it AGREES with
-        # other modules, not when it contradicts them.
+    # ── Step 6: Cross-validation floor ────────────────────────────────
+    # When 2+ core AI detectors independently agree at >= 0.60,
+    # this is very strong evidence — enforce a minimum floor.
+    high_ai_count = sum(
+        1 for m in active
+        if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.60
+    )
+    if high_ai_count >= 2:
+        overall = max(overall, 0.85)
 
     overall = max(0.0, min(1.0, overall))
-    overall_100 = round(overall * 100)
-    return overall, overall_100, _risk_level(overall)
+    return overall, round(overall * 100), _risk_level(overall)
