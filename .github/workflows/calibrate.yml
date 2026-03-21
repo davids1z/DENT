@@ -1,0 +1,85 @@
+name: Run Calibration Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'Which step to run'
+        required: true
+        default: 'build'
+        type: choice
+        options:
+          - build
+          - train
+          - all
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+    steps:
+      - name: Run calibration on server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 360m
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
+            cd "$DEPLOY_DIR"
+
+            STEP="${{ github.event.inputs.step }}"
+            echo "=== DENT Calibration Pipeline (step: $STEP) ==="
+
+            # Install deps in ml-service container
+            docker compose -f docker-compose.server.yml exec -T ml-service \
+              pip install boto3 tqdm datasets 2>/dev/null || true
+
+            if [ "$STEP" = "build" ] || [ "$STEP" = "all" ]; then
+              echo ""
+              echo "=== Step 1: Build calibration dataset ==="
+              echo "Sending 1802 images through forensic pipeline (skip Gemini)..."
+              echo "This will take ~2-4 hours."
+
+              docker compose -f docker-compose.server.yml exec -T \
+                -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID || '' }} \
+                -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY || '' }} \
+                -e AWS_DEFAULT_REGION=eu-central-1 \
+                ml-service \
+                python -m scripts.build_calibration_dataset \
+                  --bucket dent-calibration-data \
+                  --output /app/data/labeled_dataset.jsonl \
+                  --api-url http://localhost:8000 \
+                  --skip-gemini \
+                  --resume
+
+              echo "Build complete!"
+              docker compose -f docker-compose.server.yml exec -T ml-service \
+                wc -l /app/data/labeled_dataset.jsonl
+            fi
+
+            if [ "$STEP" = "train" ] || [ "$STEP" = "all" ]; then
+              echo ""
+              echo "=== Step 2: GHOST threshold calibration ==="
+              docker compose -f docker-compose.server.yml exec -T ml-service \
+                python -m scripts.calibrate_ghost \
+                  --data /app/data/labeled_dataset.jsonl \
+                  --tiers 1,2 \
+                  --output /app/config/calibrated_thresholds.json
+
+              echo ""
+              echo "=== Step 3: Train stacking meta-learner ==="
+              docker compose -f docker-compose.server.yml exec -T ml-service \
+                python -m scripts.train_stacking_meta \
+                  --data /app/data/labeled_dataset.jsonl \
+                  --output /app/models/stacking_meta/meta_weights.npz \
+                  --compare
+
+              echo ""
+              echo "=== Calibration complete! ==="
+              echo "Restarting ML service to load calibrated models..."
+              docker compose -f docker-compose.server.yml restart ml-service
+            fi
