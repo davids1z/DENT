@@ -41,6 +41,7 @@ COPY models/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
 COPY models/clip_ai/probe_weights.npz /app/models_stage/clip_ai/probe_weights.npz
 
 COPY app/ app/
+COPY scripts/ scripts/
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
