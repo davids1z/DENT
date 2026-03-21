@@ -2,123 +2,117 @@
 """
 Build calibration dataset by running images through the forensic pipeline.
 
-Sends each image to the ML service's /forensics endpoint, collects all
-module scores and findings, pairs with ground truth labels, and outputs
+Downloads images from S3 processed/, sends each to /forensics endpoint,
+collects all module scores, pairs with ground truth labels, and outputs
 JSONL compatible with calibrate_ghost.py and train_stacking_meta.py.
+
+Supports 3 classes: authentic, ai_generated, tampered.
+NO auto-labeling from filenames (prevents data leakage).
+ALL labels come from labels.csv on S3.
 
 Usage:
   python -m scripts.build_calibration_dataset \
-    --images-dir data/calibration_images \
-    --labels data/labels.csv \
+    --bucket dent-calibration-data \
     --output data/labeled_dataset.jsonl \
-    [--api-url http://localhost:8000]
+    [--api-url http://localhost:8000] \
+    [--resume]
 
-labels.csv format (header required):
-  filename,ground_truth
-  real_car1.jpg,authentic
-  gemini_bmw.png,manipulated
-  dalle_crash.png,manipulated
-
-Files not in labels.csv are auto-labeled if filename matches known AI
-generator patterns (e.g., "Gemini_Generated_Image_*" → manipulated).
-Otherwise they are skipped with a warning.
+Requirements:
+  pip install boto3 requests tqdm
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import os
 import sys
 import time
 from pathlib import Path
 
+import boto3
 import requests
 
-# ── AI filename patterns for auto-labeling ────────────────────────────
-_AI_FILENAME_PATTERNS = [
-    "gemini_generated",
-    "image_fx_",
-    "dall-e",
-    "dall_e",
-    "dalle_",
-    "midjourney_",
-    "comfyui_",
-    "sdxl_",
-    "stable_diffusion",
-    "novelai_",
-]
+try:
+    from tqdm import tqdm
+except ImportError:
+    # Fallback if tqdm not installed
+    def tqdm(iterable, **kwargs):
+        total = kwargs.get("total", "?")
+        desc = kwargs.get("desc", "")
+        for i, item in enumerate(iterable, 1):
+            print(f"\r  {desc} [{i}/{total}]", end="", flush=True)
+            yield item
+        print()
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".jfif", ".bmp", ".tiff"}
-
-
-def auto_label_filename(filename: str) -> str | None:
-    """Return 'manipulated' if filename matches known AI generator, else None."""
-    fn_lower = filename.lower()
-    for pattern in _AI_FILENAME_PATTERNS:
-        if pattern in fn_lower:
-            return "manipulated"
-    return None
+S3_PREFIX_PROCESSED = "processed"
+VALID_CLASSES = {"authentic", "ai_generated", "tampered"}
 
 
-def load_labels(labels_path: str) -> dict[str, str]:
-    """Load ground truth labels from CSV."""
-    labels: dict[str, str] = {}
-    if not os.path.exists(labels_path):
-        return labels
-
-    with open(labels_path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
+def load_labels_from_s3(s3_client, bucket: str) -> dict[str, str]:
+    """Load labels.csv from S3 processed/ prefix."""
+    key = f"{S3_PREFIX_PROCESSED}/labels.csv"
+    try:
+        resp = s3_client.get_object(Bucket=bucket, Key=key)
+        content = resp["Body"].read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(content))
+        labels = {}
         for row in reader:
             fn = row.get("filename", "").strip()
             gt = row.get("ground_truth", "").strip().lower()
-            if fn and gt in ("authentic", "manipulated"):
+            if fn and gt in VALID_CLASSES:
                 labels[fn] = gt
-            elif fn:
-                print(f"  WARNING: Invalid ground_truth '{gt}' for {fn}, skipping")
+        return labels
+    except Exception as e:
+        print(f"ERROR: Cannot load labels from s3://{bucket}/{key}: {e}")
+        sys.exit(1)
 
-    return labels
 
-
-def analyze_image(api_url: str, image_path: Path) -> dict | None:
-    """Send image to /forensics endpoint and return parsed ForensicReport."""
+def download_image_from_s3(s3_client, bucket: str, key: str) -> bytes | None:
+    """Download image bytes from S3."""
     try:
-        with open(image_path, "rb") as f:
+        resp = s3_client.get_object(Bucket=bucket, Key=key)
+        return resp["Body"].read()
+    except Exception as e:
+        print(f"  ERROR downloading {key}: {e}")
+        return None
+
+
+def analyze_image(api_url: str, image_bytes: bytes, filename: str) -> dict | None:
+    """Send image to /forensics endpoint with retry logic."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
             resp = requests.post(
                 f"{api_url}/forensics",
-                files={"file": (image_path.name, f)},
-                timeout=300,  # Some modules take 60s+
+                files={"file": (filename, io.BytesIO(image_bytes))},
+                timeout=300,
             )
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                print(f"  HTTP {resp.status_code} for {filename} (attempt {attempt + 1})")
+        except requests.exceptions.Timeout:
+            print(f"  Timeout for {filename} (attempt {attempt + 1})")
+        except Exception as e:
+            print(f"  Error for {filename}: {e} (attempt {attempt + 1})")
 
-        if resp.status_code != 200:
-            print(f"  ERROR: HTTP {resp.status_code} for {image_path.name}")
-            return None
+        if attempt < max_retries - 1:
+            time.sleep(5 * (attempt + 1))  # Backoff: 5s, 10s
 
-        return resp.json()
-
-    except requests.exceptions.Timeout:
-        print(f"  ERROR: Timeout for {image_path.name}")
-        return None
-    except Exception as e:
-        print(f"  ERROR: {e} for {image_path.name}")
-        return None
+    return None
 
 
-def forensic_report_to_jsonl(
-    filename: str,
-    ground_truth: str,
-    report: dict,
-) -> dict:
-    """Convert ForensicReport dict to JSONL record for GHOST/stacking."""
-    modules_data: dict[str, dict] = {}
-
+def forensic_report_to_jsonl(filename: str, ground_truth: str, report: dict) -> dict:
+    """Convert ForensicReport to JSONL record."""
+    modules_data = {}
     for mod in report.get("modules", []):
         mod_name = mod.get("module_name", mod.get("moduleName", ""))
         if not mod_name:
             continue
-
-        risk_score = mod.get("risk_score", mod.get("riskScore", 0))
+        risk = mod.get("risk_score", mod.get("riskScore", 0))
         findings = []
         for f in mod.get("findings", []):
             findings.append({
@@ -126,17 +120,9 @@ def forensic_report_to_jsonl(
                 "confidence": f.get("confidence", 0),
                 "risk_score": f.get("risk_score", f.get("riskScore", 0)),
             })
+        modules_data[mod_name] = {"risk_score": risk, "findings": findings}
 
-        modules_data[mod_name] = {
-            "risk_score": risk_score,
-            "findings": findings,
-        }
-
-    overall = report.get(
-        "overall_risk_score",
-        report.get("overallRiskScore", 0),
-    )
-
+    overall = report.get("overall_risk_score", report.get("overallRiskScore", 0))
     return {
         "id": filename,
         "ground_truth": ground_truth,
@@ -145,116 +131,110 @@ def forensic_report_to_jsonl(
     }
 
 
+def load_existing_results(output_path: str) -> set[str]:
+    """Load already-processed image IDs for resume support."""
+    done = set()
+    if os.path.exists(output_path):
+        with open(output_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    record = json.loads(line)
+                    done.add(record.get("id", ""))
+                except json.JSONDecodeError:
+                    continue
+    return done
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Build calibration dataset from images + labels"
-    )
-    parser.add_argument(
-        "--images-dir", required=True,
-        help="Directory containing images to analyze",
-    )
-    parser.add_argument(
-        "--labels", default="",
-        help="CSV file with filename,ground_truth columns",
-    )
-    parser.add_argument(
-        "--output", required=True,
-        help="Output JSONL file path",
-    )
-    parser.add_argument(
-        "--api-url", default="http://localhost:8000",
-        help="ML service base URL (default: http://localhost:8000)",
-    )
+    parser = argparse.ArgumentParser(description="Build calibration dataset from S3 images")
+    parser.add_argument("--bucket", required=True, help="S3 bucket with processed images")
+    parser.add_argument("--output", required=True, help="Output JSONL file path")
+    parser.add_argument("--api-url", default="http://localhost:8000", help="ML service URL")
+    parser.add_argument("--region", default="eu-central-1", help="AWS region")
+    parser.add_argument("--resume", action="store_true", help="Skip already-processed images")
     args = parser.parse_args()
 
-    images_dir = Path(args.images_dir)
-    if not images_dir.is_dir():
-        print(f"ERROR: {images_dir} is not a directory")
-        sys.exit(1)
+    s3 = boto3.client("s3", region_name=args.region)
 
-    # Load manual labels
-    manual_labels = load_labels(args.labels) if args.labels else {}
-    print(f"Loaded {len(manual_labels)} manual labels from {args.labels or '(none)'}")
+    # Load labels
+    labels = load_labels_from_s3(s3, args.bucket)
+    print(f"Loaded {len(labels)} labels from S3")
+    for cls in VALID_CLASSES:
+        count = sum(1 for gt in labels.values() if gt == cls)
+        print(f"  {cls}: {count}")
 
-    # Find all images
-    image_files = sorted(
-        f for f in images_dir.iterdir()
-        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS
-    )
-    print(f"Found {len(image_files)} images in {images_dir}")
+    # Resume support
+    already_done = set()
+    if args.resume:
+        already_done = load_existing_results(args.output)
+        print(f"Resume: {len(already_done)} already processed, skipping")
 
-    if not image_files:
-        print("ERROR: No images found")
-        sys.exit(1)
+    # Filter to images not yet processed
+    to_process = [(fn, gt) for fn, gt in labels.items() if fn not in already_done]
+    print(f"\nImages to process: {len(to_process)}")
 
-    # Process each image
-    results: list[dict] = []
-    skipped = 0
-    errors = 0
+    if not to_process:
+        print("Nothing to do!")
+        return
 
-    for i, img_path in enumerate(image_files, 1):
-        filename = img_path.name
-
-        # Determine ground truth
-        if filename in manual_labels:
-            ground_truth = manual_labels[filename]
-        else:
-            auto = auto_label_filename(filename)
-            if auto:
-                ground_truth = auto
-                print(f"  AUTO-LABELED: {filename} → {ground_truth}")
-            else:
-                print(f"  SKIPPED: {filename} (no label in CSV, no auto-label match)")
-                skipped += 1
-                continue
-
-        print(f"[{i}/{len(image_files)}] {filename} ({ground_truth}) ...", end=" ", flush=True)
-        start = time.monotonic()
-
-        report = analyze_image(args.api_url, img_path)
-        if report is None:
-            errors += 1
-            continue
-
-        elapsed = time.monotonic() - start
-        record = forensic_report_to_jsonl(filename, ground_truth, report)
-        results.append(record)
-
-        n_modules = len(record["modules"])
-        risk = record["overall_risk_score"]
-        print(f"OK ({elapsed:.1f}s, {n_modules} modules, risk={risk:.2f})")
-
-    # Write output JSONL
+    # Process images
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        for record in results:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    mode = "a" if args.resume else "w"
+    processed = 0
+    errors = 0
+
+    with open(output_path, mode, encoding="utf-8") as out_f:
+        for filename, ground_truth in tqdm(to_process, desc="Analyzing", total=len(to_process)):
+            s3_key = f"{S3_PREFIX_PROCESSED}/{filename}"
+
+            # Download from S3
+            image_bytes = download_image_from_s3(s3, args.bucket, s3_key)
+            if image_bytes is None:
+                errors += 1
+                continue
+
+            # Analyze through forensic pipeline
+            report = analyze_image(args.api_url, image_bytes, filename)
+            if report is None:
+                errors += 1
+                continue
+
+            # Write JSONL record
+            record = forensic_report_to_jsonl(filename, ground_truth, report)
+            out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            out_f.flush()  # Flush each record for resume safety
+            processed += 1
 
     # Summary
-    authentic = sum(1 for r in results if r["ground_truth"] == "authentic")
-    manipulated = sum(1 for r in results if r["ground_truth"] == "manipulated")
-
     print(f"\n{'='*60}")
-    print(f"Dataset built: {len(results)} samples")
-    print(f"  Authentic:   {authentic}")
-    print(f"  Manipulated: {manipulated}")
-    print(f"  Skipped:     {skipped}")
-    print(f"  Errors:      {errors}")
-    print(f"  Output:      {output_path}")
-    print(f"{'='*60}")
+    print(f"Dataset built: {processed} samples ({errors} errors)")
 
-    if authentic == 0 or manipulated == 0:
-        print("WARNING: Dataset is one-sided! Need both classes for calibration.")
-    elif min(authentic, manipulated) < 10:
-        print(f"WARNING: Only {min(authentic, manipulated)} samples in minority class. "
-              "Recommend at least 50 per class for stable calibration.")
+    # Count classes in output
+    counts = {}
+    with open(output_path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+                gt = r.get("ground_truth", "unknown")
+                counts[gt] = counts.get(gt, 0) + 1
+            except json.JSONDecodeError:
+                continue
+
+    for cls in VALID_CLASSES:
+        print(f"  {cls}: {counts.get(cls, 0)}")
+    print(f"  Total: {sum(counts.values())}")
+    print(f"  Output: {output_path}")
+
+    min_count = min(counts.get(c, 0) for c in VALID_CLASSES)
+    if min_count < 50:
+        print(f"\nWARNING: Minority class has only {min_count} samples.")
+        print("Recommend at least 100 per class for stable calibration.")
     else:
-        print("Dataset looks good for calibration.")
-        print(f"\nNext steps:")
-        print(f"  python -m scripts.calibrate_ghost --data {output_path} --tiers 1,2 --output config/calibrated_thresholds.json")
-        print(f"  python -m scripts.train_stacking_meta --data {output_path} --output models/stacking_meta/meta_weights.npz --compare")
+        print("\nDataset ready for calibration!")
+        print(f"  python -m scripts.calibrate_ghost --data {output_path} --tiers 1,2")
+        print(f"  python -m scripts.train_stacking_meta --data {output_path} --compare")
 
 
 if __name__ == "__main__":
