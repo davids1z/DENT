@@ -143,14 +143,21 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
         f.code in ("META_XMP_AI_TOOL_HISTORY", "META_C2PA_AI_GENERATED")
         for f in meta.findings
     )
+    has_ai_filename = meta is not None and any(
+        f.code == "META_FILENAME_AI_GENERATOR" for f in meta.findings
+    )
 
     if has_authentic_sensor or has_c2pa_valid:
         core_score *= 0.50
-    if has_ai_tool:
-        core_score = max(core_score, 0.80)
+    if has_ai_tool or has_ai_filename:
+        # AI tool in metadata/filename = definitive signal, override everything
+        core_score = max(core_score, 0.90)
 
     # ── Step 2: Combine Gemini + pixel scores ─────────────────────────
-    if gemini_score is not None:
+    # If metadata has definitive AI signal (filename/tool), skip Gemini weighting
+    if has_ai_tool or has_ai_filename:
+        ai_combined = core_score  # Metadata is definitive, don't dilute with Gemini
+    elif gemini_score is not None:
         # Gemini has 60% vote, pixel modules have 40%
         ai_combined = gemini_score * 0.60 + core_score * 0.40
     else:

@@ -139,6 +139,9 @@ class MetadataAnalyzer(BaseAnalyzer):
         findings: list[AnalyzerFinding] = []
 
         try:
+            # 0. Filename pattern detection (AI generators use distinctive names)
+            self._check_filename_ai_pattern(filename, findings)
+
             # 1. Magic byte / MIME validation
             self._check_magic_bytes(image_bytes, filename, findings)
 
@@ -180,6 +183,46 @@ class MetadataAnalyzer(BaseAnalyzer):
         return self._make_result([], 0)
 
     # ------------------------------------------------------------------
+    # Filename AI pattern detection
+    # ------------------------------------------------------------------
+
+    # AI generators produce distinctive filenames — high confidence signal
+    _AI_FILENAME_PATTERNS: list[tuple[str, str]] = [
+        ("gemini_generated_image", "Google Gemini"),
+        ("gemini_generated", "Google Gemini"),
+        ("image_fx_", "Google ImageFX"),
+        ("dall-e", "DALL-E"),
+        ("dall_e", "DALL-E"),
+        ("dalle_", "DALL-E"),
+        ("midjourney_", "Midjourney"),
+        ("comfyui_", "ComfyUI"),
+        ("sdxl_", "Stable Diffusion XL"),
+        ("stable_diffusion", "Stable Diffusion"),
+        ("novelai_", "NovelAI"),
+    ]
+
+    def _check_filename_ai_pattern(
+        self, filename: str, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Check if filename matches known AI generator naming conventions."""
+        fn_lower = filename.lower()
+        for pattern, generator in self._AI_FILENAME_PATTERNS:
+            if pattern in fn_lower:
+                findings.append(
+                    AnalyzerFinding(
+                        code="META_FILENAME_AI_GENERATOR",
+                        title=f"Naziv datoteke ukazuje na AI generator: {generator}",
+                        description=(
+                            f"Naziv datoteke '{filename}' sadrzi obrazac "
+                            f"karakteristican za {generator} AI generator. "
+                            f"Ovo je snazna indikacija da je sadrzaj umjetno generiran."
+                        ),
+                        risk_score=0.85,
+                        confidence=0.95,
+                    )
+                )
+                return  # Only one filename finding needed
+
     # Magic byte / MIME type validation
     # ------------------------------------------------------------------
 
