@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Inspection } from "@/lib/api";
+import type { Inspection, ForensicResult } from "@/lib/api";
 import {
   severityColor,
   severityBg,
   severityLabel,
-  findingCategoryLabel,
   safetyRatingLabel,
   safetyRatingColor,
 } from "@/lib/api";
+import { sanitizeLlmText, deriveFindingCategory } from "@/lib/forensicPillars";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { cn } from "@/lib/cn";
 
@@ -17,15 +17,16 @@ interface DamageReportProps {
   inspection: Inspection;
   selectedDamageIndex?: number | null;
   onSelectDamage?: (index: number | null) => void;
+  forensicResult?: ForensicResult | null;
 }
 
-export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage }: DamageReportProps) {
+export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, forensicResult }: DamageReportProps) {
   const i = inspection;
 
   return (
     <div className="space-y-4">
       <GlassPanel>
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between mb-1">
           <div>
             <h3 className="text-lg font-semibold">Rezultat analize</h3>
             <span className="text-sm text-muted">{i.originalFileName}</span>
@@ -41,7 +42,6 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage }
             )}
           </div>
         </div>
-        {i.summary && <p className="text-muted text-sm leading-relaxed">{i.summary}</p>}
       </GlassPanel>
 
       {i.damages.length > 0 && (
@@ -54,6 +54,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage }
               index={idx}
               isSelected={selectedDamageIndex === idx}
               onSelect={() => onSelectDamage?.(selectedDamageIndex === idx ? null : idx)}
+              forensicResult={forensicResult}
             />
           ))}
         </div>
@@ -74,8 +75,8 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage }
   );
 }
 
-function FindingCard({ damage: d, index, isSelected, onSelect }: {
-  damage: Inspection["damages"][0]; index: number; isSelected: boolean; onSelect: () => void;
+function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }: {
+  damage: Inspection["damages"][0]; index: number; isSelected: boolean; onSelect: () => void; forensicResult?: ForensicResult | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -102,7 +103,7 @@ function FindingCard({ damage: d, index, isSelected, onSelect }: {
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: borderColor, color: "white" }}>{index + 1}</div>
-              <span className="font-medium text-sm">{findingCategoryLabel(d.damageCause)}</span>
+              <span className="font-medium text-sm">{deriveFindingCategory(d, forensicResult ?? null)}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
               <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", severityBg(d.severity), severityColor(d.severity))}>{severityLabel(d.severity)}</span>
@@ -111,7 +112,7 @@ function FindingCard({ damage: d, index, isSelected, onSelect }: {
               </svg>
             </div>
           </div>
-          <p className="text-sm text-muted leading-relaxed">{d.description}</p>
+          <p className="text-sm text-muted leading-relaxed">{sanitizeLlmText(d.description)}</p>
           <div className="flex items-center gap-2 mt-2">
             <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
               <div className="h-full rounded-full" style={{ width: `${d.confidence * 100}%`, backgroundColor: borderColor }} />
@@ -131,7 +132,7 @@ function FindingCard({ damage: d, index, isSelected, onSelect }: {
               {d.damageCause && (
                 <div className="bg-gray-50 rounded-lg p-2">
                   <div className="text-muted text-xs mb-0.5">Kategorija</div>
-                  <div className="font-medium">{findingCategoryLabel(d.damageCause)}</div>
+                  <div className="font-medium">{deriveFindingCategory(d, forensicResult ?? null)}</div>
                 </div>
               )}
             </div>

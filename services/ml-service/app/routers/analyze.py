@@ -49,11 +49,35 @@ def _text_contradicts_forensics(text: str) -> bool:
     """Return True if *text* contains phrases that contradict high-risk forensic results."""
     n = _normalize_text(text)
     contradictions = [
+        # Direct authenticity claims
         "autenticna", "autenticno", "autenticna fotografija",
         "nema sumnje", "nema manipulacije", "prava fotografija",
         "originalna", "originalna fotografija", "autenticna slika",
         "nema znakova manipulacije", "nema znakova krivotvorenja",
         "slika je autenticna", "fotografija je autenticna",
+        # Semantic authenticity claims Gemini uses to bypass keyword check
+        "ne pokazuju znakove ai generiranja",
+        "ne pokazuju znakove ai",
+        "konzistentni s fotografijom",
+        "potvrduje autenticnost",
+        "dodatno potvrduje autenticnost",
+        "dokaz o stvarnoj fotografiji",
+        "snazan dokaz da se radi o stvarnoj",
+        "iskljucuje mogucnost digitalnog",
+        "ne pokazuju anomalije",
+        "ne otkriva nikakve anomalije",
+        "nema nikakvih naznaka",
+        "u potpunosti konzistentne",
+        "u potpunosti konzistentni",
+        "u potpunosti konzistentno",
+        "fizicki plauzibilne",
+        "fizicki plausibilne",
+        "fizicki tocni",
+        "bez plasticnog ili uljastog izgleda",
+        "bez tragova mekih rubova",
+        "bez tragova digitalnog",
+        "iskljucuje mogucnost",
+        "snazno upucuje na jedinstven",
     ]
     return any(c in n for c in contradictions)
 
@@ -888,13 +912,7 @@ def _hard_merge_with_verdict(
             matched = llm_by_cause[cause].pop(0)
             if matched.description and not _text_contradicts_forensics(matched.description):
                 llm_desc = matched.description
-            elif matched.description:
-                # LLM contradicts forensics — use its description but append warning
-                llm_desc = (
-                    matched.description
-                    + f" NAPOMENA: Forenzicki moduli ukazuju na visoku sumnju "
-                    f"na manipulaciju (rizik: {risk:.0%})."
-                )
+            # If LLM contradicts forensics: keep fallback_description (don't use LLM text)
             llm_bbox = matched.bounding_box
 
         final_damages.append(
@@ -1171,9 +1189,20 @@ Pisi na HRVATSKOM jeziku, 3-5 recenica po nalazu.
   * Rubovi — su li realisticno ostri ili "AI-mekani"?
   * Perspektiva — konvergiraju li linije prema jednoj tocki nedogleda?
 
-VAZNO:
-- NE PROTURJECI forenzickim nalazima. Ako nalaz kaze "AI generiranje", NE pisi da je slika autenticna.
+KRITICNO — STROGO SE PRIDRZAVAJ:
+- SVAKI opis MORA biti KONZISTENTAN s damage_cause poljem tog nalaza.
+  Ako damage_cause kaze "AI generiranje", opis MORA objasniti ZASTO se sumnja na AI generiranje.
+  Ako damage_cause kaze "Digitalna manipulacija", opis MORA objasniti DOKAZE manipulacije (copy-move, splice).
+  Ako damage_cause kaze "Rekompresijski artefakti", opis MORA objasniti DOKAZE nekonzistentne kompresije.
+  Ako damage_cause kaze "Spektralna anomalija", opis MORA objasniti frekvencijske anomalije.
+- NIKADA ne pisi da je slika "autenticna", "bez anomalija", "konzistentna", "realisticna"
+  ili "bez znakova manipulacije" kad damage_cause ukazuje na problem.
+- Ako NE vidis vizualne dokaze koji potvrduju damage_cause, RECI:
+  "Forenzicki modul {module_name} detektirao je anomaliju s pouzdanoscu {confidence}%.
+  Matematicka analiza piksela ukazuje na [opis nalaza], iako vizualna inspekcija ne pokazuje ocite znakove."
 - Budi KONKRETAN — "metal na braniku se stapa s asfaltom" umjesto "slika izgleda sumnjivo".
+- OVO JE FORENZICKI ALAT, NE ALAT ZA PROCJENU STETE. Ne opisuj fizicka ostecenja vozila.
+  Opisuj DIGITALNE ANOMALIJE u slici.
 """
 
 

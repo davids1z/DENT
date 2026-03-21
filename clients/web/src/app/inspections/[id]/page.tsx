@@ -7,11 +7,9 @@ import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
-import { ForensicBadge } from "@/components/ForensicBadge";
-import { ForensicReport } from "@/components/ForensicReport";
-import { ElaHeatmapOverlay } from "@/components/ElaHeatmapOverlay";
-import { FftSpectrumOverlay } from "@/components/FftSpectrumOverlay";
-import { SpectralHeatmapOverlay } from "@/components/SpectralHeatmapOverlay";
+import { TrustScoreHero } from "@/components/TrustScoreHero";
+import { ForensicPillarGrid } from "@/components/ForensicPillarGrid";
+import { LlmSummaryCollapsible } from "@/components/LlmSummaryCollapsible";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
@@ -115,9 +113,14 @@ export default function InspectionDetailPage() {
 
       {inspection.forensicResult && (
         <div className="mb-6">
-          <ForensicBadge
+          <TrustScoreHero
             riskScore={inspection.forensicResult.overallRiskScore}
             riskLevel={inspection.forensicResult.overallRiskLevel}
+            c2paStatus={inspection.forensicResult.c2paStatus}
+            predictedSource={inspection.forensicResult.predictedSource}
+            sourceConfidence={inspection.forensicResult.sourceConfidence}
+            totalProcessingTimeMs={inspection.forensicResult.totalProcessingTimeMs}
+            inspectionId={inspection.id}
           />
         </div>
       )}
@@ -134,31 +137,21 @@ export default function InspectionDetailPage() {
             </div>
           </GlassPanel>
         </div>
-        <DamageReport inspection={inspection} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} />
+        <DamageReport inspection={inspection} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} forensicResult={inspection.forensicResult} />
       </div>
 
       {inspection.forensicResult && (
-        <div className="mt-6 space-y-4">
-          <ForensicReport result={inspection.forensicResult} />
-          {inspection.forensicResult.elaHeatmapUrl && (
-            <ElaHeatmapOverlay
-              originalImageUrl={activeImageUrl || inspection.imageUrl}
-              heatmapUrl={inspection.forensicResult.elaHeatmapUrl}
-            />
-          )}
-          {inspection.forensicResult.fftSpectrumUrl && (
-            <FftSpectrumOverlay
-              fftSpectrumUrl={inspection.forensicResult.fftSpectrumUrl}
-            />
-          )}
-          {inspection.forensicResult.spectralHeatmapUrl && (
-            <SpectralHeatmapOverlay
-              originalImageUrl={activeImageUrl || inspection.imageUrl}
-              heatmapUrl={inspection.forensicResult.spectralHeatmapUrl}
-            />
-          )}
+        <div className="mt-6">
+          <ForensicPillarGrid
+            result={inspection.forensicResult}
+            originalImageUrl={activeImageUrl || inspection.imageUrl}
+          />
         </div>
       )}
+
+      <div className="mt-6">
+        <LlmSummaryCollapsible summary={inspection.summary} />
+      </div>
 
       {inspection.evidenceHash && (
         <div className="mt-6">

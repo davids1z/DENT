@@ -347,15 +347,17 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     }
 
                     // Individual damage safety_rating check
+                    var isCriticalRisk = forensicResult.OverallRiskScore >= 0.75;
                     foreach (var dmg in result.Damages)
                     {
                         if (string.Equals(dmg.SafetyRating, "Safe", StringComparison.OrdinalIgnoreCase))
                         {
-                            dmg.SafetyRating = "Warning";
+                            dmg.SafetyRating = isCriticalRisk ? "Critical" : "Warning";
                             if (string.Equals(dmg.Severity, "Minor", StringComparison.OrdinalIgnoreCase))
-                                dmg.Severity = "Moderate";
+                                dmg.Severity = isCriticalRisk ? "Critical"
+                                    : forensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
                             logger.LogWarning(
-                                "C# safety net: blocked Safe→Warning on cause={Cause} for inspection {Id}",
+                                "C# safety net: blocked Safe on cause={Cause} for inspection {Id}",
                                 dmg.DamageCause, inspection.Id);
                         }
 
@@ -369,9 +371,10 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
                         if (causeNorm is "autenticno" or "autenticna" or "authentic" or "autenticni")
                         {
-                            dmg.DamageCause = "Metadata anomalija";
-                            dmg.SafetyRating = "Warning";
-                            dmg.Severity = forensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
+                            dmg.DamageCause = DeriveForensicCategory(forensicResult);
+                            dmg.SafetyRating = isCriticalRisk ? "Critical" : "Warning";
+                            dmg.Severity = isCriticalRisk ? "Critical"
+                                : forensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
                             dmg.Description += " [C# safety net: forenzicki moduli ukazuju na visok rizik manipulacije.]";
                             logger.LogWarning(
                                 "C# safety net: blocked Autenticno damage_cause for inspection {Id}",
@@ -780,6 +783,36 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
     private static string ComputeSha256(string text)
     {
         return ComputeSha256(Encoding.UTF8.GetBytes(text));
+    }
+
+    /// <summary>
+    /// Derive a forensic category label from the highest-risk forensic module,
+    /// instead of using the generic "Metadata anomalija" fallback.
+    /// </summary>
+    private static string DeriveForensicCategory(MlForensicResult forensicResult)
+    {
+        var categoryMap = new Dictionary<string, string>
+        {
+            ["ai_generation_detection"] = "AI generiranje",
+            ["clip_ai_detection"] = "AI generiranje",
+            ["vae_reconstruction"] = "AI generiranje",
+            ["modification_detection"] = "Digitalna manipulacija",
+            ["deep_modification_detection"] = "Digitalna manipulacija",
+            ["spectral_forensics"] = "Spektralna anomalija",
+            ["prnu_detection"] = "Sumnjiva tekstura",
+            ["semantic_forensics"] = "Perspektivna anomalija",
+            ["metadata_analysis"] = "Metadata anomalija",
+        };
+
+        var topModule = forensicResult.Modules
+            .Where(m => m.RiskScore >= 0.40)
+            .OrderByDescending(m => m.RiskScore)
+            .FirstOrDefault();
+
+        if (topModule != null && categoryMap.TryGetValue(topModule.ModuleName, out var category))
+            return category;
+
+        return "Metadata anomalija";
     }
 }
 

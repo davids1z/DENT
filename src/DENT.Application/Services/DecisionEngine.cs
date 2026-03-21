@@ -10,9 +10,9 @@ public static class DecisionEngine
     public static (string Outcome, string Reason, string TraceJson) Evaluate(Inspection inspection)
     {
         var traces = new List<DecisionTraceEntryDto>();
-        var hasCriticalFinding = inspection.Damages.Any(d => d.Severity == DamageSeverity.Critical);
+        var hasCriticalDamage = inspection.Damages.Any(d => d.Severity == DamageSeverity.Critical);
         var hasSevereFinding = inspection.Damages.Any(d => d.Severity == DamageSeverity.Severe);
-        var hasSafetyCritical = inspection.Damages.Any(d => d.SafetyRating == "Critical");
+        var hasSafetyCriticalDamage = inspection.Damages.Any(d => d.SafetyRating == "Critical");
         var findingCount = inspection.Damages.Count;
 
         // Parse forensic module scores for fine-grained rules
@@ -21,8 +21,14 @@ public static class DecisionEngine
         var spectralScore = modules.GetValueOrDefault("spectral_forensics", 0);
         var cnnScore = modules.GetValueOrDefault("deep_modification_detection", 0);
 
-        // Rule 1: Critical forensic risk (fusion score)
+        // Forensic-based fallback: AI detector 80%+ is a critical finding regardless of Gemini
+        var hasCriticalFinding = hasCriticalDamage || aiGenScore >= 0.80;
+        // Forged content: from damage SafetyRating OR critical forensic risk + strong AI signal
         var fraudRiskScore = inspection.FraudRiskScore ?? 0;
+        var hasSafetyCritical = hasSafetyCriticalDamage
+            || (fraudRiskScore >= 0.75 && aiGenScore >= 0.60);
+
+        // Rule 1: Critical forensic risk (fusion score)
         var hasCriticalFraud = fraudRiskScore >= 0.75;
         var hasHighFraud = fraudRiskScore >= 0.50;
         var hasMediumFraud = fraudRiskScore >= 0.25;
