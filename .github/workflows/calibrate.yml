@@ -16,7 +16,7 @@ on:
 jobs:
   calibrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 hours max
+    timeout-minutes: 360
     steps:
       - name: Run calibration on server
         uses: appleboy/ssh-action@v1
@@ -26,27 +26,24 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 360m
+          envs: AWS_KEY,AWS_SECRET,STEP
           script: |
             set -e
-            DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
-            cd "$DEPLOY_DIR"
+            cd /opt/dent
 
-            STEP="${{ github.event.inputs.step }}"
             echo "=== DENT Calibration Pipeline (step: $STEP) ==="
 
-            # Install deps in ml-service container
             docker compose -f docker-compose.server.yml exec -T ml-service \
-              pip install boto3 tqdm datasets 2>/dev/null || true
+              pip install boto3 tqdm 2>/dev/null || true
 
             if [ "$STEP" = "build" ] || [ "$STEP" = "all" ]; then
               echo ""
               echo "=== Step 1: Build calibration dataset ==="
-              echo "Sending 1802 images through forensic pipeline (skip Gemini)..."
-              echo "This will take ~2-4 hours."
+              echo "Sending 1802 images through forensic pipeline..."
 
               docker compose -f docker-compose.server.yml exec -T \
-                -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID || '' }} \
-                -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY || '' }} \
+                -e AWS_ACCESS_KEY_ID="$AWS_KEY" \
+                -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET" \
                 -e AWS_DEFAULT_REGION=eu-central-1 \
                 ml-service \
                 python -m scripts.build_calibration_dataset \
@@ -83,3 +80,7 @@ jobs:
               echo "Restarting ML service to load calibrated models..."
               docker compose -f docker-compose.server.yml restart ml-service
             fi
+        env:
+          AWS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          STEP: ${{ github.event.inputs.step }}
