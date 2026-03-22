@@ -223,6 +223,11 @@ def get_meta_learner(weights_path: str = "") -> StackingMetaLearner:
     global _meta_learner
     if _meta_learner is None:
         _meta_learner = StackingMetaLearner(weights_path)
+    elif weights_path and not _meta_learner._loaded and weights_path != _meta_learner._weights_path:
+        # Path provided but singleton was created without it — retry
+        _meta_learner._weights_path = weights_path
+        _meta_learner._load_attempted = False
+        _meta_learner._try_load()
     return _meta_learner
 
 
