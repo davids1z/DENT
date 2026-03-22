@@ -99,6 +99,13 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             kwargs.setdefault("weights_only", False)
             return _original_torch_load(*args, **kwargs)
 
+        # PyTorch 2.6+ safe globals for numpy types in model checkpoints
+        try:
+            import numpy as _np
+            torch.serialization.add_safe_globals([_np.core.multiarray.scalar, _np.dtype, _np.ndarray])
+        except Exception:
+            pass
+
         if "catnet" in enabled_methods:
             try:
                 from photoholmes.methods.catnet import CatNet
@@ -207,7 +214,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         """Run CAT-Net for JPEG compression artifact inconsistency detection."""
         try:
             import torch
-            from photoholmes.preprocessing import default_preprocessing
+            from photoholmes.methods.catnet.preprocessing import catnet_preprocessing
 
             # Preprocess image for CAT-Net
             img_arr = np.array(img)
@@ -219,7 +226,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
 
             try:
                 # Use PhotoHolmes preprocessing to extract DCT coefficients
-                preprocessing = default_preprocessing("catnet")
+                preprocessing = catnet_preprocessing()
                 image_data = preprocessing(image=img_arr, dct_coefficients=tmp_path)
 
                 with torch.no_grad():
@@ -300,12 +307,12 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         """Run TruFor for transformer-based tampering localization."""
         try:
             import torch
-            from photoholmes.preprocessing import default_preprocessing
+            from photoholmes.methods.trufor.preprocessing import trufor_preprocessing
 
             img_arr = np.array(img)
 
             # Use PhotoHolmes preprocessing for TruFor input format
-            preprocessing = default_preprocessing("trufor")
+            preprocessing = trufor_preprocessing()
             image_data = preprocessing(image=img_arr)
 
             with torch.no_grad():
