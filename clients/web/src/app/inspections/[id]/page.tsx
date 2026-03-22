@@ -7,7 +7,7 @@ import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
-import { TrustScoreHero } from "@/components/TrustScoreHero";
+import { VerdictDashboard } from "@/components/VerdictDashboard";
 import { ForensicPillarGrid } from "@/components/ForensicPillarGrid";
 import { LlmSummaryCollapsible } from "@/components/LlmSummaryCollapsible";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
@@ -113,7 +113,7 @@ export default function InspectionDetailPage() {
 
       {inspection.forensicResult && (
         <div className="mb-6">
-          <TrustScoreHero
+          <VerdictDashboard
             riskScore={inspection.forensicResult.overallRiskScore}
             riskLevel={inspection.forensicResult.overallRiskLevel}
             c2paStatus={inspection.forensicResult.c2paStatus}
