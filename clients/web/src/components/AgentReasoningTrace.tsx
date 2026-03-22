@@ -8,14 +8,16 @@ interface AgentReasoningTraceProps {
   decision: AgentDecision;
   fallbackUsed: boolean;
   processingTimeMs: number;
+  defaultExpanded?: boolean;
 }
 
 export function AgentReasoningTrace({
   decision,
   fallbackUsed,
   processingTimeMs,
+  defaultExpanded,
 }: AgentReasoningTraceProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
 
   const confidencePct = Math.round(decision.confidence * 100);
   const outcomeColor =

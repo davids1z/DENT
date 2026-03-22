@@ -96,42 +96,57 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
   return (
     <div ref={cardRef}>
       <div
-        className={cn("bg-card border border-border rounded-xl overflow-hidden cursor-pointer transition-colors", isSelected && "ring-1 ring-accent/30")}
-        style={{ borderLeftWidth: "3px", borderLeftColor: borderColor }}
+        className={cn(
+          "bg-white border border-gray-100 rounded-xl overflow-hidden cursor-pointer transition-all shadow-sm",
+          isSelected && "ring-2 ring-accent/20"
+        )}
       >
+        {/* Top severity stripe */}
+        <div className="h-1 w-full" style={{ backgroundColor: borderColor }} />
+
         <div className="p-4" onClick={() => { setExpanded(!expanded); onSelect(); }}>
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: borderColor, color: "white" }}>{index + 1}</div>
-              <span className="font-medium text-sm">{deriveFindingCategory(d, forensicResult ?? null)}</span>
+          <div className="flex items-center gap-3 mb-2">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+              style={{ backgroundColor: borderColor, color: "white" }}
+            >
+              {index + 1}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-              <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", severityBg(d.severity), severityColor(d.severity))}>{severityLabel(d.severity)}</span>
-              <svg className={cn("w-4 h-4 text-muted transition-transform", expanded && "rotate-180")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold text-sm block">{deriveFindingCategory(d, forensicResult ?? null)}</span>
+              <span className="text-xs text-slate-400 block truncate">{sanitizeLlmText(d.description).slice(0, 80)}...</span>
             </div>
+            <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium border flex-shrink-0", severityBg(d.severity), severityColor(d.severity))}>
+              {severityLabel(d.severity)}
+            </span>
+            <svg className={cn("w-4 h-4 text-muted transition-transform flex-shrink-0", expanded && "rotate-180")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
           </div>
-          <p className="text-sm text-muted leading-relaxed">{sanitizeLlmText(d.description)}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${d.confidence * 100}%`, backgroundColor: borderColor }} />
+
+          {/* Confidence bar */}
+          <div className="flex items-center gap-2 mt-3">
+            <span className="text-[10px] text-slate-400 flex-shrink-0">Pouzdanost</span>
+            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${d.confidence * 100}%`, backgroundColor: borderColor }} />
             </div>
-            <span className="text-[10px] text-muted font-mono">{Math.round(d.confidence * 100)}%</span>
+            <span className="text-xs text-slate-500 font-mono">{Math.round(d.confidence * 100)}%</span>
           </div>
         </div>
+
         {expanded && (
-          <div className="px-4 pb-4 pt-1 border-t border-border">
+          <div className="px-4 pb-4 pt-3 border-t border-gray-50 bg-gray-50/50">
+            <p className="text-sm text-slate-600 leading-relaxed mb-3">{sanitizeLlmText(d.description)}</p>
             <div className="grid grid-cols-2 gap-2 text-sm">
               {d.safetyRating && (
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="text-muted text-xs mb-0.5">Verdikt</div>
+                <div className="bg-white rounded-lg p-2 border border-gray-100">
+                  <div className="text-slate-400 text-xs mb-0.5">Verdikt</div>
                   <div className={cn("font-medium", safetyRatingColor(d.safetyRating))}>{safetyRatingLabel(d.safetyRating)}</div>
                 </div>
               )}
               {d.damageCause && (
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="text-muted text-xs mb-0.5">Kategorija</div>
+                <div className="bg-white rounded-lg p-2 border border-gray-100">
+                  <div className="text-slate-400 text-xs mb-0.5">Kategorija</div>
                   <div className="font-medium">{deriveFindingCategory(d, forensicResult ?? null)}</div>
                 </div>
               )}

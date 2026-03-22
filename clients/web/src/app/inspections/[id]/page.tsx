@@ -5,11 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { getInspection, deleteInspection, formatDate, type Inspection } from "@/lib/api";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
-import { DecisionBadge } from "@/components/DecisionBadge";
 import { DecisionTrace } from "@/components/DecisionTrace";
 import { VerdictDashboard } from "@/components/VerdictDashboard";
-import { ForensicPillarGrid } from "@/components/ForensicPillarGrid";
-import { LlmSummaryCollapsible } from "@/components/LlmSummaryCollapsible";
+import { ForensicModuleTable } from "@/components/ForensicModuleTable";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
@@ -79,17 +77,20 @@ export default function InspectionDetailPage() {
 
   if (!inspection) return null;
 
+  const isHighRisk = inspection.forensicResult
+    ? ["High", "Critical"].includes(inspection.forensicResult.overallRiskLevel)
+    : false;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      {/* ── Header ── */}
       <div className="flex items-start justify-between mb-8">
         <div>
           <button onClick={() => router.back()} className="text-muted hover:text-foreground text-sm mb-2 flex items-center gap-1 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Natrag
           </button>
-          <h1 className="font-heading text-2xl font-bold">
-            Forenzička analiza
-          </h1>
+          <h1 className="font-heading text-2xl font-bold">Forenzička analiza</h1>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-muted text-sm">{formatDate(inspection.createdAt)}</p>
             <span className="text-muted text-sm">&middot; {inspection.originalFileName}</span>
@@ -105,14 +106,9 @@ export default function InspectionDetailPage() {
         </div>
       </div>
 
-      {inspection.decisionOutcome && (
-        <div className="mb-6">
-          <DecisionBadge outcome={inspection.decisionOutcome} reason={inspection.decisionReason} />
-        </div>
-      )}
-
+      {/* ── 1. VERDICT HERO ── */}
       {inspection.forensicResult && (
-        <div className="mb-6">
+        <div className="mb-8">
           <VerdictDashboard
             riskScore={inspection.forensicResult.overallRiskScore}
             riskLevel={inspection.forensicResult.overallRiskLevel}
@@ -121,10 +117,14 @@ export default function InspectionDetailPage() {
             sourceConfidence={inspection.forensicResult.sourceConfidence}
             totalProcessingTimeMs={inspection.forensicResult.totalProcessingTimeMs}
             inspectionId={inspection.id}
+            summary={inspection.summary}
+            decisionOutcome={inspection.decisionOutcome}
+            decisionReason={inspection.decisionReason}
           />
         </div>
       )}
 
+      {/* ── 2. IMAGE + FINDINGS ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
           <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} />
@@ -140,41 +140,53 @@ export default function InspectionDetailPage() {
         <DamageReport inspection={inspection} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} forensicResult={inspection.forensicResult} />
       </div>
 
+      {/* ── 3. HOW WE DECIDED ── */}
+      {(inspection.agentDecision || (inspection.decisionTraces && inspection.decisionTraces.length > 0)) && (
+        <section className="mt-8">
+          <h2 className="font-heading text-lg font-semibold mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+            Kako je sustav donio odluku
+          </h2>
+
+          {inspection.agentDecision && (
+            <AgentReasoningTrace
+              decision={inspection.agentDecision}
+              fallbackUsed={inspection.agentFallbackUsed}
+              processingTimeMs={inspection.agentProcessingTimeMs}
+              defaultExpanded={isHighRisk}
+            />
+          )}
+
+          {inspection.decisionTraces && inspection.decisionTraces.length > 0 && (
+            <div className="mt-4">
+              <DecisionTrace traces={inspection.decisionTraces} />
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── 4. FORENSIC MODULES ── */}
       {inspection.forensicResult && (
-        <div className="mt-6">
-          <ForensicPillarGrid
+        <div className="mt-8">
+          <ForensicModuleTable
             result={inspection.forensicResult}
             originalImageUrl={activeImageUrl || inspection.imageUrl}
           />
         </div>
       )}
 
-      <div className="mt-6">
-        <LlmSummaryCollapsible summary={inspection.summary} />
-      </div>
-
-      {inspection.evidenceHash && (
-        <div className="mt-6">
+      {/* ── 5. EVIDENCE & ACTIONS ── */}
+      <div className="mt-8 space-y-4">
+        {inspection.evidenceHash && (
           <EvidenceIntegrity inspection={inspection} />
-        </div>
-      )}
+        )}
 
-      {inspection.agentDecision && (
-        <div className="mt-6">
-          <AgentReasoningTrace
-            decision={inspection.agentDecision}
-            fallbackUsed={inspection.agentFallbackUsed}
-            processingTimeMs={inspection.agentProcessingTimeMs}
-          />
-        </div>
-      )}
-
-      {inspection.decisionOutcome && (
-        <div className="mt-6 space-y-4">
-          {inspection.decisionTraces && inspection.decisionTraces.length > 0 && <DecisionTrace traces={inspection.decisionTraces} />}
+        {inspection.decisionOutcome && (
           <OverridePanel inspectionId={inspection.id} currentOutcome={inspection.decisionOutcome} overrides={inspection.decisionOverrides} onOverrideComplete={loadInspection} />
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -111,6 +111,11 @@ h3 { font-weight: 600; }
   }
 }
 
+/* ========== GAUGE ========== */
+.gauge-fill-animation {
+  transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* ========== SECTION DIVIDER ========== */
 .section-alt {
   background: var(--card);
