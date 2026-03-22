@@ -214,20 +214,31 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         """Run CAT-Net for JPEG compression artifact inconsistency detection."""
         try:
             import torch
+            import jpegio
             from photoholmes.methods.catnet.preprocessing import catnet_preprocessing
 
-            # Preprocess image for CAT-Net
             img_arr = np.array(img)
+            img_tensor = torch.from_numpy(img_arr).permute(2, 0, 1).float()
 
-            # Save to temp JPEG for CAT-Net DCT stream (needs JPEG file)
+            # Save to temp JPEG and extract DCT coefficients via jpegio
             with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                 img.save(tmp, format="JPEG", quality=95)
                 tmp_path = tmp.name
 
             try:
-                # Use PhotoHolmes preprocessing to extract DCT coefficients
-                preprocessing = catnet_preprocessing()
-                image_data = preprocessing(image=img_arr, dct_coefficients=tmp_path)
+                jpeg = jpegio.read(tmp_path)
+                dct_coefs = torch.from_numpy(
+                    np.stack(jpeg.coef_arrays, axis=0)
+                ).float()
+                qtables = torch.from_numpy(
+                    np.stack(jpeg.quant_tables, axis=0)
+                ).float()
+
+                image_data = catnet_preprocessing(
+                    image=img_tensor,
+                    dct_coefficients=dct_coefs,
+                    qtables=qtables,
+                )
 
                 with torch.no_grad():
                     output = self._catnet_method.predict(**image_data)
@@ -310,10 +321,10 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             from photoholmes.methods.trufor.preprocessing import trufor_preprocessing
 
             img_arr = np.array(img)
+            img_tensor = torch.from_numpy(img_arr).permute(2, 0, 1).float()
 
             # Use PhotoHolmes preprocessing for TruFor input format
-            preprocessing = trufor_preprocessing()
-            image_data = preprocessing(image=img_arr)
+            image_data = trufor_preprocessing(image=img_tensor)
 
             with torch.no_grad():
                 output = self._trufor_method.predict(**image_data)
