@@ -93,7 +93,7 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
         meta_enabled = False
 
     if meta_enabled:
-        meta_learner = get_meta_learner()
+        meta_learner = get_meta_learner(_settings.forensics_stacking_meta_weights)
         meta_score = meta_learner.predict(modules)
         if meta_score is not None:
             overall = max(0.0, min(1.0, meta_score))
