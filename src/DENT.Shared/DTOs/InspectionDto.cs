@@ -156,6 +156,8 @@ public record ForensicResultDto
     // C2PA provenance
     public string? C2paStatus { get; init; }
     public string? C2paIssuer { get; init; }
+    // 3-class meta-learner probabilities
+    public Dictionary<string, double>? VerdictProbabilities { get; init; }
 }
 
 public record ForensicModuleResultDto

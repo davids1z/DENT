@@ -132,6 +132,8 @@ export interface ForensicResult {
   // C2PA provenance
   c2paStatus: string | null;
   c2paIssuer: string | null;
+  // 3-class meta-learner probabilities
+  verdictProbabilities: Record<string, number> | null;
 }
 
 export interface ImageHash {

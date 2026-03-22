@@ -26,6 +26,10 @@ public class ForensicResult
     public string? C2paIssuer { get; set; }
 
     public int TotalProcessingTimeMs { get; set; }
+
+    // 3-class meta-learner probabilities (JSON)
+    public string? VerdictProbabilitiesJson { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation

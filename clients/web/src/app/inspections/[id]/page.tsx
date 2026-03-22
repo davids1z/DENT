@@ -120,6 +120,7 @@ export default function InspectionDetailPage() {
             summary={inspection.summary}
             decisionOutcome={inspection.decisionOutcome}
             decisionReason={inspection.decisionReason}
+            verdictProbabilities={inspection.forensicResult.verdictProbabilities}
           />
         </div>
       )}

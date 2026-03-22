@@ -17,6 +17,7 @@ interface VerdictDashboardProps {
   summary?: string | null;
   decisionOutcome?: string | null;
   decisionReason?: string | null;
+  verdictProbabilities?: Record<string, number> | null;
 }
 
 // 3-class verdict from risk score
@@ -261,9 +262,32 @@ export function VerdictDashboard({
   summary,
   decisionOutcome,
   decisionReason,
+  verdictProbabilities,
 }: VerdictDashboardProps) {
   const [animated, setAnimated] = useState(false);
-  const verdict = getVerdict(riskScore, riskLevel);
+
+  // Use REAL meta-learner probabilities if available, else heuristic fallback
+  const verdict = verdictProbabilities
+    ? (() => {
+        const a = (verdictProbabilities.authentic ?? 0) * 100;
+        const ai = (verdictProbabilities.ai_generated ?? 0) * 100;
+        const t = (verdictProbabilities.tampered ?? 0) * 100;
+        const maxVal = Math.max(a, ai, t);
+        const cls: VerdictClass = maxVal === ai ? "ai_generated" : maxVal === t ? "tampered" : "authentic";
+        const labels: Record<VerdictClass, string> = {
+          authentic: "AUTENTIČNA FOTOGRAFIJA",
+          ai_generated: "UMJETNO GENERIRANA SLIKA",
+          tampered: "DIGITALNO IZMIJENJENA SLIKA",
+        };
+        return {
+          cls,
+          label: labels[cls],
+          confidence: maxVal,
+          scores: { authentic: a, ai_generated: ai, tampered: t },
+        };
+      })()
+    : getVerdict(riskScore, riskLevel);
+
   const riskPercent = riskScore * 100;
   const badge = getVerdictBadge(riskPercent);
 

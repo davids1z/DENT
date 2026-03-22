@@ -246,6 +246,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     C2paStatus = forensicResult.C2paStatus,
                     C2paIssuer = forensicResult.C2paIssuer,
                     TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
+                    VerdictProbabilitiesJson = forensicResult.VerdictProbabilities != null
+                        ? JsonSerializer.Serialize(forensicResult.VerdictProbabilities)
+                        : null,
                 };
                 db.ForensicResults.Add(fr);
                 inspection.ForensicResult = fr;
@@ -706,7 +709,21 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             SourceConfidence = fr.SourceConfidence,
             C2paStatus = fr.C2paStatus,
             C2paIssuer = fr.C2paIssuer,
+            VerdictProbabilities = ParseVerdictProbabilities(fr.VerdictProbabilitiesJson),
         };
+    }
+
+    private static Dictionary<string, double>? ParseVerdictProbabilities(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, double>>(json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static AgentDecisionDto? ParseAgentDecision(string? json)
