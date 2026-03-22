@@ -350,7 +350,7 @@ class ForensicPipeline:
                 modules.append(result)
                 _report_progress(self._vae_recon.MODULE_NAME)
 
-        overall_score, overall_score_100, overall_level = fuse_scores(modules)
+        overall_score, overall_score_100, overall_level, verdict_probs = fuse_scores(modules)
         total_time = sum(m.processing_time_ms for m in modules)
 
         # Extract ELA heatmap if available, fall back to CNN heatmap
@@ -408,4 +408,5 @@ class ForensicPipeline:
             source_confidence=source_confidence,
             c2pa_status=c2pa_status,
             c2pa_issuer=c2pa_issuer,
+            verdict_probabilities=verdict_probs,
         )

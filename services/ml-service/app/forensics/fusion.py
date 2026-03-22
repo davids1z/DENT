@@ -67,23 +67,20 @@ def _get_module(active: list[ModuleResult], name: str) -> ModuleResult | None:
     return next((m for m in active if m.module_name == name), None)
 
 
-def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
+def fuse_scores(
+    modules: list[ModuleResult],
+) -> tuple[float, int, RiskLevel, dict[str, float] | None]:
     """
     Core-only score fusion with context modifiers.
 
-    Returns (overall_float, overall_100, risk_level).
-
-    Architecture:
-    1. Core AI score from 3 dedicated detectors (Swin, CLIP, VAE)
-    2. Context modifiers from metadata/PRNU findings (amplify or dampen)
-    3. Tampering score from modification detectors (separate from AI)
-    4. Final risk = max(core_score, tampering_score)
-    5. Cross-validation: 2+ AI core detectors >= 0.60 → floor 0.85
+    Returns (overall_float, overall_100, risk_level, verdict_probabilities).
+    verdict_probabilities is a dict like {"authentic": 0.65, "ai_generated": 0.25, "tampered": 0.10}
+    or None if meta-learner is not available.
     """
     active = [m for m in modules if not m.error]
 
     if not active:
-        return 0.0, 0, RiskLevel.LOW
+        return 0.0, 0, RiskLevel.LOW, None
 
     # ── Stacking meta-learner (replaces everything when trained) ──────
     try:
@@ -92,12 +89,15 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
     except Exception:
         meta_enabled = False
 
+    verdict_probs: dict[str, float] | None = None
+
     if meta_enabled:
         meta_learner = get_meta_learner(_settings.forensics_stacking_meta_weights)
         meta_score = meta_learner.predict(modules)
+        verdict_probs = meta_learner.predict_proba(modules)
         if meta_score is not None:
             overall = max(0.0, min(1.0, meta_score))
-            return overall, round(overall * 100), _risk_level(overall)
+            return overall, round(overall * 100), _risk_level(overall), verdict_probs
 
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
     # Trained classifiers (Swin, CLIP, VAE) are the primary decision makers.
@@ -189,4 +189,4 @@ def fuse_scores(modules: list[ModuleResult]) -> tuple[float, int, RiskLevel]:
         overall = max(overall, 0.85)
 
     overall = max(0.0, min(1.0, overall))
-    return overall, round(overall * 100), _risk_level(overall)
+    return overall, round(overall * 100), _risk_level(overall), verdict_probs

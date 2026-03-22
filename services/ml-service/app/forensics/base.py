@@ -48,6 +48,8 @@ class ForensicReport(BaseModel):
     # C2PA provenance (promoted from metadata findings)
     c2pa_status: str | None = None  # "valid" | "invalid" | "ai_generated" | "not_found"
     c2pa_issuer: str | None = None
+    # 3-class meta-learner probabilities
+    verdict_probabilities: dict[str, float] | None = None
 
 
 class BaseAnalyzer(ABC):

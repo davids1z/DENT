@@ -125,6 +125,8 @@ class StackingMetaLearner:
         self._weights_path = weights_path
         self._weights: np.ndarray | None = None
         self._bias: float = 0.0
+        self._weights_multi: np.ndarray | None = None  # (147, 3) multinomial
+        self._bias_multi: np.ndarray | None = None      # (3,)
         self._loaded = False
         self._load_attempted = False
 
@@ -141,9 +143,48 @@ class StackingMetaLearner:
 
         features = extract_features(modules)
         logit = float(features @ self._weights + self._bias)
-        # Numerically stable sigmoid
         score = 1.0 / (1.0 + np.exp(-np.clip(logit, -500, 500)))
         return score
+
+    def predict_proba(self, modules: list[ModuleResult]) -> dict[str, float] | None:
+        """Predict 3-class probabilities (authentic, ai_generated, tampered).
+
+        Uses multinomial weights (weights_multi) if available, otherwise
+        derives probabilities from binary score.
+
+        Returns dict like {"authentic": 0.65, "ai_generated": 0.25, "tampered": 0.10}
+        or None if no weights loaded.
+        """
+        if not self._loaded and not self._load_attempted:
+            self._try_load()
+
+        if not self._loaded:
+            return None
+
+        features = extract_features(modules)
+
+        # Try multinomial weights first (3-class softmax)
+        if self._weights_multi is not None and self._bias_multi is not None:
+            logits = features @ self._weights_multi + self._bias_multi  # (3,)
+            # Numerically stable softmax
+            logits_shifted = logits - logits.max()
+            exp_logits = np.exp(logits_shifted)
+            probs = exp_logits / exp_logits.sum()
+            return {
+                "authentic": round(float(probs[0]), 4),
+                "ai_generated": round(float(probs[1]), 4),
+                "tampered": round(float(probs[2]), 4),
+            }
+
+        # Fallback: derive from binary score
+        binary_score = float(features @ self._weights + self._bias)
+        p_manip = 1.0 / (1.0 + np.exp(-np.clip(binary_score, -500, 500)))
+        p_auth = 1.0 - p_manip
+        return {
+            "authentic": round(p_auth, 4),
+            "ai_generated": round(p_manip * 0.6, 4),
+            "tampered": round(p_manip * 0.4, 4),
+        }
 
     def _try_load(self) -> None:
         """Attempt to load weights from .npz file."""
@@ -189,6 +230,16 @@ class StackingMetaLearner:
 
         self._weights = weights.astype(np.float64)
         self._bias = float(bias.flat[0])
+
+        # Load multinomial weights if available (3-class)
+        if "weights_multi" in data and "bias_multi" in data:
+            w_multi = data["weights_multi"]
+            b_multi = data["bias_multi"]
+            if w_multi.shape == (N_FEATURES, 3):
+                self._weights_multi = w_multi.astype(np.float64)
+                self._bias_multi = b_multi.astype(np.float64)
+                logger.info("Loaded 3-class multinomial weights (%s)", w_multi.shape)
+
         self._loaded = True
         logger.info(
             "Loaded stacking meta weights from %s (%d features)",
