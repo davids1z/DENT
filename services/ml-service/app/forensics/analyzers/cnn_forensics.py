@@ -227,11 +227,12 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
 
             try:
                 jpeg = jpegio.read(tmp_path)
+                # Use luma (Y) channel only — Cb/Cr are subsampled
                 dct_coefs = torch.from_numpy(
-                    np.stack(jpeg.coef_arrays, axis=0)
+                    jpeg.coef_arrays[0][np.newaxis]
                 ).float()
                 qtables = torch.from_numpy(
-                    np.stack(jpeg.quant_tables, axis=0)
+                    jpeg.quant_tables[0][np.newaxis]
                 ).float()
 
                 image_data = catnet_preprocessing(
