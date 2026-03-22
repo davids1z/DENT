@@ -93,7 +93,7 @@ class AiGenerationAnalyzer(BaseAnalyzer):
                 self._sdxl_pipe = hf_pipeline(
                     "image-classification",
                     model=MODEL_SDXL_DETECTOR,
-                    device=-1,  # CPU
+                    device=0 if _TORCH_AVAILABLE and torch.cuda.is_available() else -1,
                     model_kwargs={"cache_dir": cache_dir},
                 )
                 logger.info("SDXL detector loaded: %s", MODEL_SDXL_DETECTOR)
@@ -107,7 +107,7 @@ class AiGenerationAnalyzer(BaseAnalyzer):
                 self._vit_pipe = hf_pipeline(
                     "image-classification",
                     model=MODEL_AI_IMAGE_DETECTOR,
-                    device=-1,  # CPU
+                    device=0 if _TORCH_AVAILABLE and torch.cuda.is_available() else -1,
                     model_kwargs={"cache_dir": cache_dir},
                 )
                 logger.info("ViT AI detector loaded: %s", MODEL_AI_IMAGE_DETECTOR)

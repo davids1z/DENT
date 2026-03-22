@@ -99,11 +99,12 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
             self._processor = CLIPProcessor.from_pretrained(
                 model_name, cache_dir=cache_dir
             )
+            self._device = "cuda" if _TORCH_AVAILABLE and torch.cuda.is_available() else "cpu"
             self._model = CLIPModel.from_pretrained(
                 model_name, cache_dir=cache_dir
-            )
+            ).to(self._device)
             self._model.eval()
-            logger.info("CLIP AI detector loaded: %s", model_name)
+            logger.info("CLIP AI detector loaded on %s: %s", self._device, model_name)
         except Exception as e:
             logger.warning("Failed to load CLIP model: %s", e)
             self._processor = None
@@ -197,10 +198,8 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         inputs = self._processor(images=img, return_tensors="pt")
 
         with torch.no_grad():
-            # Extract image features — handle different transformers versions.
-            # get_image_features should return (batch, projection_dim) tensor,
-            # but some versions wrap it in a dataclass.
-            pixel_values = inputs.get("pixel_values", inputs.get("pixel_values"))
+            device = getattr(self, "_device", "cpu")
+            pixel_values = inputs.get("pixel_values", inputs.get("pixel_values")).to(device)
             vision_out = self._model.vision_model(pixel_values=pixel_values)
             pooled = vision_out.pooler_output  # (1, hidden_size)
             projected = self._model.visual_projection(pooled)  # (1, 768)

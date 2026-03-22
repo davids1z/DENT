@@ -60,11 +60,12 @@ def _get_vgg_features():
         try:
             from torchvision.models import vgg16, VGG16_Weights
             model = vgg16(weights=VGG16_Weights.DEFAULT)
-            _vgg_features = torch.nn.Sequential(*list(model.features[:16]))
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            _vgg_features = torch.nn.Sequential(*list(model.features[:16])).to(device)
             _vgg_features.eval()
             for p in _vgg_features.parameters():
                 p.requires_grad = False
-            logger.info("VGG16 feature extractor loaded for LPIPS")
+            logger.info("VGG16 feature extractor loaded on %s for LPIPS", device)
         except Exception as e:
             logger.warning("Failed to load VGG16 for LPIPS: %s", e)
     return _vgg_features
@@ -111,11 +112,12 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
             os.makedirs(cache_dir, exist_ok=True)
 
             model_id = getattr(settings, "forensics_vae_recon_model", _VAE_MODEL_ID)
+            self._device = "cuda" if torch.cuda.is_available() else "cpu"
             self._vae = AutoencoderKL.from_pretrained(
                 model_id, cache_dir=cache_dir
-            )
+            ).to(self._device)
             self._vae.eval()
-            logger.info("VAE reconstruction model loaded: %s", model_id)
+            logger.info("VAE reconstruction model loaded on %s: %s", self._device, model_id)
         except Exception as e:
             logger.warning("Failed to load VAE model: %s", e)
             self._vae = None
@@ -183,9 +185,10 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
         new_h = max(new_h, 8)
         img_resized = img.resize((new_w, new_h), Image.LANCZOS)
 
-        # Convert to tensor: [0, 1] → [-1, 1]
+        # Convert to tensor on correct device: [0, 1] → [-1, 1]
+        device = getattr(self, "_device", "cpu")
         arr = np.array(img_resized, dtype=np.float32) / 255.0
-        tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0)  # (1, 3, H, W)
+        tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).to(device)
         tensor = tensor * 2.0 - 1.0  # [-1, 1]
 
         # Encode → latent → decode
@@ -385,8 +388,9 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
         if vgg is None:
             return 0.0
 
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        device = img1.device
+        mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
         with torch.no_grad():
             feat1 = vgg((img1 - mean) / std)
             feat2 = vgg((img2 - mean) / std)
