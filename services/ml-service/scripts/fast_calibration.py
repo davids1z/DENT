@@ -111,12 +111,11 @@ async def main():
 
     print("Initializing forensic pipeline (direct, no HTTP)...")
     pipeline = ForensicPipeline(
-        semantic_enabled=False,     # Skip Gemini
-        cnn_enabled=False,          # Skip CAT-Net/TruFor
-        vae_recon_enabled=False,    # Skip VAE (heaviest module)
-        # Keep these fast modules:
-        aigen_enabled=True,         # Swin Transformer (~5s on GPU)
-        clip_ai_enabled=True,       # CLIP (~2s)
+        semantic_enabled=False,     # Skip Gemini (API cost)
+        cnn_enabled=True,           # CAT-Net/TruFor (tampering detection)
+        vae_recon_enabled=True,     # VAE snap-back (AI detection)
+        aigen_enabled=True,         # Swin Transformer
+        clip_ai_enabled=True,       # CLIP
         spectral_enabled=True,      # FFT (~1s)
         optical_enabled=True,       # Moire/perspective (~1s)
         prnu_enabled=True,          # PRNU (~1s)
