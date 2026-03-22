@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # Document forensics (PDF analysis)
     forensics_document_enabled: bool = True
     forensics_document_signature_verification: bool = True
+    forensics_document_embedded_image_forensics: bool = True
 
     # Office document forensics (DOCX/XLSX analysis)
     forensics_office_enabled: bool = True

@@ -48,6 +48,7 @@ def get_pipeline() -> ForensicPipeline:
             prnu_enabled=settings.forensics_prnu_enabled,
             content_validation_enabled=settings.forensics_content_validation_enabled,
             content_validation_ocr_lang=settings.forensics_content_validation_ocr_lang,
+            embedded_image_forensics_enabled=settings.forensics_document_embedded_image_forensics,
         )
     return _pipeline
 

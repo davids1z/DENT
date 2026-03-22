@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 from collections.abc import Callable
 
@@ -49,7 +50,9 @@ class ForensicPipeline:
         prnu_enabled: bool = True,
         content_validation_enabled: bool = True,
         content_validation_ocr_lang: str = "hrv+eng",
+        embedded_image_forensics_enabled: bool = True,
     ):
+        self._embedded_img_enabled = embedded_image_forensics_enabled
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
             ela_quality=ela_quality, ela_scale=ela_scale
@@ -105,6 +108,133 @@ class ForensicPipeline:
             else None
         )
 
+    # ------------------------------------------------------------------
+    # PDF Embedded Image Extraction + Visual Forensics
+    # ------------------------------------------------------------------
+
+    def _extract_pdf_images(self, doc_bytes: bytes) -> list[bytes]:
+        """Extract embedded images from PDF via PyMuPDF.
+
+        Returns up to 10 largest images (>100x100 px) as bytes.
+        """
+        try:
+            import fitz
+        except ImportError:
+            return []
+
+        images: list[tuple[int, bytes]] = []  # (size, image_bytes)
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+            seen_xrefs: set[int] = set()
+
+            for page_idx in range(min(len(doc), 20)):
+                page = doc[page_idx]
+                img_list = page.get_images(full=True)
+
+                for img_info in img_list:
+                    xref = img_info[0]
+                    if xref in seen_xrefs or xref <= 0:
+                        continue
+                    seen_xrefs.add(xref)
+
+                    try:
+                        base_image = doc.extract_image(xref)
+                        if not base_image:
+                            continue
+
+                        img_bytes = base_image.get("image")
+                        width = base_image.get("width", 0)
+                        height = base_image.get("height", 0)
+
+                        # Skip tiny images (icons, logos, decorative)
+                        if width < 100 or height < 100:
+                            continue
+                        if not img_bytes or len(img_bytes) < 500:
+                            continue
+
+                        images.append((len(img_bytes), img_bytes))
+                    except Exception:
+                        continue
+
+            doc.close()
+        except Exception as e:
+            logger.debug("PDF image extraction error: %s", e)
+            return []
+
+        # Return top 10 largest images
+        images.sort(key=lambda x: x[0], reverse=True)
+        return [img_bytes for _, img_bytes in images[:10]]
+
+    async def _run_embedded_image_forensics(
+        self, embedded_images: list[bytes], doc_module: ModuleResult | None
+    ) -> None:
+        """Run visual forensics on embedded PDF images and add findings to doc module."""
+        if not embedded_images or doc_module is None:
+            return
+
+        from .base import AnalyzerFinding
+
+        for i, img_bytes in enumerate(embedded_images[:5]):  # Limit to 5 for performance
+            img_name = f"embedded_image_{i}"
+
+            # Run ELA (modification detection) on the embedded image
+            try:
+                ela_result = await self._modification.analyze_image(img_bytes, img_name)
+                if ela_result.risk_score >= 0.50:
+                    doc_module.findings.append(
+                        AnalyzerFinding(
+                            code="DOC_EMBEDDED_IMG_ELA_ANOMALY",
+                            title=f"ELA anomalija u ugradenoj slici #{i + 1}",
+                            description=(
+                                f"Error Level Analysis detektirao je anomalije u slici "
+                                f"ugradenoj unutar PDF-a (rizik {round(ela_result.risk_score * 100)}%). "
+                                f"Moguca manipulacija piksela na fotografiji unutar dokumenta."
+                            ),
+                            risk_score=ela_result.risk_score * 0.8,  # Slightly dampened
+                            confidence=0.75,
+                            evidence={
+                                "image_index": i,
+                                "ela_risk": round(ela_result.risk_score, 3),
+                                "image_size_bytes": len(img_bytes),
+                            },
+                        )
+                    )
+            except Exception as e:
+                logger.debug("ELA on embedded image %d failed: %s", i, e)
+
+            # Run spectral forensics if available
+            if self._spectral:
+                try:
+                    spectral_result = await self._spectral.analyze_image(img_bytes, img_name)
+                    if spectral_result.risk_score >= 0.50:
+                        doc_module.findings.append(
+                            AnalyzerFinding(
+                                code="DOC_EMBEDDED_IMG_SPECTRAL_ANOMALY",
+                                title=f"Spektralna anomalija u ugradenoj slici #{i + 1}",
+                                description=(
+                                    f"Spektralna analiza frekvencijskog prostora ukazuje na "
+                                    f"moguce AI-generiran sadrzaj ili manipulaciju u ugradenoj slici."
+                                ),
+                                risk_score=spectral_result.risk_score * 0.7,
+                                confidence=0.70,
+                                evidence={
+                                    "image_index": i,
+                                    "spectral_risk": round(spectral_result.risk_score, 3),
+                                },
+                            )
+                        )
+                except Exception as e:
+                    logger.debug("Spectral on embedded image %d failed: %s", i, e)
+
+        # Recalculate doc module risk score after adding new findings
+        if doc_module.findings:
+            positive = [f.risk_score for f in doc_module.findings if f.risk_score > 0]
+            negative = [f.risk_score for f in doc_module.findings if f.risk_score < 0]
+            new_risk = (max(positive) if positive else 0.0) + sum(negative)
+            doc_module.risk_score = max(0.0, min(1.0, new_risk))
+            doc_module.risk_score100 = round(doc_module.risk_score * 100)
+
     def _count_active_modules(self, skip: set, file_category: str) -> int:
         """Count how many modules will actually run (for progress tracking)."""
         if file_category == "pdf":
@@ -115,6 +245,8 @@ class ForensicPipeline:
                 count += 1
             if self._content_val and self._content_val.MODULE_NAME not in skip:
                 count += 1
+            if self._embedded_img_enabled:
+                count += 1  # Embedded image forensics step
             return count
         if file_category in ("docx", "xlsx"):
             count = 0
@@ -229,6 +361,25 @@ class ForensicPipeline:
                     else:
                         modules.append(result)
                     _report_progress(mod_name)
+
+            # ── Embedded image forensics (ELA + spectral on PDF images) ──
+            if self._embedded_img_enabled:
+                try:
+                    embedded_images = self._extract_pdf_images(file_bytes)
+                    if embedded_images:
+                        logger.info(
+                            "Extracted %d embedded images from PDF, running visual forensics",
+                            len(embedded_images),
+                        )
+                        # Find document_forensics module to append findings
+                        doc_mod = next(
+                            (m for m in modules if m.module_name == "document_forensics"),
+                            None,
+                        )
+                        await self._run_embedded_image_forensics(embedded_images, doc_mod)
+                except Exception as e:
+                    logger.debug("Embedded image forensics error: %s", e)
+                _report_progress("embedded_image_forensics")
 
         elif file_category in ("docx", "xlsx"):
             # Run office forensics + text AI detection in parallel

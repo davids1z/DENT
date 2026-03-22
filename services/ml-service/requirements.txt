@@ -35,3 +35,7 @@ fpdf2>=2.8.0
 diffusers>=0.27.0
 # Content validation (OCR for scanned documents)
 pytesseract>=0.3.10
+# PDF structural forensics (font glyph analysis — optional, graceful degradation)
+fonttools>=4.40.0
+# QR code reading for Croatian invoice validation (optional, graceful degradation)
+pyzbar>=0.1.9
