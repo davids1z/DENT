@@ -158,7 +158,13 @@ class VaeReconstructionAnalyzer(BaseAnalyzer):
             )
 
         elapsed = int((time.monotonic() - start) * 1000)
-        return self._make_result(findings, elapsed)
+        result = self._make_result(findings, elapsed)
+        # Always pass raw AI probability — don't threshold to 0.0
+        ai_prob = stats.get("ai_probability", 0.0) if stats else 0.0
+        if ai_prob > 0:
+            result.risk_score = round(ai_prob, 4)
+            result.risk_score100 = round(ai_prob * 100)
+        return result
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)

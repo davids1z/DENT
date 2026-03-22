@@ -177,7 +177,13 @@ class AiGenerationAnalyzer(BaseAnalyzer):
             return self._make_result([], elapsed, error=str(e))
 
         elapsed = int((time.monotonic() - start) * 1000)
-        return self._make_result(findings, elapsed)
+        result = self._make_result(findings, elapsed)
+        # Always pass raw ensemble score — don't threshold to 0.0
+        # Meta-learner needs raw float, not binary threshold
+        if ensemble_score is not None:
+            result.risk_score = round(ensemble_score, 4)
+            result.risk_score100 = round(ensemble_score * 100)
+        return result
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
