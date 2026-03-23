@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
-"""Train a stacking meta-learner for DENT forensic score fusion.
+"""Train dual stacking meta-learner for DENT forensic score fusion.
 
-Supports 3 classes: authentic, ai_generated, tampered.
-Uses one-vs-rest multinomial logistic regression with L2 regularization.
-Outputs per-class weights that predict class probabilities.
+Dual-judge architecture using sklearn L-BFGS (superior convergence):
+  1. Binary LogReg (authentic vs manipulated) → overall risk_score
+  2. 3-class LogReg (authentic/ai_generated/tampered) → verdict breakdown
+
+Both models saved in same .npz. stacking_meta.py loads both:
+  - predict() uses binary weights → sigmoid → risk score for gauge
+  - predict_proba() uses multinomial weights → softmax → 3 bars
 
 Usage:
     python -m scripts.train_stacking_meta \
         --data labeled_samples.jsonl \
         [--output /app/models/stacking_meta/meta_weights.npz] \
-        [--reg 0.1] [--k-folds 5] [--dry-run]
-
-Input format (JSONL):
-    {"id": "s001", "ground_truth": "authentic", "modules": {...}}
-    {"id": "s002", "ground_truth": "ai_generated", "modules": {...}}
-    {"id": "s003", "ground_truth": "tampered", "modules": {...}}
-    {"id": "s004", "ground_truth": "manipulated", "modules": {...}}
-
-    "manipulated" is treated as "ai_generated" for backward compatibility.
+        [--dry-run]
 """
 
 import argparse
@@ -129,7 +125,7 @@ def sample_to_module_results(sample: dict) -> list[ModuleResult]:
 
 
 def build_feature_matrix(samples: list[dict]) -> tuple[np.ndarray, np.ndarray]:
-    """Build feature matrix X and integer label vector y (0=authentic, 1=ai_gen, 2=tampered)."""
+    """Build feature matrix X and integer label vector y."""
     X = np.zeros((len(samples), N_FEATURES), dtype=np.float64)
     y = np.zeros(len(samples), dtype=np.int32)
 
@@ -141,140 +137,24 @@ def build_feature_matrix(samples: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     return X, y
 
 
-# ── Multinomial Logistic Regression (One-vs-Rest) ────────────────────
-
-
-def softmax(Z: np.ndarray) -> np.ndarray:
-    """Numerically stable softmax across last axis."""
-    Z_shift = Z - Z.max(axis=1, keepdims=True)
-    exp_Z = np.exp(Z_shift)
-    return exp_Z / exp_Z.sum(axis=1, keepdims=True)
-
-
-def train_multinomial_logistic(
-    X: np.ndarray,
-    y: np.ndarray,
-    n_classes: int = 3,
-    lr: float = 0.05,
-    epochs: int = 2000,
-    reg: float = 0.1,
-    verbose: bool = True,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Train multinomial logistic regression via gradient descent.
-
-    Returns (W, B) where W is (n_features, n_classes) and B is (n_classes,).
-    """
-    n, d = X.shape
-    W = np.zeros((d, n_classes), dtype=np.float64)
-    B = np.zeros(n_classes, dtype=np.float64)
-
-    # One-hot encode labels
-    Y_onehot = np.eye(n_classes)[y]  # (n, n_classes)
-
-    for epoch in range(epochs):
-        logits = X @ W + B  # (n, n_classes)
-        probs = softmax(logits)  # (n, n_classes)
-
-        diff = probs - Y_onehot  # (n, n_classes)
-        grad_W = (X.T @ diff) / n + reg * W  # (d, n_classes)
-        grad_B = diff.mean(axis=0)  # (n_classes,)
-
-        W -= lr * grad_W
-        B -= lr * grad_B
-
-        if verbose and (epoch + 1) % 500 == 0:
-            loss = -np.mean(np.sum(Y_onehot * np.log(probs + 1e-8), axis=1))
-            preds = probs.argmax(axis=1)
-            acc = (preds == y).mean()
-            print(f"  Epoch {epoch + 1}/{epochs} — loss: {loss:.4f}, acc: {acc:.1%}")
-
-    return W, B
-
-
-# ── Evaluation ───────────────────────────────────────────────────────
-
-
-def evaluate_multiclass(
-    X: np.ndarray, y: np.ndarray, W: np.ndarray, B: np.ndarray
-) -> dict:
-    """Compute per-class and overall metrics."""
-    logits = X @ W + B
-    probs = softmax(logits)
-    preds = probs.argmax(axis=1)
-
-    n_classes = W.shape[1]
-    accuracy = (preds == y).mean()
-
-    # Per-class precision, recall, F1
-    per_class = {}
-    for c in range(n_classes):
-        tp = int(((preds == c) & (y == c)).sum())
-        fp = int(((preds == c) & (y != c)).sum())
-        fn = int(((preds != c) & (y == c)).sum())
-
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-
-        per_class[CLASSES[c]] = {
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-            "support": int((y == c).sum()),
-        }
-
-    # Confusion matrix
-    confusion = np.zeros((n_classes, n_classes), dtype=int)
-    for true, pred in zip(y, preds):
-        confusion[true][pred] += 1
-
-    # Macro F1
-    macro_f1 = np.mean([pc["f1"] for pc in per_class.values()])
-
-    return {
-        "accuracy": float(accuracy),
-        "macro_f1": float(macro_f1),
-        "per_class": per_class,
-        "confusion_matrix": confusion.tolist(),
-        "n_samples": len(y),
-    }
-
-
-def stratified_kfold_multi(y: np.ndarray, k: int, n_classes: int, rng: np.random.Generator):
-    """Generate k stratified fold indices for multi-class labels."""
-    class_indices = [np.where(y == c)[0] for c in range(n_classes)]
-    for ci in class_indices:
-        rng.shuffle(ci)
-
-    class_folds = [np.array_split(ci, k) for ci in class_indices]
-
-    for i in range(k):
-        test_idx = np.concatenate([cf[i] for cf in class_folds])
-        train_parts = []
-        for cf in class_folds:
-            train_parts.extend([cf[j] for j in range(k) if j != i])
-        train_idx = np.concatenate(train_parts)
-        yield train_idx, test_idx
-
-
 # ── Main ─────────────────────────────────────────────────────────────
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Train 3-class stacking meta-learner for DENT forensic fusion"
+        description="Train dual stacking meta-learner (binary + 3-class)"
     )
     parser.add_argument("--data", required=True, help="Path to labeled JSONL data")
     parser.add_argument("--output", default="", help="Output path for meta_weights.npz")
-    parser.add_argument("--lr", type=float, default=0.05, help="Learning rate")
-    parser.add_argument("--epochs", type=int, default=2000, help="Training epochs")
-    parser.add_argument("--reg", type=float, default=0.0, help="Ridge lambda (0 = grid search)")
-    parser.add_argument("--k-folds", type=int, default=5, help="CV folds")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--dry-run", action="store_true", help="Show metrics without saving")
-    parser.add_argument("--compare", action="store_true", help="Compare with current fusion")
 
     args = parser.parse_args()
+
+    # sklearn imports (not at top-level so script can show --help without sklearn)
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import cross_val_predict, StratifiedKFold
+    from sklearn.metrics import classification_report, f1_score
 
     if args.output:
         output_path = args.output
@@ -290,131 +170,120 @@ def main():
         logger.error("Need at least 10 samples, got %d", len(samples))
         sys.exit(1)
 
-    X, y = build_feature_matrix(samples)
-    n_classes = len(CLASSES)
+    X, y_3class = build_feature_matrix(samples)
+    y_binary = np.where(y_3class == 0, 0, 1)  # 0=authentic, 1=manipulated
 
     print(f"\nClass distribution:")
-    for c in range(n_classes):
-        count = int((y == c).sum())
+    for c in range(len(CLASSES)):
+        count = int((y_3class == c).sum())
         print(f"  {CLASSES[c]}: {count}")
-    print(f"  Total: {len(y)}")
+    print(f"  Total: {len(y_3class)}")
+    print(f"  Binary: {int((y_binary == 0).sum())} authentic, {int((y_binary == 1).sum())} manipulated")
     print(f"Feature matrix: {X.shape[0]} x {X.shape[1]}")
 
-    rng = np.random.default_rng(args.seed)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=args.seed)
 
-    # Lambda grid search
-    if args.reg <= 0:
-        lambdas = [0.001, 0.01, 0.1, 1.0]
-        print("\n=== Lambda Grid Search ===")
-        best_lambda = lambdas[0]
-        best_f1 = -1.0
+    # ══════════════════════════════════════════════════════════════════
+    # JUDGE 1: Binary LogReg (authentic vs manipulated) → risk_score
+    # ══════════════════════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("JUDGE 1: Binary LogReg (authentic vs manipulated)")
+    print("=" * 60)
 
-        for lam in lambdas:
-            f1s = []
-            for train_idx, test_idx in stratified_kfold_multi(y, args.k_folds, n_classes, rng):
-                W, B = train_multinomial_logistic(
-                    X[train_idx], y[train_idx], n_classes,
-                    lr=args.lr, epochs=args.epochs, reg=lam, verbose=False,
-                )
-                metrics = evaluate_multiclass(X[test_idx], y[test_idx], W, B)
-                f1s.append(metrics["macro_f1"])
+    lr_binary = LogisticRegression(C=1000, max_iter=2000, random_state=args.seed)
+    y_pred_bin = cross_val_predict(lr_binary, X, y_binary, cv=cv)
+    bin_f1 = f1_score(y_binary, y_pred_bin, average="macro")
+    print(classification_report(
+        y_binary, y_pred_bin,
+        target_names=["authentic", "manipulated"],
+        digits=3,
+    ))
+    print(f"Binary Macro-F1: {bin_f1:.3f}")
 
-            avg_f1 = np.mean(f1s)
-            print(f"  lambda={lam:.3f}: avg macro-F1={avg_f1:.3f}")
+    # Train final binary model on all data
+    lr_binary.fit(X, y_binary)
+    # Extract weights: sklearn stores coef_ as (1, n_features) for binary
+    binary_weights = lr_binary.coef_[0]  # (147,)
+    binary_bias = lr_binary.intercept_[0]  # scalar
 
-            if avg_f1 > best_f1:
-                best_f1 = avg_f1
-                best_lambda = lam
+    # ══════════════════════════════════════════════════════════════════
+    # JUDGE 2: 3-class LogReg → verdict_probabilities (context bars)
+    # ══════════════════════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("JUDGE 2: 3-class LogReg (context breakdown)")
+    print("=" * 60)
 
-        print(f"  Best: lambda={best_lambda} (macro-F1={best_f1:.3f})")
-        reg = best_lambda
-    else:
-        reg = args.reg
+    lr_multi = LogisticRegression(C=1000, max_iter=2000, random_state=args.seed)
+    y_pred_3 = cross_val_predict(lr_multi, X, y_3class, cv=cv)
+    multi_f1 = f1_score(y_3class, y_pred_3, average="macro")
+    print(classification_report(
+        y_3class, y_pred_3,
+        target_names=CLASSES,
+        digits=3,
+    ))
+    print(f"3-class Macro-F1: {multi_f1:.3f}")
 
-    # Cross-validation
-    print(f"\n=== {args.k_folds}-Fold CV (lambda={reg}) ===")
-    cv_f1s = []
-    cv_accs = []
+    # Train final 3-class model on all data
+    lr_multi.fit(X, y_3class)
+    # Extract weights: sklearn stores coef_ as (n_classes, n_features)
+    W_multi = lr_multi.coef_.T  # (147, 3)
+    B_multi = lr_multi.intercept_  # (3,)
 
-    for fold, (train_idx, test_idx) in enumerate(
-        stratified_kfold_multi(y, args.k_folds, n_classes, rng)
-    ):
-        W, B = train_multinomial_logistic(
-            X[train_idx], y[train_idx], n_classes,
-            lr=args.lr, epochs=args.epochs, reg=reg, verbose=False,
-        )
-        metrics = evaluate_multiclass(X[test_idx], y[test_idx], W, B)
-        cv_f1s.append(metrics["macro_f1"])
-        cv_accs.append(metrics["accuracy"])
-        print(f"  Fold {fold + 1}: acc={metrics['accuracy']:.1%}, macro-F1={metrics['macro_f1']:.3f}")
+    # Verify class order matches our CLASSES
+    sklearn_classes = [CLASSES[i] for i in lr_multi.classes_]
+    print(f"\n  sklearn class order: {sklearn_classes}")
+    print(f"  Our class order:    {CLASSES}")
 
-    print(f"  Average: acc={np.mean(cv_accs):.1%}, macro-F1={np.mean(cv_f1s):.3f}")
-
-    # Final training
-    print(f"\n=== Final Training (all {len(y)} samples) ===")
-    W_final, B_final = train_multinomial_logistic(
-        X, y, n_classes, lr=args.lr, epochs=args.epochs, reg=reg, verbose=True,
-    )
-    final = evaluate_multiclass(X, y, W_final, B_final)
-    print(f"\n  Accuracy: {final['accuracy']:.1%}, Macro-F1: {final['macro_f1']:.3f}")
-
-    # Per-class metrics
-    print("\n=== Per-Class Metrics ===")
-    for cls_name, m in final["per_class"].items():
-        print(f"  {cls_name:15s}: P={m['precision']:.3f}  R={m['recall']:.3f}  F1={m['f1']:.3f}  (n={m['support']})")
-
-    # Confusion matrix
-    print("\n=== Confusion Matrix ===")
-    print(f"{'':15s}", end="")
-    for c in CLASSES:
-        print(f"{c[:8]:>10s}", end="")
-    print()
-    for i, row in enumerate(final["confusion_matrix"]):
-        print(f"{CLASSES[i]:15s}", end="")
-        for v in row:
-            print(f"{v:10d}", end="")
-        print()
+    # Per-class metrics on final model
+    y_final_pred = lr_multi.predict(X)
+    print("\n=== Final Model (all data) ===")
+    print(classification_report(
+        y_3class, y_final_pred,
+        target_names=CLASSES,
+        digits=3,
+    ))
 
     # Feature importance (per class)
     names = feature_names()
-    print("\n=== Top-10 Features per Class ===")
-    for c in range(n_classes):
+    print("=== Top-10 Features per Class ===")
+    for c in range(len(CLASSES)):
         importance = sorted(
-            zip(names, W_final[:, c]), key=lambda x: abs(x[1]), reverse=True
+            zip(names, W_multi[:, c]), key=lambda x: abs(x[1]), reverse=True
         )
         print(f"\n  {CLASSES[c]}:")
         for name, weight in importance[:10]:
             print(f"    {weight:+.4f}  {name}")
 
-    # Save — for multinomial, save W (n_features, n_classes) and B (n_classes,)
-    # For backward compat with binary meta-learner in fusion.py,
-    # also save binary weights (ai_generated class = "manipulated" probability)
+    # ══════════════════════════════════════════════════════════════════
+    # Summary
+    # ══════════════════════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print(f"  Binary (gauge/badge):  macro-F1={bin_f1:.3f}")
+    print(f"  3-class (context bars): macro-F1={multi_f1:.3f}")
+
+    # Save
     if args.dry_run:
         logger.info("Dry run — not saving")
     else:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-        # Binary compat: use ai_generated class weights as "manipulated" score
-        # fusion.py expects (147,) weights and scalar bias
-        ai_gen_idx = CLASS_TO_IDX["ai_generated"]
-        binary_weights = W_final[:, ai_gen_idx]
-        binary_bias = B_final[ai_gen_idx]
-
         np.savez(
             output_path,
-            # Binary compat (used by current fusion.py)
+            # Binary judge (used by predict() → risk_score)
             weights=binary_weights,
             bias=np.array([binary_bias]),
             module_order=np.array(MODULE_ORDER),
             feature_names=np.array(names),
-            # Full multinomial (for future use)
-            weights_multi=W_final,
-            bias_multi=B_final,
+            # 3-class judge (used by predict_proba() → verdict bars)
+            weights_multi=W_multi,
+            bias_multi=B_multi,
             classes=np.array(CLASSES),
         )
-        logger.info("Saved stacking meta weights to %s", output_path)
-        print(f"\n  Binary compat: weights ({binary_weights.shape}), bias={binary_bias:.4f}")
-        print(f"  Multinomial: W ({W_final.shape}), B ({B_final.shape})")
+        logger.info("Saved dual meta weights to %s", output_path)
+        print(f"\n  Binary:  weights ({binary_weights.shape}), bias={binary_bias:.4f}")
+        print(f"  3-class: W ({W_multi.shape}), B ({B_multi.shape})")
         print(f"  Classes: {CLASSES}")
         print(f"  To enable: set DENT_FORENSICS_STACKING_META_ENABLED=true")
 
