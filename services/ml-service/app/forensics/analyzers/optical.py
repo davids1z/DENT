@@ -590,23 +590,23 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
 
         # Inconsistency: more clusters = more vanishing points = suspicious
         # Real images: 1-2 clusters (1-2 vanishing points)
-        # AI images: 3+ clusters (inconsistent perspective)
-        if cluster_count <= 1:
-            inconsistency = 0.0
-        elif cluster_count == 2:
-            # 2 VPs is normal for two-point perspective
-            inconsistency = 0.1
-        elif cluster_count == 3:
-            inconsistency = 0.35
+        # Real outdoor photos (vehicles, buildings, streets) routinely have
+        # 3-5 vanishing point clusters due to complex geometry.
+        # Only 6+ clusters with balanced sizes indicate AI perspective errors.
+        if cluster_count <= 2:
+            inconsistency = 0.0  # 1-2 VPs = normal perspective
+        elif cluster_count <= 4:
+            inconsistency = 0.10  # 3-4 VPs = common in complex outdoor scenes
+        elif cluster_count <= 6:
+            inconsistency = 0.30  # 5-6 VPs = mildly suspicious
         else:
-            inconsistency = min(1.0, 0.35 + (cluster_count - 3) * 0.20)
+            inconsistency = min(1.0, 0.30 + (cluster_count - 6) * 0.15)
 
-        # Also check: are the cluster sizes balanced?
-        # One dominant + scattered = normal; multiple balanced = suspicious
+        # Check cluster balance — only flag if truly multi-polar
         if clusters:
             sizes = sorted([len(c) for c in clusters], reverse=True)
-            if len(sizes) >= 2 and sizes[1] > sizes[0] * 0.5:
-                # Second cluster is large relative to first → multiple VPs
+            if len(sizes) >= 3 and sizes[2] > sizes[0] * 0.4:
+                # Third cluster is large relative to first → genuinely multi-polar
                 inconsistency = min(1.0, inconsistency + 0.15)
 
         return {

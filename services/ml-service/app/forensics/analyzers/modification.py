@@ -457,11 +457,12 @@ class ModificationAnalyzer(BaseAnalyzer):
         # Cosine similarity matrix (features already normalized)
         sim_matrix = features @ features.T
 
-        # Find pairs with very high similarity but large spatial distance
-        # Threshold 0.995 (not 0.97) — natural images have high DCT similarity
-        # in textured regions; only near-identical blocks indicate copy-move.
-        min_distance = int(block_size * 2.5)
-        sim_threshold = 0.995
+        # Find pairs with near-IDENTICAL similarity at large spatial distance.
+        # Natural images routinely have blocks with >0.999 cosine similarity due
+        # to repeated textures (grass, road, sky). Only truly IDENTICAL blocks
+        # (>0.9999) at large distances indicate real copy-move.
+        min_distance = int(block_size * 3.0)
+        sim_threshold = 0.9999
         matching_pairs: list[tuple[int, int, float]] = []
 
         for i in range(n_blocks):
@@ -473,7 +474,7 @@ class ModificationAnalyzer(BaseAnalyzer):
                     if dist > min_distance:
                         matching_pairs.append((i, j, float(sim_matrix[i, j])))
 
-        if len(matching_pairs) >= 8:
+        if len(matching_pairs) >= 12:
             avg_sim = np.mean([p[2] for p in matching_pairs])
             findings.append(
                 AnalyzerFinding(
