@@ -185,11 +185,13 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            # Run CAT-Net (compression artifact tracing)
-            if self._catnet_method is not None:
-                self._run_catnet(img, image_bytes, findings)
+            # CAT-Net DISABLED — produces 80%+ false positive rate on JPEG images.
+            # Even with original DCT extraction (no re-compression), CatNet flags
+            # authentic JPEG photos as tampered. Needs fundamental rework for V4.
+            # if self._catnet_method is not None:
+            #     self._run_catnet(img, image_bytes, findings)
 
-            # Run TruFor (transformer forensics)
+            # Run TruFor (transformer forensics) — works on RGB, no JPEG issues
             if self._trufor_method is not None:
                 self._run_trufor(img, findings)
 
