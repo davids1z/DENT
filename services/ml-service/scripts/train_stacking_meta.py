@@ -190,7 +190,7 @@ def main():
     print("JUDGE 1: Binary LogReg (authentic vs manipulated)")
     print("=" * 60)
 
-    lr_binary = LogisticRegression(C=1000, max_iter=2000, class_weight="balanced", random_state=args.seed)
+    lr_binary = LogisticRegression(C=0.1, max_iter=2000, class_weight="balanced", random_state=args.seed)
     y_pred_bin = cross_val_predict(lr_binary, X, y_binary, cv=cv)
     bin_f1 = f1_score(y_binary, y_pred_bin, average="macro")
     print(classification_report(
@@ -213,7 +213,7 @@ def main():
     print("JUDGE 2: 3-class LogReg (context breakdown)")
     print("=" * 60)
 
-    lr_multi = LogisticRegression(C=1000, max_iter=2000, class_weight="balanced", random_state=args.seed)
+    lr_multi = LogisticRegression(C=0.1, max_iter=2000, class_weight="balanced", random_state=args.seed)
     y_pred_3 = cross_val_predict(lr_multi, X, y_3class, cv=cv)
     multi_f1 = f1_score(y_3class, y_pred_3, average="macro")
     print(classification_report(
