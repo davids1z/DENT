@@ -187,7 +187,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
 
             # Run CAT-Net (compression artifact tracing)
             if self._catnet_method is not None:
-                self._run_catnet(img, findings)
+                self._run_catnet(img, image_bytes, findings)
 
             # Run TruFor (transformer forensics)
             if self._trufor_method is not None:
@@ -209,7 +209,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _run_catnet(
-        self, img: Image.Image, findings: list[AnalyzerFinding]
+        self, img: Image.Image, image_bytes: bytes, findings: list[AnalyzerFinding]
     ) -> None:
         """Run CAT-Net for JPEG compression artifact inconsistency detection."""
         try:
@@ -220,9 +220,17 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             img_arr = np.array(img)
             img_tensor = torch.from_numpy(img_arr).permute(2, 0, 1).float()
 
-            # Save to temp JPEG and extract DCT coefficients via jpegio
+            # JPEG-aware DCT extraction:
+            # If input is JPEG, use ORIGINAL bytes to preserve original DCT/Q-tables.
+            # Re-compressing a JPEG introduces "double compression" artifacts that
+            # CatNet interprets as splice evidence — causing massive false positives.
+            is_jpeg = image_bytes[:2] == b'\xff\xd8'
+
             with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                img.save(tmp, format="JPEG", quality=95)
+                if is_jpeg:
+                    tmp.write(image_bytes)  # Original JPEG bytes — no re-compression
+                else:
+                    img.save(tmp, format="JPEG", quality=95)  # PNG/RAW → must compress
                 tmp_path = tmp.name
 
             try:
