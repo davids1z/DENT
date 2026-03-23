@@ -179,44 +179,12 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
                     )
                 )
 
-            # --- Vanishing point consistency (AI perspective errors) ---
-            try:
-                vp_result = self._vanishing_point_analysis(gray_resized)
-                vp_inconsistency = vp_result.get("inconsistency_score", 0.0)
-                if vp_inconsistency > 0.6:
-                    findings.append(
-                        AnalyzerFinding(
-                            code="OPT_VANISHING_POINT_INCONSISTENT",
-                            title="Nekonzistentne tocke nedogleda",
-                            description=(
-                                f"Analiza linija perspektive detektirala je nekonzistentne "
-                                f"tocke nedogleda (nekonzistentnost: {vp_inconsistency:.0%}). "
-                                f"Pronadjeno {vp_result.get('line_count', 0)} dominantnih linija "
-                                f"koje konvergiraju prema {vp_result.get('cluster_count', 0)} "
-                                f"razlicitim tockama. U realnoj fotografiji, paralelne linije "
-                                f"konvergiraju prema jednoj tocki nedogleda."
-                            ),
-                            risk_score=min(0.70, vp_inconsistency * 0.80),
-                            confidence=min(0.75, 0.40 + vp_inconsistency * 0.30),
-                            evidence=vp_result,
-                        )
-                    )
-                elif vp_inconsistency > 0.35:
-                    findings.append(
-                        AnalyzerFinding(
-                            code="OPT_VANISHING_POINT_SUSPECT",
-                            title="Sumnjiva perspektiva",
-                            description=(
-                                f"Analiza perspektive pokazuje blage nekonzistentnosti "
-                                f"({vp_inconsistency:.0%}). Moguce AI greske u geometriji."
-                            ),
-                            risk_score=0.25,
-                            confidence=0.50,
-                            evidence=vp_result,
-                        )
-                    )
-            except Exception as vp_err:
-                logger.debug("Vanishing point analysis failed: %s", vp_err)
+            # --- Vanishing point analysis DISABLED ---
+            # Too many false positives on real vehicle/outdoor photos.
+            # Real cars, buildings, and streets have 5-10+ vanishing point
+            # clusters due to complex geometry, causing ~70% false positive rate.
+            # TODO: Re-enable with vehicle-aware clustering (V4).
+            pass
 
         except Exception as e:
             logger.warning("Optical forensics error: %s", e)
