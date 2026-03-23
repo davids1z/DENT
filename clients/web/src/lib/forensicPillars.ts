@@ -171,6 +171,42 @@ export function deriveFindingCategory(
   damage: DamageDetection,
   forensicResult: ForensicResult | null,
 ): string {
+  // Smart category derivation from description content
+  const desc = (damage.description || "").toLowerCase();
+
+  // If description indicates authenticity, label as "Autenticno"
+  const authenticKeywords = [
+    "autentičn", "konzistentn", "realistič", "plauzibil",
+    "potvrđuje autentičnost", "ne pokazuje znakove",
+    "fizički ispravne", "nema naznaka",
+  ];
+  const isAuthentic = authenticKeywords.some((kw) => desc.includes(kw));
+
+  // If description indicates manipulation
+  const manipKeywords = [
+    "manipulacij", "krivotvor", "montaž", "zamućen",
+    "prebrisano", "zalijepljen", "kopiran", "splice",
+  ];
+  const isManipulated = manipKeywords.some((kw) => desc.includes(kw));
+
+  // If description indicates AI generation
+  const aiKeywords = [
+    "ai gener", "umjetn", "sintetič", "generirano",
+    "stable diffusion", "midjourney", "dall-e",
+  ];
+  const isAI = aiKeywords.some((kw) => desc.includes(kw));
+
+  if (isAuthentic && !isManipulated && !isAI) {
+    return "Autenticno";
+  }
+  if (isManipulated) {
+    return "Digitalna manipulacija";
+  }
+  if (isAI) {
+    return "AI generiranje";
+  }
+
+  // Fallback: use module-based detection
   if (damage.damageCause === "Metadata anomalija" && forensicResult) {
     const highRiskModules = forensicResult.modules
       .filter((m) => m.riskScore >= 0.40)

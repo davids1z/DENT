@@ -138,12 +138,20 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
           <div className="px-4 pb-4 pt-3 border-t border-gray-50 bg-gray-50/50">
             <p className="text-sm text-slate-600 leading-relaxed mb-3">{sanitizeLlmText(d.description)}</p>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              {d.safetyRating && (
-                <div className="bg-white rounded-lg p-2 border border-gray-100">
-                  <div className="text-slate-400 text-xs mb-0.5">Verdikt</div>
-                  <div className={cn("font-medium", safetyRatingColor(d.safetyRating))}>{safetyRatingLabel(d.safetyRating)}</div>
-                </div>
-              )}
+              {d.safetyRating && (() => {
+                // Override safetyRating based on description content
+                // Gemini may describe image as authentic while C# agent labels it Critical
+                const desc = (d.description || "").toLowerCase();
+                const descSaysAuthentic = ["autentičn", "konzistentn", "realistič", "potvrđuje autentičnost", "ne pokazuje znakove", "nema naznaka"].some(kw => desc.includes(kw));
+                const descSaysManipulated = ["manipulacij", "krivotvor", "montaž", "zamućen", "prebrisano", "kopiran"].some(kw => desc.includes(kw));
+                const effectiveRating = descSaysAuthentic && !descSaysManipulated ? "Safe" : d.safetyRating;
+                return (
+                  <div className="bg-white rounded-lg p-2 border border-gray-100">
+                    <div className="text-slate-400 text-xs mb-0.5">Verdikt</div>
+                    <div className={cn("font-medium", safetyRatingColor(effectiveRating))}>{safetyRatingLabel(effectiveRating)}</div>
+                  </div>
+                );
+              })()}
               {d.damageCause && (
                 <div className="bg-white rounded-lg p-2 border border-gray-100">
                   <div className="text-slate-400 text-xs mb-0.5">Kategorija</div>
