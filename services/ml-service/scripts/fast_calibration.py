@@ -103,6 +103,8 @@ async def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--region", default="eu-central-1")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--worker-id", type=int, default=0, help="Worker index for parallel calibration")
+    parser.add_argument("--total-workers", type=int, default=1, help="Total number of parallel workers")
     args = parser.parse_args()
 
     # Import pipeline directly — no HTTP
@@ -134,6 +136,13 @@ async def main():
         print(f"Resume: {len(done)} already done")
 
     to_process = [(fn, gt) for fn, gt in labels.items() if fn not in done]
+    # Parallel worker split: each worker processes only its share
+    if args.total_workers > 1:
+        to_process = [
+            (fn, gt) for i, (fn, gt) in enumerate(to_process)
+            if i % args.total_workers == args.worker_id
+        ]
+        print(f"Worker {args.worker_id}/{args.total_workers}: {len(to_process)} images assigned")
     print(f"To process: {len(to_process)}")
 
     if not to_process:
