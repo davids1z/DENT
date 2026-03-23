@@ -247,12 +247,15 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 os.unlink(tmp_path)
 
             # Extract tampering probability map
-            if hasattr(output, "heatmap"):
-                prob_map = output.heatmap.squeeze().numpy()
+            # photoholmes CatNet returns tuple: (authentic_map, tampered_map)
+            if isinstance(output, tuple) and len(output) >= 2:
+                prob_map = output[1].squeeze().cpu().numpy()  # index 1 = tampered probability
+            elif hasattr(output, "heatmap"):
+                prob_map = output.heatmap.squeeze().cpu().numpy()
             elif isinstance(output, dict) and "heatmap" in output:
-                prob_map = output["heatmap"].squeeze().numpy()
+                prob_map = output["heatmap"].squeeze().cpu().numpy()
             elif isinstance(output, torch.Tensor):
-                prob_map = output.squeeze().numpy()
+                prob_map = output.squeeze().cpu().numpy()
             else:
                 logger.debug("CAT-Net output format not recognized: %s", type(output))
                 return
@@ -331,12 +334,15 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 output = self._trufor_method.predict(**image_data)
 
             # Extract confidence map and integrity score
-            if hasattr(output, "heatmap"):
-                confidence_map = output.heatmap.squeeze().numpy()
+            # photoholmes TruFor returns tuple: (heatmap, score) or similar
+            if isinstance(output, tuple) and len(output) >= 1:
+                confidence_map = output[0].squeeze().cpu().numpy()
+            elif hasattr(output, "heatmap"):
+                confidence_map = output.heatmap.squeeze().cpu().numpy()
             elif isinstance(output, dict) and "heatmap" in output:
-                confidence_map = output["heatmap"].squeeze().numpy()
+                confidence_map = output["heatmap"].squeeze().cpu().numpy()
             elif isinstance(output, torch.Tensor):
-                confidence_map = output.squeeze().numpy()
+                confidence_map = output.squeeze().cpu().numpy()
             else:
                 logger.debug("TruFor output format not recognized: %s", type(output))
                 return
