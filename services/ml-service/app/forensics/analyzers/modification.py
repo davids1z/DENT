@@ -458,19 +458,22 @@ class ModificationAnalyzer(BaseAnalyzer):
         sim_matrix = features @ features.T
 
         # Find pairs with very high similarity but large spatial distance
-        min_distance = int(block_size * 1.5)
+        # Threshold 0.995 (not 0.97) — natural images have high DCT similarity
+        # in textured regions; only near-identical blocks indicate copy-move.
+        min_distance = int(block_size * 2.5)
+        sim_threshold = 0.995
         matching_pairs: list[tuple[int, int, float]] = []
 
         for i in range(n_blocks):
             for j in range(i + 1, n_blocks):
-                if sim_matrix[i, j] > 0.97:
+                if sim_matrix[i, j] > sim_threshold:
                     y1, x1 = blocks[i][0], blocks[i][1]
                     y2, x2 = blocks[j][0], blocks[j][1]
                     dist = np.sqrt((y1 - y2) ** 2 + (x1 - x2) ** 2)
                     if dist > min_distance:
                         matching_pairs.append((i, j, float(sim_matrix[i, j])))
 
-        if len(matching_pairs) >= 5:
+        if len(matching_pairs) >= 8:
             avg_sim = np.mean([p[2] for p in matching_pairs])
             findings.append(
                 AnalyzerFinding(
