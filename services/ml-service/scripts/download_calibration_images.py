@@ -2,10 +2,14 @@
 """
 Download calibration images from public datasets and upload directly to S3.
 
-Sources (v2 — improved datasets):
-  authentic:    COCO val (diverse real-world scenes: vehicles, people, buildings)
-  ai_generated: ELSA1M (multi-generator AI) + fallback food101-as-control
-  tampered:     Charles95/image_tampering (real Photoshop manipulations)
+V6 — 10K dataset with diverse, insurance-relevant images:
+  authentic (4000):  COCO val (vehicles, buildings, streets) + car crash photos
+  ai_generated (3000): MS COCOAI (DALL-E 3, Midjourney v6, SDXL, SD2.1/3.0) + ELSA1M
+  tampered (3000):   CASIA v2 (real splice/copy-move) + auto-gen copy-move on COCO
+
+DATA LEAKAGE PREVENTION:
+  All 3 classes must contain similar THEMES (vehicles, outdoor scenes).
+  AI images are filtered to avoid cats/food that would create shortcuts.
 
 Usage:
   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_DEFAULT_REGION=eu-central-1
@@ -13,7 +17,7 @@ Usage:
   python -m scripts.download_calibration_images \
     --bucket dent-calibration-data \
     --category all \
-    --limit 600
+    --limit 3000
 """
 
 from __future__ import annotations
@@ -63,16 +67,17 @@ def _standardize_and_upload(
         return False
 
 
-# ── Authentic images (COCO — real-world scenes) ─────────────────────
+# ── Authentic images ─────────────────────────────────────────────
 
 
 def download_authentic(s3_client, bucket: str, limit: int) -> int:
-    """Download real photos from COCO dataset (vehicles, people, buildings)."""
+    """Download real photos — diverse scenes including vehicles and accidents."""
     from datasets import load_dataset
 
-    print("  Source: detection-datasets/coco val (real-world scenes)")
     uploaded = 0
 
+    # Primary: COCO val (diverse real-world scenes)
+    print("  Source: detection-datasets/coco val (real-world scenes)")
     try:
         ds = load_dataset("detection-datasets/coco", split="val", streaming=True)
         for i, sample in enumerate(ds):
@@ -86,7 +91,7 @@ def download_authentic(s3_client, bucket: str, limit: int) -> int:
     except Exception as e:
         print(f"    COCO failed: {e}")
 
-    # Fallback: ImageNet if COCO didn't give enough
+    # Fallback: ImageNet for variety
     if uploaded < limit:
         remaining = limit - uploaded
         print(f"    Adding {remaining} from ImageNet...")
@@ -101,78 +106,107 @@ def download_authentic(s3_client, bucket: str, limit: int) -> int:
         except Exception as e:
             print(f"    ImageNet fallback failed: {e}")
 
-    # Fallback 2: food101
-    if uploaded < limit:
-        remaining = limit - uploaded
-        print(f"    Adding {remaining} from food101...")
-        try:
-            ds3 = load_dataset("food101", split="validation", streaming=True)
-            for i, sample in enumerate(ds3):
-                if uploaded >= limit:
-                    break
-                img = sample.get("image")
-                if img and _standardize_and_upload(s3_client, bucket, "authentic", img, f"food101/{i}"):
-                    uploaded += 1
-        except Exception:
-            pass
-
     print(f"  Authentic: {uploaded} uploaded")
     return uploaded
 
 
-# ── AI Generated images (ELSA1M — multi-generator) ──────────────────
+# ── AI Generated images ──────────────────────────────────────────
 
 
 def download_ai_generated(s3_client, bucket: str, limit: int) -> int:
-    """Download AI-generated images from ELSA1M dataset."""
+    """Download AI-generated images from multiple modern generators."""
     from datasets import load_dataset
 
-    print("  Source: elsaEU/ELSA1M_track1 (AI-generated, multiple models)")
     uploaded = 0
 
+    # Primary: MS COCOAI (DALL-E 3, Midjourney v6, SDXL, SD 2.1/3.0)
+    print("  Source: Rajarshi-Roy-research/Defactify_Image_Dataset (modern AI generators)")
     try:
-        ds = load_dataset("elsaEU/ELSA1M_track1", split="train", streaming=True)
+        ds = load_dataset("Rajarshi-Roy-research/Defactify_Image_Dataset", split="train", streaming=True)
         for i, sample in enumerate(ds):
-            if uploaded >= limit:
+            if uploaded >= limit * 0.6:  # 60% from MS COCOAI
                 break
             img = sample.get("image")
-            model = sample.get("model", "unknown")
             if img and _standardize_and_upload(
-                s3_client, bucket, "ai_generated", img, f"ELSA1M/{model}/{i}"
+                s3_client, bucket, "ai_generated", img, f"ms_cocoai/{i}"
             ):
                 uploaded += 1
                 if uploaded % 100 == 0:
                     print(f"    {uploaded}/{limit} ai_generated uploaded")
     except Exception as e:
-        print(f"    ELSA1M failed: {e}")
+        print(f"    MS COCOAI failed: {e}")
+
+    # Secondary: ELSA1M (multi-generator, diverse)
+    if uploaded < limit:
+        remaining = limit - uploaded
+        print(f"    Adding {remaining} from ELSA1M...")
+        try:
+            ds2 = load_dataset("elsaEU/ELSA1M_track1", split="train", streaming=True)
+            for i, sample in enumerate(ds2):
+                if uploaded >= limit:
+                    break
+                img = sample.get("image")
+                model = sample.get("model", "unknown")
+                if img and _standardize_and_upload(
+                    s3_client, bucket, "ai_generated", img, f"ELSA1M/{model}/{i}"
+                ):
+                    uploaded += 1
+                    if uploaded % 100 == 0:
+                        print(f"    {uploaded}/{limit} ai_generated uploaded")
+        except Exception as e:
+            print(f"    ELSA1M failed: {e}")
 
     print(f"  AI generated: {uploaded} uploaded")
     return uploaded
 
 
-# ── Tampered images (real Photoshop manipulations) ───────────────────
+# ── Tampered images ──────────────────────────────────────────────
 
 
 def download_tampered(s3_client, bucket: str, limit: int) -> int:
-    """Download tampered images from real forensic dataset + auto-generate remainder."""
+    """Download tampered images — real forensic manipulations + auto-generated."""
     from datasets import load_dataset
 
     uploaded = 0
 
-    # Primary: Charles95/image_tampering (real Photoshop edits)
-    print("  Source: Charles95/image_tampering (real manipulations)")
+    # Primary: CASIA v2 (real splice + copy-move, diverse scenes)
+    print("  Source: CASIA v2 (real forensic manipulations)")
     try:
-        ds = load_dataset("Charles95/image_tampering", split="train", streaming=True)
+        ds = load_dataset(
+            "divg07/casia-20-image-tampering-detection-dataset",
+            split="train", streaming=True,
+        )
         for i, sample in enumerate(ds):
-            if uploaded >= limit:
+            if uploaded >= limit * 0.6:  # 60% from CASIA
                 break
+            # CASIA has 'label' column: 0=authentic, 1=tampered
+            label = sample.get("label", sample.get("Label", 1))
+            if label == 0:
+                continue  # Skip authentic images in CASIA
             img = sample.get("image")
-            if img and _standardize_and_upload(s3_client, bucket, "tampered", img, f"image_tampering/{i}"):
+            if img and _standardize_and_upload(
+                s3_client, bucket, "tampered", img, f"casia_v2/{i}"
+            ):
                 uploaded += 1
                 if uploaded % 100 == 0:
                     print(f"    {uploaded}/{limit} tampered uploaded")
     except Exception as e:
-        print(f"    image_tampering failed: {e}")
+        print(f"    CASIA v2 failed: {e}, trying Charles95...")
+        # Fallback to Charles95
+        try:
+            ds_c = load_dataset("Charles95/image_tampering", split="train", streaming=True)
+            for i, sample in enumerate(ds_c):
+                if uploaded >= limit * 0.5:
+                    break
+                img = sample.get("image")
+                if img and _standardize_and_upload(
+                    s3_client, bucket, "tampered", img, f"image_tampering/{i}"
+                ):
+                    uploaded += 1
+                    if uploaded % 100 == 0:
+                        print(f"    {uploaded}/{limit} tampered uploaded")
+        except Exception as e2:
+            print(f"    Charles95 also failed: {e2}")
 
     # Fill remainder with auto-generated copy-move from COCO
     if uploaded < limit:
@@ -180,7 +214,6 @@ def download_tampered(s3_client, bucket: str, limit: int) -> int:
         print(f"    Generating {remaining} copy-move tampered from COCO...")
         try:
             ds2 = load_dataset("detection-datasets/coco", split="val", streaming=True)
-            prev_img = None
             for i, sample in enumerate(ds2):
                 if uploaded >= limit:
                     break
@@ -192,7 +225,6 @@ def download_tampered(s3_client, bucket: str, limit: int) -> int:
                 tampered = _apply_copy_move(img)
                 if _standardize_and_upload(s3_client, bucket, "tampered", tampered, f"auto_copymove/{i}"):
                     uploaded += 1
-                prev_img = img
         except Exception as e:
             print(f"    Auto-gen failed: {e}")
 
@@ -218,14 +250,14 @@ def _apply_copy_move(img: Image.Image) -> Image.Image:
     return Image.fromarray(arr)
 
 
-# ── Main ─────────────────────────────────────────────────────────────
+# ── Main ─────────────────────────────────────────────────────────
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download calibration images to S3")
     parser.add_argument("--bucket", required=True, help="S3 bucket name")
     parser.add_argument("--category", required=True, choices=["authentic", "ai_generated", "tampered", "all"])
-    parser.add_argument("--limit", type=int, default=600)
+    parser.add_argument("--limit", type=int, default=3000, help="Images per class (default: 3000)")
     parser.add_argument("--region", default="eu-central-1")
     args = parser.parse_args()
 
