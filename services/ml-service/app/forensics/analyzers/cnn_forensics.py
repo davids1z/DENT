@@ -265,16 +265,25 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 prob_map = prob_map / max(prob_map.max(), 1e-6)
             prob_map = np.clip(prob_map, 0, 1)
 
-            # Aggregate: mean of top-5% probabilities as risk score
+            # Aggregate risk score from probability map.
+            # Use MEAN of entire map (not top-5%) to avoid false positives
+            # from JPEG block boundaries at object edges which naturally
+            # have higher tampered probability in re-compressed images.
+            mean_score = float(np.mean(prob_map))
+            # Also check if there's a concentrated region (real splicing
+            # creates a localized high-probability area, not diffuse noise)
             flat = prob_map.flatten()
-            top_5_pct = np.sort(flat)[-max(1, len(flat) // 20) :]
-            risk_score = float(np.mean(top_5_pct))
+            top_5_pct = np.sort(flat)[-max(1, len(flat) // 20):]
+            top_score = float(np.mean(top_5_pct))
+            # Combine: mean provides baseline, top provides localization signal
+            # Only flag if BOTH mean is elevated AND top region is very high
+            risk_score = mean_score * 0.6 + top_score * 0.4
 
             # Generate heatmap
             if self._cnn_heatmap_b64 is None:
                 self._cnn_heatmap_b64 = self._generate_cnn_heatmap(prob_map)
 
-            if risk_score > 0.6:
+            if risk_score > 0.7:
                 findings.append(
                     AnalyzerFinding(
                         code="CNN_CATNET_TAMPERING",
@@ -293,7 +302,7 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                         },
                     )
                 )
-            elif risk_score > 0.35:
+            elif risk_score > 0.50:
                 findings.append(
                     AnalyzerFinding(
                         code="CNN_CATNET_SUSPICIOUS",
