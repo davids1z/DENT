@@ -300,12 +300,12 @@ class AiGenerationAnalyzer(BaseAnalyzer):
         if sdxl_score is not None and vit_score is not None:
             ensemble = sdxl_score * SDXL_WEIGHT + vit_score * VIT_WEIGHT
 
-            # If either model is confident, boost ensemble toward max
+            # If either model is confident, don't let ensemble average dilute it
             max_score = max(sdxl_score, vit_score)
-            if max_score > 0.85:
-                ensemble = max(ensemble, max_score * 0.90)
-            elif max_score > 0.75:
-                ensemble = max(ensemble, max_score * 0.85)
+            if max_score > 0.80:
+                ensemble = max(ensemble, max_score)
+            elif max_score > 0.65:
+                ensemble = max(ensemble, max_score * 0.95)
 
             # Agreement bonus: both models agree strongly
             if sdxl_score > 0.70 and vit_score > 0.70:
