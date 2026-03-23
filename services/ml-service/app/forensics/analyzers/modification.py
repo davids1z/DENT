@@ -77,6 +77,9 @@ class ModificationAnalyzer(BaseAnalyzer):
             # 4. Copy-move self-correlation
             self._check_copy_move(img, findings)
 
+            # 5. DCT double-compression detection (JPEG-native, no re-compression)
+            self._check_double_compression(image_bytes, findings)
+
         except Exception as e:
             logger.warning("Modification analysis error: %s", e)
             elapsed = int((time.monotonic() - start) * 1000)
@@ -514,6 +517,124 @@ class ModificationAnalyzer(BaseAnalyzer):
                     },
                 )
             )
+
+    # ------------------------------------------------------------------
+    # DCT Double-Compression Detection (JPEG-native)
+    # ------------------------------------------------------------------
+
+    def _check_double_compression(
+        self, image_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect double JPEG compression via DCT coefficient histogram analysis.
+
+        When a JPEG is saved twice with different quality factors, the DCT
+        coefficients show periodic "comb" patterns in their histogram. This
+        is a strong indicator of image manipulation (e.g., Photoshop save).
+
+        Works directly on JPEG bytes — no re-compression needed.
+        """
+        # Only works on JPEG inputs
+        if image_bytes[:2] != b'\xff\xd8':
+            return
+
+        try:
+            import jpegio
+
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                tmp.write(image_bytes)
+                tmp_path = tmp.name
+
+            try:
+                jpeg = jpegio.read(tmp_path)
+            finally:
+                os.unlink(tmp_path)
+
+            # Use luma (Y) channel DCT coefficients
+            dct = jpeg.coef_arrays[0].flatten().astype(np.float64)
+
+            # Remove DC component and zeros
+            dct_ac = dct[dct != 0]
+            if len(dct_ac) < 1000:
+                return  # Too few coefficients
+
+            # Build histogram of AC coefficients (-50 to 50)
+            hist_range = 50
+            hist, bin_edges = np.histogram(
+                dct_ac, bins=2 * hist_range + 1, range=(-hist_range - 0.5, hist_range + 0.5)
+            )
+            hist = hist.astype(np.float64)
+
+            # Smooth and normalize
+            if hist.max() == 0:
+                return
+            hist_norm = hist / hist.max()
+
+            # Detect periodicity via autocorrelation
+            # Double compression creates periodic dips at multiples of Q-ratio
+            hist_centered = hist_norm - np.mean(hist_norm)
+            autocorr = np.correlate(hist_centered, hist_centered, mode='full')
+            autocorr = autocorr[len(autocorr) // 2:]  # Take positive lags
+            if autocorr[0] == 0:
+                return
+            autocorr = autocorr / autocorr[0]  # Normalize
+
+            # Look for peaks in autocorrelation (lag 2-20)
+            peaks = []
+            for lag in range(2, min(20, len(autocorr) - 1)):
+                if autocorr[lag] > autocorr[lag - 1] and autocorr[lag] > autocorr[lag + 1]:
+                    if autocorr[lag] > 0.15:  # Significant peak
+                        peaks.append((lag, float(autocorr[lag])))
+
+            if not peaks:
+                return  # No periodic pattern = likely single compression
+
+            # Strong periodicity = double compression
+            max_peak = max(peaks, key=lambda x: x[1])
+            period, strength = max_peak
+
+            if strength > 0.35:
+                # Strong double compression signal
+                findings.append(
+                    AnalyzerFinding(
+                        code="MOD_DOUBLE_JPEG",
+                        title="Dupla JPEG kompresija detektirana",
+                        description=(
+                            f"Analiza DCT koeficijenata otkrila je periodicni uzorak "
+                            f"(perioda: {period}, jacina: {strength:.0%}) koji ukazuje da "
+                            f"je slika komprimirana najmanje dva puta s razlicitim faktorima "
+                            f"kvalitete. Ovo je uobicajeni trag uredivanja u Photoshopu "
+                            f"ili drugom alatu za obradu slika."
+                        ),
+                        risk_score=min(0.70, 0.30 + strength),
+                        confidence=min(0.80, 0.50 + strength * 0.5),
+                        evidence={
+                            "period": period,
+                            "strength": round(strength, 4),
+                            "num_peaks": len(peaks),
+                            "all_peaks": [(p, round(s, 4)) for p, s in peaks[:5]],
+                        },
+                    )
+                )
+            elif strength > 0.20:
+                findings.append(
+                    AnalyzerFinding(
+                        code="MOD_DOUBLE_JPEG_WEAK",
+                        title="Moguca dupla JPEG kompresija",
+                        description=(
+                            f"Blagi periodicni uzorak u DCT koeficijentima "
+                            f"(jacina: {strength:.0%}) sugerira mogucu duplu kompresiju."
+                        ),
+                        risk_score=0.15,
+                        confidence=0.45,
+                        evidence={
+                            "period": period,
+                            "strength": round(strength, 4),
+                        },
+                    )
+                )
+
+        except Exception as e:
+            logger.debug("DCT double-compression check failed: %s", e)
 
     # ------------------------------------------------------------------
     # Improved Heatmap Generation (Jet colormap via LUT)
