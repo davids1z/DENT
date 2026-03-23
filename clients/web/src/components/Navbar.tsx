@@ -27,6 +27,9 @@ export function Navbar() {
           <span className="font-heading font-bold text-lg tracking-tight">
             DENT
           </span>
+          <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-700 rounded border border-amber-200 uppercase tracking-wider">
+            Beta
+          </span>
         </Link>
 
         <div className="hidden md:flex items-center gap-1">

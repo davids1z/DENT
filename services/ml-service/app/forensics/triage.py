@@ -20,8 +20,10 @@ SUPPORTED_TYPES: dict[str, str] = {
     "image/jpeg": "image",
     "image/png": "image",
     "image/webp": "image",
-    "image/heic": "image",
-    "image/heif": "image",
+    # HEIC/HEIF disabled — Pillow doesn't support it natively.
+    # Uncomment when pillow-heif is added to requirements.txt.
+    # "image/heic": "image",
+    # "image/heif": "image",
     "image/gif": "image",
     "image/tiff": "image",
     # Documents
@@ -38,8 +40,8 @@ EXTENSION_MAP: dict[str, str] = {
     ".jpeg": "image",
     ".png": "image",
     ".webp": "image",
-    ".heic": "image",
-    ".heif": "image",
+    # ".heic": "image",  # HEIC not supported by Pillow
+    # ".heif": "image",
     ".gif": "image",
     ".tiff": "image",
     ".tif": "image",

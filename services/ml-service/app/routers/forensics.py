@@ -72,11 +72,11 @@ async def analyze_forensics(
 
     max_size = settings.max_image_size_mb * 1024 * 1024
     if len(contents) > max_size:
-        return ForensicReport(
-            overall_risk_score=0.0,
-            overall_risk_level="Low",
-            modules=[],
-            total_processing_time_ms=0,
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=413,
+            detail=f"Datoteka prevelika ({len(contents) / 1024 / 1024:.1f} MB). "
+                   f"Maksimalna veličina: {settings.max_image_size_mb} MB.",
         )
 
     skip = skip_modules.split(",") if skip_modules else None
