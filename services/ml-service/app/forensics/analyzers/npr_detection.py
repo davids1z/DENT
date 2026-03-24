@@ -195,6 +195,10 @@ class NprDetectionAnalyzer(BaseAnalyzer):
                 elif "state_dict" in state_dict:
                     state_dict = state_dict["state_dict"]
 
+            # Strip DataParallel 'module.' prefix if present
+            if any(k.startswith("module.") for k in state_dict):
+                state_dict = {k.replace("module.", "", 1): v for k, v in state_dict.items()}
+
             missing, unexpected = model.load_state_dict(state_dict, strict=False)
             if missing:
                 logger.info("NPR missing keys (%d): %s", len(missing), missing[:3])
