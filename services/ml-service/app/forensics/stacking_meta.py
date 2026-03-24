@@ -5,8 +5,8 @@ logistic regression model that captures pairwise module interactions
 (e.g., PRNU x AI, spectral x AI) automatically from labeled data.
 
 Architecture:
-  - Input: 14 modules → (risk_score, avg_confidence, num_findings_norm) each
-  - Feature engineering: 42 base + 91 pairwise interactions + 14 squared = 147 features
+  - Input: 17 modules → (risk_score, avg_confidence, num_findings_norm) each
+  - Feature engineering: 51 base + 136 pairwise interactions + 17 squared = 204 features
   - Model: Ridge-regularized logistic regression (numpy only)
   - Output: sigmoid probability in [0, 1]
 
@@ -24,30 +24,38 @@ from .base import ModuleResult
 
 logger = logging.getLogger(__name__)
 
-# Canonical module ordering — must match DEFAULT_WEIGHTS order in fusion.py.
+# Canonical module ordering — must match DEFAULT_WEIGHTS keys in fusion.py.
 # The training script saves this list into .npz for validation.
 MODULE_ORDER: list[str] = [
+    # AI detection (core pixel classifiers)
     "ai_generation_detection",
     "clip_ai_detection",
     "vae_reconstruction",
+    "community_forensics_detection",
+    "npr_ai_detection",
+    # Authenticity / sensor
     "prnu_detection",
+    # Tampering detection
     "deep_modification_detection",
+    "mesorch_detection",
+    # Heuristic / support
     "spectral_forensics",
     "metadata_analysis",
     "modification_detection",
     "semantic_forensics",
     "optical_forensics",
+    # Document modules
     "document_forensics",
     "office_forensics",
     "text_ai_detection",
     "content_validation",
 ]
 
-N_MODULES = len(MODULE_ORDER)
-N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module
-N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # C(14,2) = 91
-N_SQUARED = N_MODULES
-N_FEATURES = N_BASE + N_INTERACTIONS + N_SQUARED  # 42 + 91 + 14 = 147
+N_MODULES = len(MODULE_ORDER)  # 17
+N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module = 51
+N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # C(17,2) = 136
+N_SQUARED = N_MODULES  # 17
+N_FEATURES = N_BASE + N_INTERACTIONS + N_SQUARED  # 51 + 136 + 17 = 204
 
 
 def feature_names() -> list[str]:
