@@ -248,6 +248,9 @@ def print_report(results: dict, label: str = "") -> None:
         print(f"{'=' * 60}")
 
     binary = results["binary"]
+    if "error" in binary:
+        print(f"\n  No samples to evaluate: {binary['error']}")
+        return
     print(f"\n--- Binary (authentic vs manipulated) ---")
     print(f"  Accuracy:  {binary['accuracy']:.1%}")
     print(f"  Macro F1:  {binary['macro_f1']:.4f}")
@@ -337,7 +340,7 @@ def live_evaluate(
                 f"{api_url}/forensics",
                 files={"file": (fn, io.BytesIO(img_bytes))},
                 params=params,
-                timeout=300,
+                timeout=600,
             )
             if resp.status_code != 200:
                 print(f"  [{i+1}/{len(items)}] HTTP {resp.status_code} for {fn}")

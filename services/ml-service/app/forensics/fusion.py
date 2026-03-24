@@ -168,14 +168,26 @@ def fuse_scores(
         ai_combined = core_score + gemini_adjustment
 
     # ── Step 3: Tampering score (separate from AI generation) ─────────
+    # Each tampering detector needs a minimum threshold before contributing.
+    # TruFor and ELA/DCT give 0.40-0.65 on authentic JPEG (false positive),
+    # so we require higher confidence before calling it tampering.
     deep_mod = _get_module(active, "deep_modification_detection")
     mod_det = _get_module(active, "modification_detection")
     mesorch = _get_module(active, "mesorch_detection")
-    tampering = max(
-        deep_mod.risk_score if deep_mod else 0.0,
-        mesorch.risk_score if mesorch else 0.0,  # Mesorch AAAI 2025, JPEG F1=0.774
-        (mod_det.risk_score * 0.70) if mod_det else 0.0,
-    )
+
+    deep_mod_score = deep_mod.risk_score if deep_mod and deep_mod.risk_score >= 0.55 else 0.0
+    mesorch_score = mesorch.risk_score if mesorch and mesorch.risk_score >= 0.40 else 0.0
+    mod_det_score = (mod_det.risk_score * 0.50) if mod_det and mod_det.risk_score >= 0.70 else 0.0
+
+    # Require at least 2 tampering signals to flag as tampered
+    tamp_signals = [s for s in [deep_mod_score, mesorch_score, mod_det_score] if s > 0]
+    if len(tamp_signals) >= 2:
+        tampering = max(tamp_signals)
+    elif len(tamp_signals) == 1 and max(tamp_signals) >= 0.65:
+        # Single very strong signal still counts
+        tampering = max(tamp_signals) * 0.85
+    else:
+        tampering = 0.0
 
     # ── Step 4: Document signals ──────────────────────────────────────
     text_ai = _get_module(active, "text_ai_detection")
@@ -212,4 +224,28 @@ def fuse_scores(
         overall = max(overall, 0.70)
 
     overall = max(0.0, min(1.0, overall))
+
+    # ── Reconcile meta-learner verdict bars with rule-based score ────
+    # Meta-learner was trained on 14 modules (no CommFor/Mesorch) so its
+    # verdict_probabilities can contradict the rule-based overall score.
+    # When they diverge too much, override verdict bars to match rules.
+    if verdict_probs is not None:
+        meta_max_class = max(verdict_probs, key=verdict_probs.get)
+        meta_max_prob = verdict_probs[meta_max_class]
+
+        # If rule-based says low risk but meta says high AI/tampered
+        if overall < 0.30 and meta_max_class != "authentic" and meta_max_prob > 0.50:
+            verdict_probs = {
+                "authentic": max(0.60, 1.0 - overall),
+                "ai_generated": overall * 0.6,
+                "tampered": overall * 0.4,
+            }
+        # If rule-based says high risk but meta says authentic
+        elif overall > 0.70 and meta_max_class == "authentic" and meta_max_prob > 0.50:
+            verdict_probs = {
+                "authentic": max(0.05, 1.0 - overall),
+                "ai_generated": ai_combined / max(overall, 0.01) * overall * 0.7,
+                "tampered": tampering / max(overall, 0.01) * overall * 0.7,
+            }
+
     return overall, round(overall * 100), _risk_level(overall), verdict_probs

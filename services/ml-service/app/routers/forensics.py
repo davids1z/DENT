@@ -55,11 +55,23 @@ def get_pipeline() -> ForensicPipeline:
     return _pipeline
 
 
+# Modules skipped in "quick" scan mode to reduce analysis to ~40s
+_QUICK_SKIP = {
+    "mesorch_detection",         # ~100s on CPU
+    "semantic_forensics",        # ~20s (Gemini API call)
+    "deep_modification_detection",  # ~40s (TruFor)
+    "vae_reconstruction",        # ~15s (VAE decode)
+}
+
+
 @router.post("/forensics", response_model=ForensicReport)
 async def analyze_forensics(
     file: UploadFile = File(...),
     skip_modules: str | None = Query(
         None, description="Comma-separated module names to skip"
+    ),
+    scan_mode: str | None = Query(
+        None, description="'quick' (~40s, core modules) or 'full' (~180s, all modules). Default: full"
     ),
 ):
     """Run forensic fraud detection analysis on an uploaded file."""
@@ -81,7 +93,10 @@ async def analyze_forensics(
                    f"Maksimalna veličina: {settings.max_image_size_mb} MB.",
         )
 
-    skip = skip_modules.split(",") if skip_modules else None
+    skip = set(skip_modules.split(",")) if skip_modules else set()
+    if scan_mode == "quick":
+        skip |= _QUICK_SKIP
+    skip = list(skip) if skip else None
 
     pipeline = get_pipeline()
     report = await pipeline.analyze(contents, filename, skip)
@@ -102,6 +117,9 @@ async def analyze_forensics_stream(
     file: UploadFile = File(...),
     skip_modules: str | None = Query(
         None, description="Comma-separated module names to skip"
+    ),
+    scan_mode: str | None = Query(
+        None, description="'quick' (~40s, core modules) or 'full' (~180s, all modules). Default: full"
     ),
 ):
     """SSE streaming forensic analysis — sends progress events per module."""
@@ -131,7 +149,10 @@ async def analyze_forensics_stream(
 
         return StreamingResponse(_too_large(), media_type="text/event-stream")
 
-    skip = skip_modules.split(",") if skip_modules else None
+    skip = set(skip_modules.split(",")) if skip_modules else set()
+    if scan_mode == "quick":
+        skip |= _QUICK_SKIP
+    skip = list(skip) if skip else None
 
     # Queue for progress events from the pipeline callback
     progress_queue: asyncio.Queue = asyncio.Queue()
