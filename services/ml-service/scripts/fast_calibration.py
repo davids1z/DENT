@@ -2,10 +2,8 @@
 """
 Fast calibration — runs forensic pipeline DIRECTLY (no HTTP overhead).
 
-Skips heavy modules (VAE, CNN, Semantic/Gemini) and runs only fast ones:
-metadata, modification, optical, spectral, clip, prnu, ai_generation.
-
-Expected: ~5-10s per image on GPU vs 100s+ through HTTP API.
+Runs ALL 17 modules (including CommFor, NPR, Mesorch, CNN/TruFor, VAE)
+except Gemini VLM (API cost). Direct pipeline call = ~2-10s/image on GPU.
 
 Usage:
   cd /root/DENT/services/ml-service
@@ -43,12 +41,6 @@ except ImportError:
 S3_PREFIX = "processed"
 VALID_CLASSES = {"authentic", "ai_generated", "tampered"}
 
-# Heavy modules to skip — saves 80%+ of processing time
-SKIP_MODULES = {
-    "semantic_forensics",          # Gemini API call (~10-30s)
-    "vae_reconstruction",          # VAE encode/decode + VGG16 (~30-40s)
-    "deep_modification_detection", # CAT-Net/TruFor (~20s)
-}
 
 
 def load_labels(s3, bucket: str) -> dict[str, str]:
@@ -109,15 +101,52 @@ async def main():
 
     # Import pipeline directly — no HTTP
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+    # Ensure model weights are downloaded (vast.ai instances start fresh)
+    models_dir = Path(__file__).resolve().parent.parent / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("DENT_FORENSICS_MODEL_CACHE_DIR", str(models_dir))
+
+    # NPR weights (~6MB, from GitHub)
+    npr_dir = models_dir / "npr"
+    npr_dir.mkdir(parents=True, exist_ok=True)
+    npr_path = npr_dir / "NPR.pth"
+    if not npr_path.exists():
+        print("Downloading NPR weights (~6MB)...")
+        import urllib.request
+        urllib.request.urlretrieve(
+            "https://github.com/chuangchuangtan/NPR-DeepfakeDetection/raw/main/NPR.pth",
+            str(npr_path),
+        )
+        print(f"NPR weights saved to {npr_path}")
+
+    # Mesorch weights (~976MB, from Google Drive)
+    mesorch_dir = models_dir / "cnn" / "mesorch"
+    mesorch_dir.mkdir(parents=True, exist_ok=True)
+    mesorch_path = mesorch_dir / "mesorch-98.pth"
+    if not mesorch_path.exists():
+        print("Downloading Mesorch weights (~976MB)...")
+        try:
+            import gdown
+            gdown.download(
+                id="1PJxKteinMyaAYokKy0JhuzBnBc6bGsau",
+                output=str(mesorch_path), quiet=False,
+            )
+        except Exception as e:
+            print(f"WARNING: Mesorch download failed: {e}")
+
     from app.forensics.pipeline import ForensicPipeline
 
     print("Initializing forensic pipeline (direct, no HTTP)...")
     pipeline = ForensicPipeline(
         semantic_enabled=False,     # Skip Gemini (API cost)
-        cnn_enabled=True,           # CAT-Net/TruFor (tampering detection)
+        cnn_enabled=True,           # TruFor (tampering detection), CatNet disabled in code
+        mesorch_enabled=True,       # Mesorch (AAAI 2025, JPEG F1=0.774)
         vae_recon_enabled=True,     # VAE snap-back (AI detection)
-        aigen_enabled=True,         # Swin Transformer
-        clip_ai_enabled=True,       # CLIP
+        aigen_enabled=True,         # Swin Transformer ensemble
+        community_forensics_enabled=True,  # CommFor (CVPR 2025, 4803 generators)
+        npr_enabled=True,           # NPR (CVPR 2024, 92.2% accuracy)
+        clip_ai_enabled=True,       # CLIP probe
         spectral_enabled=True,      # FFT (~1s)
         optical_enabled=True,       # Moire/perspective (~1s)
         prnu_enabled=True,          # PRNU (~1s)

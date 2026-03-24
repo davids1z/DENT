@@ -49,44 +49,48 @@ DAMAGE_TYPES = [
 ]
 
 CAR_TYPES = [
-    "silver sedan", "black SUV", "white hatchback", "red sports car",
-    "blue compact car", "grey minivan", "dark green pickup truck",
-    "silver station wagon", "black luxury sedan", "white crossover",
-    "old beige sedan", "navy blue coupe", "brown family car",
-    "metallic grey SUV", "pearl white sedan",
+    "dirty silver Opel Astra", "dark grey Skoda Octavia", "white Peugeot 208",
+    "dark blue Ford Focus", "old burgundy Renault Megane", "black VW Passat",
+    "silver Toyota Corolla", "grey Hyundai i30", "white Fiat Punto",
+    "dark green Suzuki Vitara", "blue Seat Leon", "red Citroen C3",
+    "black Audi A4", "silver BMW 3 series", "white Mercedes C class",
+    "beige Dacia Duster", "grey Kia Ceed", "blue Mazda 3",
+    "old white Renault Clio", "dark grey Peugeot 308",
 ]
 
 LOCATIONS = [
-    "parking lot", "residential street", "highway shoulder",
-    "garage", "body shop", "intersection",
-    "gas station", "apartment complex parking", "shopping mall parking",
-    "suburban driveway", "rainy road", "gravel road",
+    "muddy side road in rural Croatia", "Konzum parking lot",
+    "residential driveway in Zagreb suburbs", "cobblestone street in Split old town",
+    "highway shoulder on A1 motorway", "underground parking garage",
+    "gas station in a small Croatian town", "apartment building parking in Rijeka",
+    "industrial area parking lot", "narrow street in Dubrovnik",
+    "gravel road in Zagorje countryside", "shopping mall parking in Zagreb",
 ]
 
 CONDITIONS = [
-    "natural daylight, slightly overcast",
-    "bright sunny day, harsh shadows",
-    "evening golden hour lighting",
-    "night time with flash photography",
-    "rainy weather, wet surfaces",
-    "cloudy winter day",
-    "early morning light",
-    "fluorescent garage lighting",
-    "sunset backlit",
-    "overcast day, flat lighting",
+    "overcast sky, flat lighting",
+    "harsh midday sun creating strong shadows",
+    "late evening, almost dark",
+    "night time, harsh phone flash creating strong shadows",
+    "rainy weather, wet asphalt, reflections",
+    "cold winter morning, frost on ground",
+    "early morning foggy conditions",
+    "fluorescent lighting in underground garage",
+    "cloudy afternoon, diffuse light",
+    "bright summer day, everything slightly overexposed",
 ]
 
-CAMERA_STYLES = [
-    "smartphone photo, insurance claim documentation",
-    "phone camera, slightly blurry",
-    "DSLR quality, sharp detail",
-    "phone photo taken in a hurry",
-    "close up detail shot",
-    "wide angle showing full car",
-    "medium shot from 3 meters away",
-    "low angle showing underside damage",
-    "overhead shot of roof damage",
-    "diagonal front quarter view",
+CAMERA_QUALITY = [
+    "Raw unedited photo from a cheap Samsung Galaxy A13, no filters, no editing whatsoever",
+    "Slightly blurry phone photo taken in a hurry, the person's thumb slightly visible at bottom edge",
+    "Phone camera photo with fingerprint smudge on lens causing slight haze",
+    "Quick snapshot taken at an awkward angle, slightly tilted, not perfectly framed",
+    "Photo from an old Huawei P20, visible camera noise, slightly washed out colors",
+    "iPhone photo but taken too close, slight perspective distortion",
+    "Very amateur phone photo, poor composition, part of the damage cut off at frame edge",
+    "Phone photo with the photographer's shadow visible on the car",
+    "Grainy low-light phone photo, you can barely make out the damage details",
+    "Standard phone photo from about 2 meters away, nothing special about the composition",
 ]
 
 
@@ -96,17 +100,18 @@ def build_prompt():
     car = random.choice(CAR_TYPES)
     location = random.choice(LOCATIONS)
     condition = random.choice(CONDITIONS)
-    camera = random.choice(CAMERA_STYLES)
+    camera = random.choice(CAMERA_QUALITY)
 
     return (
-        f"Generate a realistic photo of a {car} with {damage}, "
-        f"located in a {location}. {condition}. "
-        f"The photo style is {camera}. "
-        f"Make it look like a real insurance claim photo."
+        f"{camera}. A {car} with {damage}, "
+        f"parked at {location}. {condition}. "
+        f"This should look exactly like a real insurance claim documentation "
+        f"photo that someone quickly took with their phone, not a professional "
+        f"or stock photo."
     )
 
 
-def generate_image(api_key: str, prompt: str, model: str = "gemini-2.5-flash-image") -> bytes | None:
+def generate_image(api_key, prompt, model="gemini-2.5-flash-image"):
     """Generate an image using Gemini API. Returns JPEG bytes or None."""
     try:
         resp = requests.post(

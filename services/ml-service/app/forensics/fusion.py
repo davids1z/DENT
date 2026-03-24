@@ -230,9 +230,9 @@ def fuse_scores(
     overall = max(0.0, min(1.0, overall))
 
     # ── Reconcile meta-learner verdict bars with rule-based score ────
-    # Meta-learner was trained on 14 modules (no CommFor/Mesorch) so its
-    # verdict_probabilities can contradict the rule-based overall score.
-    # When they diverge too much, override verdict bars to match rules.
+    # Meta-learner verdict_probabilities can contradict the rule-based
+    # overall score. When they diverge too much, override verdict bars
+    # to match the rule-based decision.
     if verdict_probs is not None:
         meta_max_class = max(verdict_probs, key=verdict_probs.get)
         meta_max_prob = verdict_probs[meta_max_class]
