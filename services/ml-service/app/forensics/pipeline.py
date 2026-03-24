@@ -6,6 +6,8 @@ from collections.abc import Callable
 from .analyzers.ai_generation import AiGenerationAnalyzer
 from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
+from .analyzers.community_forensics import CommunityForensicsAnalyzer
+from .analyzers.mesorch_forensics import MesorchForensicsAnalyzer
 from .analyzers.prnu_detection import PrnuDetectionAnalyzer
 from .analyzers.spectral_forensics import SpectralForensicsAnalyzer
 from .analyzers.document import DocumentForensicsAnalyzer
@@ -33,6 +35,7 @@ class ForensicPipeline:
         ela_quality: int = 95,
         ela_scale: int = 20,
         cnn_enabled: bool = True,
+        mesorch_enabled: bool = True,
         optical_enabled: bool = True,
         semantic_enabled: bool = True,
         semantic_face_enabled: bool = True,
@@ -44,6 +47,7 @@ class ForensicPipeline:
         aigen_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
+        community_forensics_enabled: bool = True,
         clip_ai_enabled: bool = True,
         vae_recon_enabled: bool = True,
         text_ai_enabled: bool = True,
@@ -59,6 +63,9 @@ class ForensicPipeline:
         )
         self._cnn: CnnForensicsAnalyzer | None = (
             CnnForensicsAnalyzer() if cnn_enabled else None
+        )
+        self._mesorch: MesorchForensicsAnalyzer | None = (
+            MesorchForensicsAnalyzer() if mesorch_enabled else None
         )
         self._optical: OpticalForensicsAnalyzer | None = (
             OpticalForensicsAnalyzer() if optical_enabled else None
@@ -90,6 +97,9 @@ class ForensicPipeline:
             OfficeForensicsAnalyzer() if office_enabled else None
         )
         # ── New AI detection modules ─────────────────────────────────
+        self._commfor: CommunityForensicsAnalyzer | None = (
+            CommunityForensicsAnalyzer() if community_forensics_enabled else None
+        )
         self._clip_ai: ClipAiDetectionAnalyzer | None = (
             ClipAiDetectionAnalyzer() if clip_ai_enabled else None
         )
@@ -275,7 +285,11 @@ class ForensicPipeline:
         # Group 2 (sequential)
         if self._cnn and self._cnn.MODULE_NAME not in skip:
             count += 1
+        if self._mesorch and self._mesorch.MODULE_NAME not in skip:
+            count += 1
         if self._semantic and self._semantic.MODULE_NAME not in skip:
+            count += 1
+        if self._commfor and self._commfor.MODULE_NAME not in skip:
             count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
             count += 1
@@ -290,9 +304,15 @@ class ForensicPipeline:
         if self._cnn:
             self._cnn._ensure_models()
             logger.info("CNN models ready")
+        if self._mesorch:
+            self._mesorch._ensure_models()
+            logger.info("Mesorch model ready")
         if self._aigen:
             self._aigen._ensure_models()
             logger.info("AI generation models ready")
+        if self._commfor:
+            self._commfor._ensure_models()
+            logger.info("Community Forensics model ready")
         if self._clip_ai:
             self._clip_ai._ensure_models()
             logger.info("CLIP AI detection model ready")
@@ -484,6 +504,12 @@ class ForensicPipeline:
                 modules.append(result)
                 _report_progress(self._cnn.MODULE_NAME)
 
+            # Mesorch — dual-backbone DCT tampering, 2-5s on CPU
+            if self._mesorch and self._mesorch.MODULE_NAME not in skip:
+                result = await self._mesorch.analyze_image(file_bytes, filename)
+                modules.append(result)
+                _report_progress(self._mesorch.MODULE_NAME)
+
             if self._semantic and self._semantic.MODULE_NAME not in skip:
                 result = await self._semantic.analyze_image(file_bytes, filename)
                 modules.append(result)
@@ -494,6 +520,12 @@ class ForensicPipeline:
                 result = await self._aigen.analyze_image(file_bytes, filename)
                 modules.append(result)
                 _report_progress(self._aigen.MODULE_NAME)
+
+            # Community Forensics — ViT-Small, 87 MB, 0.5-2s on CPU
+            if self._commfor and self._commfor.MODULE_NAME not in skip:
+                result = await self._commfor.analyze_image(file_bytes, filename)
+                modules.append(result)
+                _report_progress(self._commfor.MODULE_NAME)
 
             # VAE reconstruction error — requires SD VAE (~2GB RAM)
             if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:

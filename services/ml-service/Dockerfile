@@ -32,6 +32,9 @@ RUN pip install --no-cache-dir diffusers>=0.27.0
 # gdown for reliable Google Drive model weight downloads (CatNet weights)
 RUN pip install --no-cache-dir gdown>=5.0.0
 
+# timm for Community Forensics ViT-Small (CVPR 2025) + future Mesorch
+RUN pip install --no-cache-dir timm>=1.0.0 safetensors>=0.4.0
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

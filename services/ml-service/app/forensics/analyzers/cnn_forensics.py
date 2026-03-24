@@ -185,11 +185,11 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            # CAT-Net DISABLED — produces 80%+ false positive rate on JPEG images.
-            # Even with original DCT extraction (no re-compression), CatNet flags
-            # authentic JPEG photos as tampered. Needs fundamental rework for V4.
-            # if self._catnet_method is not None:
-            #     self._run_catnet(img, image_bytes, findings)
+            # CAT-Net v2 re-enabled with conservative thresholds (March 2025).
+            # JPEG-aware DCT extraction uses original bytes (no re-compression).
+            # Higher thresholds (0.80/0.65) + minimum area check reduce FP rate.
+            if self._catnet_method is not None:
+                self._run_catnet(img, image_bytes, findings)
 
             # Run TruFor (transformer forensics) — works on RGB, no JPEG issues
             if self._trufor_method is not None:
@@ -293,7 +293,17 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             if self._cnn_heatmap_b64 is None:
                 self._cnn_heatmap_b64 = self._generate_cnn_heatmap(prob_map)
 
-            if risk_score > 0.7:
+            # Minimum tampered area check: skip if <5% of pixels above 0.5.
+            # Real splices create a localized region, not scattered noise.
+            tampered_area_pct = float(np.mean(prob_map > 0.5))
+            if tampered_area_pct < 0.05:
+                logger.debug(
+                    "CAT-Net: tampered area too small (%.1f%%), skipping",
+                    tampered_area_pct * 100,
+                )
+                return
+
+            if risk_score > 0.80:
                 findings.append(
                     AnalyzerFinding(
                         code="CNN_CATNET_TAMPERING",
@@ -309,10 +319,11 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                         evidence={
                             "catnet_risk": round(risk_score, 4),
                             "top_5pct_mean": round(float(np.mean(top_5_pct)), 4),
+                            "tampered_area_pct": round(tampered_area_pct, 4),
                         },
                     )
                 )
-            elif risk_score > 0.50:
+            elif risk_score > 0.65:
                 findings.append(
                     AnalyzerFinding(
                         code="CNN_CATNET_SUSPICIOUS",
@@ -324,7 +335,10 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                         ),
                         risk_score=risk_score * 0.7,
                         confidence=0.65,
-                        evidence={"catnet_risk": round(risk_score, 4)},
+                        evidence={
+                            "catnet_risk": round(risk_score, 4),
+                            "tampered_area_pct": round(tampered_area_pct, 4),
+                        },
                     )
                 )
 

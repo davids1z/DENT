@@ -33,6 +33,8 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "office_forensics": 0.05,
     "text_ai_detection": 0.08,
     "content_validation": 0.03,
+    "community_forensics_detection": 0.10,
+    "mesorch_detection": 0.10,
 }
 
 # Module names that are dedicated AI / synthetic-content detectors
@@ -42,13 +44,17 @@ _AI_DETECTOR_MODULES = frozenset({
     "clip_ai_detection",
     "vae_reconstruction",
     "prnu_detection",
+    "community_forensics_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
+# Community Forensics (CVPR 2025, 4803 generators, mAP=0.987) is the
+# strongest single model; Swin ensemble remains primary for coverage.
 _CORE_AI_WEIGHTS = {
-    "ai_generation_detection": 0.50,
-    "clip_ai_detection": 0.25,
-    "vae_reconstruction": 0.25,
+    "ai_generation_detection": 0.30,
+    "community_forensics_detection": 0.30,
+    "clip_ai_detection": 0.20,
+    "vae_reconstruction": 0.20,
 }
 
 
@@ -164,8 +170,10 @@ def fuse_scores(
     # ── Step 3: Tampering score (separate from AI generation) ─────────
     deep_mod = _get_module(active, "deep_modification_detection")
     mod_det = _get_module(active, "modification_detection")
+    mesorch = _get_module(active, "mesorch_detection")
     tampering = max(
         deep_mod.risk_score if deep_mod else 0.0,
+        mesorch.risk_score if mesorch else 0.0,  # Mesorch AAAI 2025, JPEG F1=0.774
         (mod_det.risk_score * 0.70) if mod_det else 0.0,
     )
 

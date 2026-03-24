@@ -48,6 +48,44 @@ AutoTokenizer.from_pretrained('distilgpt2', cache_dir=d)
 AutoModelForCausalLM.from_pretrained('distilgpt2', cache_dir=d)
 "
 
+# Community Forensics ViT-Small (CVPR 2025, ~87 MB safetensors)
+download_if_missing "/app/models/community_forensics" "OwensLab/commfor-model-384" "
+from huggingface_hub import snapshot_download
+snapshot_download('OwensLab/commfor-model-384', cache_dir='/app/models/community_forensics')
+"
+
+# Mesorch AAAI 2025 weights (~976 MB from Google Drive)
+mesorch_path="/app/models/cnn/mesorch/mesorch-98.pth"
+if [ ! -f "$mesorch_path" ]; then
+    echo "[entrypoint] Downloading Mesorch weights (~976 MB)..."
+    mkdir -p "$(dirname "$mesorch_path")"
+    python3 -c "
+import sys, os
+try:
+    import gdown
+    gdown.download(id='1PJxKteinMyaAYokKy0JhuzBnBc6bGsau', output='$mesorch_path', quiet=False)
+    # If gdown downloaded an archive, try to extract .pth from it
+    if os.path.exists('$mesorch_path'):
+        import zipfile
+        if zipfile.is_zipfile('$mesorch_path'):
+            import shutil, tempfile
+            tmp = tempfile.mkdtemp()
+            with zipfile.ZipFile('$mesorch_path') as z:
+                z.extractall(tmp)
+            for root, dirs, files in os.walk(tmp):
+                for f in files:
+                    if f.endswith('.pth'):
+                        shutil.copy(os.path.join(root, f), '$mesorch_path')
+                        break
+            shutil.rmtree(tmp, ignore_errors=True)
+    print('[entrypoint] Mesorch weights downloaded')
+except Exception as e:
+    print(f'[entrypoint] WARNING: Mesorch download failed: {e}', file=sys.stderr)
+" || true
+else
+    echo "[entrypoint] Mesorch weights already cached"
+fi
+
 # ── CNN forensics model weights (PhotoHolmes: CatNet + TruFor) ────────
 # These are NOT on HuggingFace — downloaded from original author servers.
 catnet_path="/app/models/cnn/catnet/weights.pth"

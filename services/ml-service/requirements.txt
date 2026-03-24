@@ -33,6 +33,9 @@ fpdf2>=2.8.0
 # CLIP AI detection (UniversalFakeDetect style — model downloaded via transformers)
 # VAE reconstruction error detection (DIRE/CO-SPY style)
 diffusers>=0.27.0
+# Community Forensics ViT-Small (CVPR 2025, 4803 generators)
+timm>=1.0.0
+safetensors>=0.4.0
 # Content validation (OCR for scanned documents)
 pytesseract>=0.3.10
 # PDF structural forensics (font glyph analysis — optional, graceful degradation)

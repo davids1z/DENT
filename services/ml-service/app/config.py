@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     forensics_cnn_methods: str = "catnet,trufor"
     forensics_model_cache_dir: str = "/app/models"
 
+    # Mesorch tampering detection (AAAI 2025, DCT dual-backbone, JPEG F1=0.774)
+    forensics_mesorch_enabled: bool = True
+
     # Optical forensics (Moire / screen recapture detection)
     forensics_optical_enabled: bool = True
 
@@ -33,6 +36,9 @@ class Settings(BaseSettings):
     # AI generation detection (Swin Transformer ensemble)
     forensics_aigen_enabled: bool = True
     forensics_aigen_methods: str = "sdxl,vit"
+
+    # Community Forensics AI detection (CVPR 2025, ViT-Small, 4803 generators)
+    forensics_community_forensics_enabled: bool = True
 
     # CLIP AI detection (UniversalFakeDetect style)
     forensics_clip_ai_enabled: bool = True
