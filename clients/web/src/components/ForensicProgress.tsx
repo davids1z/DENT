@@ -21,7 +21,7 @@ const DEFAULT_STEPS: ForensicStep[] = [
   { id: "ai_generation_detection", label: "AI generiranje detekcija", status: "pending" },
   { id: "vae_reconstruction", label: "VAE rekonstrukcija", status: "pending" },
   { id: "text_ai_detection", label: "AI tekst detekcija", status: "pending" },
-  { id: "gemini", label: "Gemini kontekst analiza", status: "pending" },
+  { id: "gemini", label: "Semantička analiza", status: "pending" },
   { id: "agent", label: "Agent evaluacija", status: "pending" },
   { id: "evidence", label: "Digitalni pecat", status: "pending" },
 ];

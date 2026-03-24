@@ -72,7 +72,7 @@ export function Footer() {
             <h4 className="font-heading font-semibold text-sm mb-4">Info</h4>
             <ul className="space-y-2.5">
               <li className="text-sm text-muted">Verzija 1.0 Beta</li>
-              <li className="text-sm text-muted">Gemini 2.5 Pro AI</li>
+              <li className="text-sm text-muted">AI Forenzika</li>
               <li className="text-sm text-muted">GDPR sukladno</li>
             </ul>
           </div>
