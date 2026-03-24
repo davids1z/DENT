@@ -480,8 +480,37 @@ class MesorchForensicsAnalyzer(BaseAnalyzer):
 
         try:
             model = MesorchModel(image_size=IMAGE_SIZE)
-            state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
-            model.load_state_dict(state_dict, strict=False)
+            checkpoint = torch.load(weights_path, map_location="cpu", weights_only=False)
+
+            # Handle both raw state_dict and wrapped checkpoint formats:
+            # - Raw: {param_name: tensor, ...}
+            # - Wrapped: {'model': state_dict, 'optimizer': ..., 'epoch': ...}
+            # - IMDLBenCo: {'model_state_dict': state_dict, ...}
+            if isinstance(checkpoint, dict):
+                if "model" in checkpoint:
+                    state_dict = checkpoint["model"]
+                    logger.info("Mesorch checkpoint: unwrapped 'model' key")
+                elif "model_state_dict" in checkpoint:
+                    state_dict = checkpoint["model_state_dict"]
+                    logger.info("Mesorch checkpoint: unwrapped 'model_state_dict' key")
+                elif "state_dict" in checkpoint:
+                    state_dict = checkpoint["state_dict"]
+                    logger.info("Mesorch checkpoint: unwrapped 'state_dict' key")
+                else:
+                    state_dict = checkpoint
+            else:
+                state_dict = checkpoint
+
+            # Log key info for debugging
+            keys = list(state_dict.keys())[:5]
+            logger.info("Mesorch state_dict: %d keys, first: %s", len(state_dict), keys)
+
+            missing, unexpected = model.load_state_dict(state_dict, strict=False)
+            if missing:
+                logger.info("Mesorch missing keys (%d): %s...", len(missing), missing[:3])
+            if unexpected:
+                logger.info("Mesorch unexpected keys (%d): %s...", len(unexpected), unexpected[:3])
+
             model.eval()
             self._model = model
             n_params = sum(p.numel() for p in model.parameters()) / 1e6
