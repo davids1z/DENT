@@ -91,13 +91,13 @@ def fuse_scores(
 
     verdict_probs: dict[str, float] | None = None
 
+    # Meta-learner provides ONLY verdict_probabilities (3-class breakdown
+    # for the UI bars). The overall risk score is ALWAYS computed by the
+    # rule-based fusion below — rules are transparent, debuggable, and
+    # don't produce false positives like the meta-learner did.
     if meta_enabled:
         meta_learner = get_meta_learner(_settings.forensics_stacking_meta_weights)
-        meta_score = meta_learner.predict(modules)
         verdict_probs = meta_learner.predict_proba(modules)
-        if meta_score is not None:
-            overall = max(0.0, min(1.0, meta_score))
-            return overall, round(overall * 100), _risk_level(overall), verdict_probs
 
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
     # Trained classifiers (Swin, CLIP, VAE) are the primary decision makers.
@@ -178,15 +178,25 @@ def fuse_scores(
     # ── Step 5: Final risk = max of all channels ──────────────────────
     overall = max(ai_combined, tampering, text_ai_score, content_score)
 
-    # ── Step 6: Cross-validation floor ────────────────────────────────
-    # When 2+ core AI pixel detectors independently agree at >= 0.60,
-    # this overrides even Gemini's "authentic" verdict (safety net).
+    # ── Step 6: AI detection boost ────────────────────────────────────
+    # Swin ViT (ai_generation_detection) is the strongest single signal.
+    # When it's confident (>0.60), the overall score should reflect that
+    # regardless of what other modules say.
+    ai_gen = _get_module(active, "ai_generation_detection")
+    if ai_gen and ai_gen.risk_score >= 0.60:
+        # Strong AI signal — boost overall to at least the AI score
+        overall = max(overall, ai_gen.risk_score)
+    elif ai_gen and ai_gen.risk_score >= 0.40:
+        # Moderate AI signal — boost but less aggressively
+        overall = max(overall, ai_gen.risk_score * 0.85)
+
+    # Cross-validation: 2+ core detectors agree at >= 0.50
     high_ai_count = sum(
         1 for m in active
-        if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.60
+        if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.50
     )
     if high_ai_count >= 2:
-        overall = max(overall, 0.85)
+        overall = max(overall, 0.80)
 
     overall = max(0.0, min(1.0, overall))
     return overall, round(overall * 100), _risk_level(overall), verdict_probs
