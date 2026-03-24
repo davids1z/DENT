@@ -186,25 +186,30 @@ def fuse_scores(
     # ── Step 5: Final risk = max of all channels ──────────────────────
     overall = max(ai_combined, tampering, text_ai_score, content_score)
 
-    # ── Step 6: AI detection boost ────────────────────────────────────
-    # Swin ViT (ai_generation_detection) is the strongest single signal.
-    # When it's confident (>0.60), the overall score should reflect that
-    # regardless of what other modules say.
+    # ── Step 6: Cross-validation AI boost ─────────────────────────────
+    # No single model can boost alone — requires corroboration.
+    # Swin ViT has high false positive rate on authentic JPEG photos.
     ai_gen = _get_module(active, "ai_generation_detection")
-    if ai_gen and ai_gen.risk_score >= 0.60:
-        # Strong AI signal — boost overall to at least the AI score
-        overall = max(overall, ai_gen.risk_score)
-    elif ai_gen and ai_gen.risk_score >= 0.40:
-        # Moderate AI signal — boost but less aggressively
-        overall = max(overall, ai_gen.risk_score * 0.85)
+    commfor = _get_module(active, "community_forensics_detection")
 
-    # Cross-validation: 2+ core detectors agree at >= 0.50
+    # Count how many core AI detectors agree at >= 0.50
     high_ai_count = sum(
         1 for m in active
         if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.50
     )
+
+    # Swin boost ONLY if corroborated by CommFor OR 2+ other detectors
+    if ai_gen and ai_gen.risk_score >= 0.60:
+        commfor_agrees = commfor is not None and commfor.risk_score >= 0.50
+        if commfor_agrees or high_ai_count >= 3:
+            overall = max(overall, ai_gen.risk_score)
+        elif high_ai_count >= 2:
+            # Partial corroboration — moderate boost
+            overall = max(overall, ai_gen.risk_score * 0.75)
+
+    # Cross-validation: 2+ core detectors agree → floor at 0.70
     if high_ai_count >= 2:
-        overall = max(overall, 0.80)
+        overall = max(overall, 0.70)
 
     overall = max(0.0, min(1.0, overall))
     return overall, round(overall * 100), _risk_level(overall), verdict_probs
