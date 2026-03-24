@@ -185,11 +185,12 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            # CAT-Net v2 re-enabled with conservative thresholds (March 2025).
-            # JPEG-aware DCT extraction uses original bytes (no re-compression).
-            # Higher thresholds (0.80/0.65) + minimum area check reduce FP rate.
-            if self._catnet_method is not None:
-                self._run_catnet(img, image_bytes, findings)
+            # CAT-Net DISABLED AGAIN (March 2025 eval showed 0.85 score on
+            # ALL images including authentic). Even with JPEG-aware DCT, higher
+            # thresholds (0.80/0.65), and min area check, CatNet still gives
+            # false positives. deep_modification_detection avg=0.850 for auth.
+            # if self._catnet_method is not None:
+            #     self._run_catnet(img, image_bytes, findings)
 
             # Run TruFor (transformer forensics) — works on RGB, no JPEG issues
             if self._trufor_method is not None:
