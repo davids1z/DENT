@@ -54,6 +54,26 @@ from huggingface_hub import snapshot_download
 snapshot_download('OwensLab/commfor-model-384', cache_dir='/app/models/community_forensics')
 "
 
+# NPR CVPR 2024 weights (~6 MB from GitHub — tiny!)
+npr_path="/app/models/npr/NPR.pth"
+if [ ! -f "$npr_path" ]; then
+    echo "[entrypoint] Downloading NPR weights (~6 MB)..."
+    mkdir -p "$(dirname "$npr_path")"
+    python3 -c "
+import urllib.request, sys
+try:
+    urllib.request.urlretrieve(
+        'https://github.com/chuangchuangtan/NPR-DeepfakeDetection/raw/main/NPR.pth',
+        '$npr_path'
+    )
+    print('[entrypoint] NPR weights downloaded')
+except Exception as e:
+    print(f'[entrypoint] WARNING: NPR download failed: {e}', file=sys.stderr)
+" || true
+else
+    echo "[entrypoint] NPR weights already cached"
+fi
+
 # Mesorch AAAI 2025 weights (~976 MB from Google Drive)
 mesorch_path="/app/models/cnn/mesorch/mesorch-98.pth"
 if [ ! -f "$mesorch_path" ]; then

@@ -34,6 +34,7 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "text_ai_detection": 0.08,
     "content_validation": 0.03,
     "community_forensics_detection": 0.10,
+    "npr_ai_detection": 0.08,
     "mesorch_detection": 0.10,
 }
 
@@ -45,16 +46,19 @@ _AI_DETECTOR_MODULES = frozenset({
     "vae_reconstruction",
     "prnu_detection",
     "community_forensics_detection",
+    "npr_ai_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
-# Community Forensics (CVPR 2025, 4803 generators, mAP=0.987) is the
-# strongest single model; Swin ensemble remains primary for coverage.
+# Community Forensics (CVPR 2025, 4803 generators) = generator fingerprints
+# NPR (CVPR 2024, 92.2% accuracy) = upsampling artifacts (complementary signal)
+# Swin ensemble = general CNN features (prone to FP, lower weight)
 _CORE_AI_WEIGHTS = {
-    "ai_generation_detection": 0.30,
     "community_forensics_detection": 0.30,
-    "clip_ai_detection": 0.20,
-    "vae_reconstruction": 0.20,
+    "npr_ai_detection": 0.25,
+    "ai_generation_detection": 0.20,
+    "clip_ai_detection": 0.15,
+    "vae_reconstruction": 0.10,
 }
 
 

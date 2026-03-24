@@ -44,6 +44,7 @@ def get_pipeline() -> ForensicPipeline:
             spectral_enabled=settings.forensics_spectral_enabled,
             office_enabled=settings.forensics_office_enabled,
             community_forensics_enabled=settings.forensics_community_forensics_enabled,
+            npr_enabled=settings.forensics_npr_enabled,
             clip_ai_enabled=settings.forensics_clip_ai_enabled,
             vae_recon_enabled=settings.forensics_vae_recon_enabled,
             text_ai_enabled=settings.forensics_text_ai_enabled,

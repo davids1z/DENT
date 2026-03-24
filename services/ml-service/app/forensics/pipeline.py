@@ -8,6 +8,7 @@ from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
 from .analyzers.community_forensics import CommunityForensicsAnalyzer
 from .analyzers.mesorch_forensics import MesorchForensicsAnalyzer
+from .analyzers.npr_detection import NprDetectionAnalyzer
 from .analyzers.prnu_detection import PrnuDetectionAnalyzer
 from .analyzers.spectral_forensics import SpectralForensicsAnalyzer
 from .analyzers.document import DocumentForensicsAnalyzer
@@ -48,6 +49,7 @@ class ForensicPipeline:
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
+        npr_enabled: bool = True,
         clip_ai_enabled: bool = True,
         vae_recon_enabled: bool = True,
         text_ai_enabled: bool = True,
@@ -99,6 +101,9 @@ class ForensicPipeline:
         # ── New AI detection modules ─────────────────────────────────
         self._commfor: CommunityForensicsAnalyzer | None = (
             CommunityForensicsAnalyzer() if community_forensics_enabled else None
+        )
+        self._npr: NprDetectionAnalyzer | None = (
+            NprDetectionAnalyzer() if npr_enabled else None
         )
         self._clip_ai: ClipAiDetectionAnalyzer | None = (
             ClipAiDetectionAnalyzer() if clip_ai_enabled else None
@@ -280,6 +285,8 @@ class ForensicPipeline:
             count += 1
         if self._clip_ai and self._clip_ai.MODULE_NAME not in skip:
             count += 1
+        if self._npr and self._npr.MODULE_NAME not in skip:
+            count += 1
         if self._prnu and self._prnu.MODULE_NAME not in skip:
             count += 1
         # Group 2 (sequential)
@@ -313,6 +320,9 @@ class ForensicPipeline:
         if self._commfor:
             self._commfor._ensure_models()
             logger.info("Community Forensics model ready")
+        if self._npr:
+            self._npr._ensure_models()
+            logger.info("NPR model ready")
         if self._clip_ai:
             self._clip_ai._ensure_models()
             logger.info("CLIP AI detection model ready")
@@ -464,6 +474,12 @@ class ForensicPipeline:
                 group1_tasks.append((
                     self._clip_ai.MODULE_NAME,
                     asyncio.ensure_future(self._clip_ai.analyze_image(file_bytes, filename)),
+                ))
+            # NPR upsampling artifact detection — 1.44M params, ~10ms, CPU-trivial
+            if self._npr and self._npr.MODULE_NAME not in skip:
+                group1_tasks.append((
+                    self._npr.MODULE_NAME,
+                    asyncio.ensure_future(self._npr.analyze_image(file_bytes, filename)),
                 ))
             # PRNU sensor noise — pure numpy/scipy, CPU-lightweight
             if self._prnu and self._prnu.MODULE_NAME not in skip:

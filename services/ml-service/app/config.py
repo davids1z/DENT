@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Community Forensics AI detection (CVPR 2025, ViT-Small, 4803 generators)
     forensics_community_forensics_enabled: bool = True
 
+    # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
+    forensics_npr_enabled: bool = True
+
     # CLIP AI detection (UniversalFakeDetect style)
     forensics_clip_ai_enabled: bool = True
     forensics_clip_ai_model: str = "openai/clip-vit-large-patch14"
