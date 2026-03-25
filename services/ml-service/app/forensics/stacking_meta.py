@@ -34,6 +34,7 @@ MODULE_ORDER: list[str] = [
     "community_forensics_detection",
     "npr_ai_detection",
     "efficientnet_ai_detection",
+    "safe_ai_detection",
     # Authenticity / sensor
     "prnu_detection",
     # Tampering detection

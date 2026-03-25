@@ -37,10 +37,10 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "npr_ai_detection": 0.08,
     "mesorch_detection": 0.10,
     "efficientnet_ai_detection": 0.10,
+    "safe_ai_detection": 0.12,
 }
 
 # Module names that are dedicated AI / synthetic-content detectors
-# (exported for use by analyze.py enforcement logic)
 _AI_DETECTOR_MODULES = frozenset({
     "ai_generation_detection",
     "clip_ai_detection",
@@ -49,18 +49,20 @@ _AI_DETECTOR_MODULES = frozenset({
     "community_forensics_detection",
     "npr_ai_detection",
     "efficientnet_ai_detection",
+    "safe_ai_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
-# CommFor: best discriminator, highest weight
-# EfficientNet-B4: fast CNN (0.5-1s), 98.59% accuracy, replaces Swin as primary
-# Swin: still available but disabled for speed (37.8% FP, 35s)
+# SAFE: KDD 2025, pixel correlations, detects ALL generators incl Flux/DALL-E 3
+# CommFor: CVPR 2025, trained on 4803 generators
+# EfficientNet: fast CNN, 98.59% on older generators
 # CLIP: trained probe F1=0.816
 _CORE_AI_WEIGHTS = {
-    "community_forensics_detection": 0.40,
-    "efficientnet_ai_detection": 0.25,
+    "safe_ai_detection": 0.30,
+    "community_forensics_detection": 0.25,
+    "efficientnet_ai_detection": 0.15,
     "clip_ai_detection": 0.15,
-    "ai_generation_detection": 0.10,
+    "ai_generation_detection": 0.05,
     "npr_ai_detection": 0.05,
     "vae_reconstruction": 0.05,
 }

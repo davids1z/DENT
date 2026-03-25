@@ -42,6 +42,7 @@ def get_pipeline() -> ForensicPipeline:
             document_signature_verification=settings.forensics_document_signature_verification,
             aigen_enabled=settings.forensics_aigen_enabled,
             efficientnet_ai_enabled=settings.forensics_efficientnet_ai_enabled,
+            safe_ai_enabled=settings.forensics_safe_ai_enabled,
             spectral_enabled=settings.forensics_spectral_enabled,
             office_enabled=settings.forensics_office_enabled,
             community_forensics_enabled=settings.forensics_community_forensics_enabled,
