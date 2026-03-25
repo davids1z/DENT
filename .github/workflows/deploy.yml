@@ -5,7 +5,28 @@ on:
     branches: [main]
 
 jobs:
+  test-ml:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: services/ml-service/requirements.txt
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio pydantic pydantic-settings numpy pillow scipy PyWavelets
+
+      - name: Run core tests (fusion + stacking_meta)
+        run: pytest tests/test_fusion.py tests/test_stacking_meta.py -v
+
   deploy:
+    needs: test-ml
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH

@@ -1,0 +1,41 @@
+name: ML Service Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/ml-service/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/ml-service/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: services/ml-service/requirements.txt
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-asyncio pydantic pydantic-settings numpy pillow scipy PyWavelets
+
+      - name: Run fusion and stacking_meta tests
+        run: pytest tests/test_fusion.py tests/test_stacking_meta.py -v
+
+      - name: Run tests with torch (full suite)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers timm safetensors diffusers
+          pip install -r requirements.txt
+          pytest tests/ -v --tb=short
