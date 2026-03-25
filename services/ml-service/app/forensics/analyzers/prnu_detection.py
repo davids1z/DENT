@@ -76,42 +76,47 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
             #    spectral characteristics
             hf_structure = self._hf_noise_structure(noise_r)
 
-            # Compute composite score
-            # Low PRNU energy + low cross-correlation + high uniformity = AI
-            # High PRNU energy + high cross-correlation + low uniformity = real camera
-            ai_indicators = 0.0
+            # Composite AI probability score.
+            # With wavelet denoising, PRNU energy is much lower and cleaner
+            # than with a mean filter. Thresholds calibrated for db8 level-4.
+            #
+            # After wavelet denoising:
+            #   Real photos: energy ~0.0005-0.003, cross-corr ~0.01-0.30
+            #   AI images: energy ~0.0001-0.0005, cross-corr ~-0.05-0.05
+            #   JPEG compression reduces both but preserves relative ordering.
+            score = 0.0
 
-            # PRNU energy: real cameras ~0.003-0.01, AI ~0.0001-0.001
-            if avg_prnu_energy < 0.0008:
-                ai_indicators += 0.35  # Very low — strong AI indicator
-            elif avg_prnu_energy < 0.0015:
-                ai_indicators += 0.20  # Low — moderate AI indicator
-            elif avg_prnu_energy < 0.003:
-                ai_indicators += 0.05  # Borderline
-            else:
-                ai_indicators -= 0.10  # Strong camera signature
+            # PRNU energy (wavelet-denoised): primary signal
+            if avg_prnu_energy < 0.0002:
+                score += 0.35  # Very low — strong AI indicator
+            elif avg_prnu_energy < 0.0005:
+                score += 0.20  # Low — moderate AI indicator
+            elif avg_prnu_energy < 0.001:
+                score += 0.05  # Borderline
+            elif avg_prnu_energy > 0.002:
+                score -= 0.15  # Clear camera signature
 
-            # Cross-channel correlation: real ~0.3-0.7, AI ~0.0-0.15
-            if avg_cross_corr < 0.08:
-                ai_indicators += 0.25  # Very low — strong AI indicator
-            elif avg_cross_corr < 0.15:
-                ai_indicators += 0.15  # Low — moderate AI indicator
-            elif avg_cross_corr > 0.35:
-                ai_indicators -= 0.10  # Strong camera signature
+            # Cross-channel correlation: secondary signal
+            if avg_cross_corr < 0.02:
+                score += 0.25  # Uncorrelated — AI indicator
+            elif avg_cross_corr < 0.08:
+                score += 0.10  # Weakly correlated
+            elif avg_cross_corr > 0.15:
+                score -= 0.10  # Correlated — camera signature
 
-            # Spatial variance: real sensors have position-dependent noise
-            if spatial_var < 0.15:
-                ai_indicators += 0.15  # Too uniform — AI indicator
-            elif spatial_var > 0.40:
-                ai_indicators -= 0.05  # Position-dependent — camera
+            # Spatial variance: tertiary signal
+            if spatial_var < 0.10:
+                score += 0.10  # Too uniform — AI noise
+            elif spatial_var > 0.30:
+                score -= 0.05  # Position-dependent — sensor
 
-            # High-frequency structure
-            if hf_structure < 0.20:
-                ai_indicators += 0.10  # Lacks structured HF noise
-            elif hf_structure > 0.50:
-                ai_indicators -= 0.05  # Has structured HF noise (sensor)
+            # HF noise structure
+            if hf_structure < 0.15:
+                score += 0.10  # Flat spectrum — AI
+            elif hf_structure > 0.40:
+                score -= 0.05  # Structured — sensor
 
-            score = max(0.0, min(1.0, ai_indicators))
+            score = max(0.0, min(1.0, score))
 
             evidence = {
                 "prnu_energy_avg": round(avg_prnu_energy, 6),
@@ -156,18 +161,17 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
                     confidence=0.60 + score * 0.15,
                     evidence=evidence,
                 ))
-            elif avg_prnu_energy > 0.004 and avg_cross_corr > 0.30:
+            elif avg_prnu_energy > 0.002 and avg_cross_corr > 0.15 and score <= 0.0:
                 findings.append(AnalyzerFinding(
                     code="PRNU_AUTHENTIC_SENSOR",
                     title="Autentican senzorski otisak",
                     description=(
-                        f"PRNU analiza detektira jak i konzistentan senzorski "
-                        f"otisak fizicke kamere (energija: {avg_prnu_energy:.5f}, "
-                        f"korelacija: {avg_cross_corr:.3f}). Ovo ukazuje na "
-                        f"autenticnu fotografiju snimljenu pravom kamerom."
+                        f"PRNU analiza detektira senzorski otisak fizicke kamere "
+                        f"(energija: {avg_prnu_energy:.5f}, korelacija: "
+                        f"{avg_cross_corr:.3f})."
                     ),
-                    risk_score=-0.10,  # Negative = reduces risk
-                    confidence=min(0.90, 0.65 + avg_cross_corr * 0.30),
+                    risk_score=-0.10,
+                    confidence=min(0.85, 0.60 + avg_cross_corr * 0.50),
                     evidence=evidence,
                 ))
 
@@ -177,7 +181,10 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
             return self._make_result([], elapsed, error=str(e))
 
         elapsed = int((time.monotonic() - start) * 1000)
-        return self._make_result(findings, elapsed)
+        result = self._make_result(findings, elapsed)
+        # Raw score passthrough for meta-learner (even when no findings)
+        result.risk_score = round(score, 4)
+        return result
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
@@ -189,16 +196,47 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
     @staticmethod
     def _extract_noise(channel: np.ndarray) -> np.ndarray:
         """
-        Extract noise residual using a simplified Wiener filter.
-        Noise = original - denoised.
-        Uses a local mean filter as a fast denoiser (approximation of BM3D).
-        """
-        from scipy.ndimage import uniform_filter
+        Extract noise residual using wavelet denoising (BayesShrink).
 
-        # Local mean filter with window size 5x5
-        denoised = uniform_filter(channel, size=5)
-        noise = channel - denoised
-        return noise
+        Wavelet denoising removes image structure (edges, textures) far better
+        than a mean filter, leaving only actual sensor noise + random noise.
+        Uses 'db8' wavelet at level 4 with soft thresholding.
+        """
+        try:
+            import pywt
+
+            # Wavelet decomposition (Daubechies-8, 4 levels)
+            coeffs = pywt.wavedec2(channel, "db8", level=4)
+
+            # Estimate noise sigma from finest detail coefficients (MAD estimator)
+            detail_coeffs = coeffs[-1]  # (cH, cV, cD) at finest level
+            # Use diagonal detail for sigma estimation (least image content)
+            sigma = np.median(np.abs(detail_coeffs[2])) / 0.6745
+
+            # BayesShrink: threshold = sigma^2 / sigma_signal
+            # Apply soft thresholding to all detail coefficients
+            denoised_coeffs = [coeffs[0]]  # Keep approximation unchanged
+            for detail_level in coeffs[1:]:
+                thresholded = []
+                for detail in detail_level:
+                    sigma_detail = max(np.std(detail), 1e-8)
+                    sigma_signal = max(np.sqrt(max(sigma_detail**2 - sigma**2, 0)), 1e-8)
+                    threshold = sigma**2 / sigma_signal
+                    thresholded.append(pywt.threshold(detail, threshold, mode="soft"))
+                denoised_coeffs.append(tuple(thresholded))
+
+            denoised = pywt.waverec2(denoised_coeffs, "db8")
+
+            # Match dimensions (wavelet transform may pad)
+            denoised = denoised[: channel.shape[0], : channel.shape[1]]
+
+            return channel - denoised
+
+        except ImportError:
+            # Fallback to Wiener filter if PyWavelets not available
+            from scipy.signal import wiener
+            denoised = wiener(channel, mysize=5)
+            return channel - denoised
 
     @staticmethod
     def _prnu_energy(noise: np.ndarray) -> float:
