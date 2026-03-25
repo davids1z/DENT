@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .analyzers.ai_generation import AiGenerationAnalyzer
 from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
+from .analyzers.dinov2_ai_detection import DINOv2AiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
 from .analyzers.efficientnet_ai_detection import EfficientNetAiDetectionAnalyzer
 from .analyzers.safe_ai_detection import SAFEAiDetectionAnalyzer
@@ -51,6 +52,7 @@ class ForensicPipeline:
         aigen_enabled: bool = True,
         efficientnet_ai_enabled: bool = True,
         safe_ai_enabled: bool = True,
+        dinov2_ai_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
@@ -112,6 +114,9 @@ class ForensicPipeline:
         )
         self._safe: SAFEAiDetectionAnalyzer | None = (
             SAFEAiDetectionAnalyzer() if safe_ai_enabled else None
+        )
+        self._dinov2: DINOv2AiDetectionAnalyzer | None = (
+            DINOv2AiDetectionAnalyzer() if dinov2_ai_enabled else None
         )
         self._commfor: CommunityForensicsAnalyzer | None = (
             CommunityForensicsAnalyzer() if community_forensics_enabled else None
@@ -316,6 +321,8 @@ class ForensicPipeline:
             count += 1
         if self._safe and self._safe.MODULE_NAME not in skip:
             count += 1
+        if self._dinov2 and self._dinov2.MODULE_NAME not in skip:
+            count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
             count += 1
         if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
@@ -341,6 +348,9 @@ class ForensicPipeline:
         if self._safe:
             self._safe._ensure_models()
             logger.info("SAFE AI detector ready")
+        if self._dinov2:
+            self._dinov2._ensure_models()
+            logger.info("DINOv2 AI detector ready")
         if self._commfor:
             self._commfor._ensure_models()
             logger.info("Community Forensics model ready")
@@ -503,6 +513,8 @@ class ForensicPipeline:
                 all_analyzers.append((self._efficientnet.MODULE_NAME, self._efficientnet))
             if self._safe and self._safe.MODULE_NAME not in skip:
                 all_analyzers.append((self._safe.MODULE_NAME, self._safe))
+            if self._dinov2 and self._dinov2.MODULE_NAME not in skip:
+                all_analyzers.append((self._dinov2.MODULE_NAME, self._dinov2))
             if self._commfor and self._commfor.MODULE_NAME not in skip:
                 all_analyzers.append((self._commfor.MODULE_NAME, self._commfor))
             if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:

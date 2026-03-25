@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # SAFE AI detection (KDD 2025, pixel correlation, 1.44M params, <15ms CPU)
     forensics_safe_ai_enabled: bool = True
 
+    # DINOv2 AI detection (linear probe on frozen DINOv2-base, 97.2% on Flux)
+    forensics_dinov2_ai_enabled: bool = True
+    forensics_dinov2_ai_model: str = "facebook/dinov2-base"
+
     # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
     forensics_npr_enabled: bool = True
 

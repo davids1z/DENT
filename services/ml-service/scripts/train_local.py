@@ -16,6 +16,7 @@ MODULE_ORDER = [
     "npr_ai_detection",
     "efficientnet_ai_detection",
     "safe_ai_detection",
+    "dinov2_ai_detection",
     "prnu_detection",
     "deep_modification_detection",
     "mesorch_detection",
