@@ -83,7 +83,16 @@ def main():
 
             inputs = processor(images=img, return_tensors="pt").to(device)
             with torch.no_grad():
-                features = model.get_image_features(**inputs)
+                output = model.get_image_features(**inputs)
+                # Handle both tensor and BaseModelOutputWithPooling
+                if hasattr(output, "pooler_output"):
+                    features = output.pooler_output
+                elif hasattr(output, "last_hidden_state"):
+                    features = output.last_hidden_state[:, 0]
+                elif isinstance(output, torch.Tensor):
+                    features = output
+                else:
+                    features = output[0] if isinstance(output, (tuple, list)) else output
                 features = features / features.norm(dim=-1, keepdim=True)
                 embedding = features.cpu().numpy().flatten()
 
