@@ -216,18 +216,26 @@ def fuse_scores(
     overall = max(ai_combined, tampering, text_ai_score, content_score)
 
     # ── Step 6: Cross-validation AI boost ─────────────────────────────
-    # No single model can boost alone — requires corroboration.
-    # Swin ViT has high false positive rate on authentic JPEG photos.
+    # Only RELIABLE detectors participate in cross-validation.
+    # Swin (65% FP on JPEG), NPR (22% FP), VAE (disabled) are excluded
+    # because they produce too many false agreements with SAFE.
+    _RELIABLE_AI_DETECTORS = {
+        "safe_ai_detection",
+        "dinov2_ai_detection",
+        "community_forensics_detection",
+        "efficientnet_ai_detection",
+        "clip_ai_detection",
+    }
     ai_gen = _get_module(active, "ai_generation_detection")
     commfor = _get_module(active, "community_forensics_detection")
 
-    # Count how many core AI detectors agree at >= 0.50
+    # Count how many RELIABLE core AI detectors agree at >= 0.50
     high_ai_count = sum(
         1 for m in active
-        if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.50
+        if m.module_name in _RELIABLE_AI_DETECTORS and m.risk_score >= 0.50
     )
 
-    # Swin boost ONLY if corroborated by CommFor OR 2+ other detectors
+    # Swin boost ONLY if corroborated by CommFor OR 2+ reliable detectors
     if ai_gen and ai_gen.risk_score >= 0.60:
         commfor_agrees = commfor is not None and commfor.risk_score >= 0.50
         if commfor_agrees or high_ai_count >= 3:
@@ -236,7 +244,7 @@ def fuse_scores(
             # Partial corroboration — moderate boost
             overall = max(overall, ai_gen.risk_score * 0.75)
 
-    # Cross-validation: 2+ core detectors agree → floor at 0.70
+    # Cross-validation: 2+ RELIABLE detectors agree → floor at 0.70
     if high_ai_count >= 2:
         overall = max(overall, 0.70)
 

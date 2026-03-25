@@ -159,6 +159,37 @@ def test_two_tampering_signals():
 # Errored modules should not contribute
 # ---------------------------------------------------------------------------
 
+def test_safe_plus_swin_no_floor():
+    """SAFE FP + Swin FP should NOT trigger cross-validation floor.
+    Swin/NPR are unreliable and excluded from reliable detectors."""
+    modules = [
+        _make_module("safe_ai_detection", 0.55),
+        _make_module("ai_generation_detection", 0.65),  # Swin — unreliable
+        _make_module("npr_ai_detection", 0.55),          # NPR — unreliable
+        _make_module("dinov2_ai_detection", 0.02),        # DINOv2 disagrees → not AI
+        _make_module("clip_ai_detection", 0.0),
+        _make_module("community_forensics_detection", 0.0),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.70, f"SAFE+Swin+NPR without DINOv2 should NOT reach 0.70, got {overall}"
+
+
+def test_safe_plus_dinov2_triggers_floor():
+    """SAFE + DINOv2 agreeing should trigger cross-validation floor."""
+    modules = [
+        _make_module("safe_ai_detection", 0.60),
+        _make_module("dinov2_ai_detection", 0.85),
+        _make_module("ai_generation_detection", 0.0),
+        _make_module("clip_ai_detection", 0.0),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall >= 0.70, f"SAFE+DINOv2 should trigger floor, got {overall}"
+
+
+# ---------------------------------------------------------------------------
+# Errored modules should not contribute
+# ---------------------------------------------------------------------------
+
 def test_errored_modules_ignored():
     errored = ModuleResult(
         module_name="safe_ai_detection",
