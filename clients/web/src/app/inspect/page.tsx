@@ -101,7 +101,7 @@ export default function InspectPage() {
         <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 max-w-lg mx-auto">
           <h3 className="font-heading font-semibold text-lg mb-1 text-center">Forenzicka analiza u tijeku</h3>
           <p className="text-sm text-muted mb-6 text-center">
-            10 forenzickih modula provjerava autenticnost, detektira manipulacije i AI-generirani sadrzaj.
+            12 forenzickih modula provjerava autenticnost, detektira manipulacije i AI-generirani sadrzaj.
           </p>
           <ForensicProgress
             steps={forensicProgress.steps}

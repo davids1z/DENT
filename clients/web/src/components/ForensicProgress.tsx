@@ -10,44 +10,41 @@ export interface ForensicStep {
 }
 
 const DEFAULT_STEPS: ForensicStep[] = [
+  // Group 1: All modules run in parallel (~8s total)
   { id: "metadata_analysis", label: "Metadata analiza", status: "pending" },
   { id: "modification_detection", label: "ELA detekcija modifikacija", status: "pending" },
-  { id: "optical_forensics", label: "Opticka forenzika", status: "pending" },
-  { id: "spectral_forensics", label: "Spektralna forenzika", status: "pending" },
+  { id: "safe_ai_detection", label: "SAFE AI detekcija", status: "pending" },
+  { id: "dinov2_ai_detection", label: "DINOv2 AI detekcija", status: "pending" },
+  { id: "community_forensics_detection", label: "Community Forensics", status: "pending" },
+  { id: "efficientnet_ai_detection", label: "EfficientNet AI detekcija", status: "pending" },
   { id: "clip_ai_detection", label: "CLIP AI detekcija", status: "pending" },
+  { id: "mesorch_detection", label: "Mesorch detekcija manipulacija", status: "pending" },
   { id: "prnu_detection", label: "PRNU senzorska analiza", status: "pending" },
-  { id: "deep_modification_detection", label: "CNN duboka analiza", status: "pending" },
-  { id: "semantic_forensics", label: "Semanticka analiza", status: "pending" },
-  { id: "ai_generation_detection", label: "AI generiranje detekcija", status: "pending" },
-  { id: "vae_reconstruction", label: "VAE rekonstrukcija", status: "pending" },
-  { id: "text_ai_detection", label: "AI tekst detekcija", status: "pending" },
-  { id: "gemini", label: "Semantička analiza", status: "pending" },
+  { id: "npr_ai_detection", label: "NPR detekcija artefakata", status: "pending" },
+  // Post-processing
   { id: "agent", label: "Agent evaluacija", status: "pending" },
   { id: "evidence", label: "Digitalni pecat", status: "pending" },
 ];
 
 /**
  * Approximate durations (seconds) per step — used for timed progress simulation.
- * Tuned for CPU-only server which is slower than GPU.
- * Group 1 (parallel on backend): metadata, ELA, optical, spectral finish fast.
- * Group 2 (sequential): CNN, semantic, AI gen are heavy on CPU.
- * Then: Gemini (API call), Agent (LLM call), Evidence (hashing).
+ * All forensic modules run in PARALLEL (~8s), but we show them sequentially
+ * for visual feedback. Durations are spread to fill the ~8s parallel window.
+ * Agent + evidence run after forensics complete.
  */
 const STEP_DURATIONS: Record<string, number> = {
-  metadata_analysis: 2,
-  modification_detection: 3,
-  optical_forensics: 2,
-  spectral_forensics: 4,
-  clip_ai_detection: 4,
-  prnu_detection: 3,
-  deep_modification_detection: 12,
-  semantic_forensics: 8,
-  ai_generation_detection: 12,
-  vae_reconstruction: 6,
-  text_ai_detection: 5,
-  gemini: 18,
-  agent: 12,
-  evidence: 5,
+  metadata_analysis: 1,
+  modification_detection: 1,
+  safe_ai_detection: 1,
+  dinov2_ai_detection: 1,
+  community_forensics_detection: 1,
+  efficientnet_ai_detection: 1,
+  clip_ai_detection: 1,
+  mesorch_detection: 1,
+  prnu_detection: 1,
+  npr_ai_detection: 1,
+  agent: 8,
+  evidence: 3,
 };
 
 /** The last step never auto-completes — it stays spinning until real API returns. */
