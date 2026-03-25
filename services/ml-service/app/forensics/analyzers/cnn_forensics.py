@@ -201,8 +201,13 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
             elapsed = int((time.monotonic() - start) * 1000)
             return self._make_result([], elapsed, error=str(e))
 
-        elapsed = int((time.monotonic() - start) * 1000)
-        return self._make_result(findings, elapsed)
+        # Raw score passthrough for meta-learner calibration.
+        # Even when no findings emit (below threshold), pass the raw
+        # TruFor signal so the meta-learner can learn from it.
+        result = self._make_result(findings, int((time.monotonic() - start) * 1000))
+        if hasattr(self, "_last_trufor_combined_risk"):
+            result.risk_score = round(self._last_trufor_combined_risk, 4)
+        return result
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
@@ -389,57 +394,64 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
                 confidence_map = confidence_map / max(confidence_map.max(), 1e-6)
             confidence_map = np.clip(confidence_map, 0, 1)
 
-            # Top-region analysis
+            # Top-region analysis (top 5% of tamper map pixels)
             flat = confidence_map.flatten()
             top_5_pct = np.sort(flat)[-max(1, len(flat) // 20) :]
             top_risk = float(np.mean(top_5_pct))
+
+            # Store raw combined risk for meta-learner passthrough
+            tamper_mean_raw = float(np.mean(tamper_map))
+            self._last_trufor_combined_risk = max(top_risk * 0.6, integrity_score) * 0.5 + tamper_mean_raw * 0.5
 
             # Generate heatmap if not already set by CAT-Net
             if self._cnn_heatmap_b64 is None:
                 self._cnn_heatmap_b64 = self._generate_cnn_heatmap(confidence_map)
 
-            # TruFor integrity_score: higher = more likely tampered
-            # Ranges: authentic ~0.45-0.55, splice ~0.40-0.50, AI ~0.15-0.25
-            # Use tamper_map mean as additional signal
+            # TruFor output ranges (PhotoHolmes, CPU):
+            #   integrity_score: 0.05-0.20 (higher = more tampered)
+            #   tamper_map mean: 0.01-0.20
+            #   top_risk (top 5% pixels): 0.10-0.80
+            # Use top-region analysis as primary signal — tampered regions
+            # show high localized values even when mean is low.
             tamper_mean = float(np.mean(tamper_map))
-            combined_risk = integrity_score * 0.5 + tamper_mean * 0.5
+            combined_risk = max(top_risk * 0.6, integrity_score) * 0.5 + tamper_mean * 0.5
 
-            if combined_risk > 0.45:
+            if top_risk > 0.40:
                 findings.append(
                     AnalyzerFinding(
                         code="CNN_TRUFOR_TAMPERING",
                         title="TruFor: otkrivena manipulacija transformerskom analizom",
                         description=(
                             f"TruFor transformerska mreza detektirala je modificirane "
-                            f"regije (rizik: {combined_risk:.0%}). "
-                            "Kombinacija CNN ekstrakcije znacajki i mehanizma paznje "
-                            "ukazuje na znacajnu manipulaciju slike."
+                            f"regije (top 5%: {top_risk:.0%}, mean: {tamper_mean:.0%}). "
+                            "Lokalizirana manipulacija detektirana u specificnim "
+                            "dijelovima slike."
                         ),
-                        risk_score=min(0.75, combined_risk),
-                        confidence=0.80,
+                        risk_score=min(0.85, top_risk),
+                        confidence=0.75,
                         evidence={
                             "integrity_score": round(integrity_score, 4),
                             "tamper_map_mean": round(tamper_mean, 4),
-                            "combined_risk": round(combined_risk, 4),
+                            "top_risk": round(top_risk, 4),
                         },
                     )
                 )
-            elif combined_risk > 0.30:
+            elif top_risk > 0.25:
                 findings.append(
                     AnalyzerFinding(
                         code="CNN_TRUFOR_SUSPICIOUS",
                         title="TruFor: sumnjiva podrucja u slici",
                         description=(
                             f"TruFor pokazuje umjeren rizik manipulacije "
-                            f"({combined_risk:.0%}). Moguca djelomicna "
+                            f"(top 5%: {top_risk:.0%}). Moguca djelomicna "
                             "modifikacija pojedinih regija."
                         ),
-                        risk_score=combined_risk * 0.7,
+                        risk_score=top_risk * 0.7,
                         confidence=0.60,
                         evidence={
                             "integrity_score": round(integrity_score, 4),
                             "tamper_map_mean": round(tamper_mean, 4),
-                            "combined_risk": round(combined_risk, 4),
+                            "top_risk": round(top_risk, 4),
                         },
                     )
                 )

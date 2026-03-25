@@ -135,6 +135,33 @@ async def main():
         except Exception as e:
             print(f"WARNING: Mesorch download failed: {e}")
 
+    # TruFor weights (~280MB, from GRIP/University of Naples)
+    trufor_dir = models_dir / "cnn" / "trufor"
+    trufor_dir.mkdir(parents=True, exist_ok=True)
+    trufor_path = trufor_dir / "trufor.pth.tar"
+    if not trufor_path.exists():
+        print("Downloading TruFor weights (~280MB)...")
+        try:
+            import urllib.request
+            import zipfile
+            import shutil
+            urllib.request.urlretrieve(
+                "https://www.grip.unina.it/download/prog/TruFor/TruFor_weights.zip",
+                "/tmp/trufor_weights.zip",
+            )
+            with zipfile.ZipFile("/tmp/trufor_weights.zip") as z:
+                z.extractall("/tmp/trufor_extract")
+            for root, dirs, files in os.walk("/tmp/trufor_extract"):
+                for f in files:
+                    if f.endswith((".pth.tar", ".pth")):
+                        shutil.copy(os.path.join(root, f), str(trufor_path))
+                        break
+            shutil.rmtree("/tmp/trufor_extract", ignore_errors=True)
+            os.remove("/tmp/trufor_weights.zip")
+            print(f"TruFor weights saved to {trufor_path}")
+        except Exception as e:
+            print(f"WARNING: TruFor download failed: {e}")
+
     from app.forensics.pipeline import ForensicPipeline
 
     print("Initializing forensic pipeline (direct, no HTTP)...")
