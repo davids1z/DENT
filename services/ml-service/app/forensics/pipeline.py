@@ -2,6 +2,7 @@ import asyncio
 import io
 import logging
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 
 from .analyzers.ai_generation import AiGenerationAnalyzer
 from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
@@ -59,6 +60,9 @@ class ForensicPipeline:
         embedded_image_forensics_enabled: bool = True,
     ):
         self._embedded_img_enabled = embedded_image_forensics_enabled
+        # Thread pool for CPU-bound modules — PyTorch releases GIL during
+        # tensor ops, so threads give real parallelism on multi-core CPUs.
+        self._executor = ThreadPoolExecutor(max_workers=4)
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
             ela_quality=ela_quality, ela_scale=ela_scale
@@ -445,55 +449,58 @@ class ForensicPipeline:
                     _report_progress(mod_name)
 
         else:  # image (default)
-            # ── Group 1: Lightweight modules — run in PARALLEL ────────
-            # These are CPU-light/medium and independent of each other.
-            group1_tasks: list[tuple[str, asyncio.Task]] = []
+            # ── ALL modules in PARALLEL via thread pool ────────────────
+            # PyTorch releases GIL during tensor ops, so ThreadPoolExecutor
+            # gives real CPU parallelism on multi-core servers.
+            # Total time ≈ max(slowest module) instead of sum(all modules).
+            all_analyzers: list[tuple[str, object]] = []
 
+            # Lightweight modules
             if self._metadata.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._metadata.MODULE_NAME,
-                    asyncio.ensure_future(self._metadata.analyze_image(file_bytes, filename)),
-                ))
+                all_analyzers.append((self._metadata.MODULE_NAME, self._metadata))
             if self._modification.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._modification.MODULE_NAME,
-                    asyncio.ensure_future(self._modification.analyze_image(file_bytes, filename)),
-                ))
+                all_analyzers.append((self._modification.MODULE_NAME, self._modification))
             if self._optical and self._optical.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._optical.MODULE_NAME,
-                    asyncio.ensure_future(self._optical.analyze_image(file_bytes, filename)),
-                ))
+                all_analyzers.append((self._optical.MODULE_NAME, self._optical))
             if self._spectral and self._spectral.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._spectral.MODULE_NAME,
-                    asyncio.ensure_future(self._spectral.analyze_image(file_bytes, filename)),
-                ))
-            # CLIP AI detection — lightweight forward pass, can run in parallel
+                all_analyzers.append((self._spectral.MODULE_NAME, self._spectral))
             if self._clip_ai and self._clip_ai.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._clip_ai.MODULE_NAME,
-                    asyncio.ensure_future(self._clip_ai.analyze_image(file_bytes, filename)),
-                ))
-            # NPR upsampling artifact detection — 1.44M params, ~10ms, CPU-trivial
+                all_analyzers.append((self._clip_ai.MODULE_NAME, self._clip_ai))
             if self._npr and self._npr.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._npr.MODULE_NAME,
-                    asyncio.ensure_future(self._npr.analyze_image(file_bytes, filename)),
-                ))
-            # PRNU sensor noise — pure numpy/scipy, CPU-lightweight
+                all_analyzers.append((self._npr.MODULE_NAME, self._npr))
             if self._prnu and self._prnu.MODULE_NAME not in skip:
-                group1_tasks.append((
-                    self._prnu.MODULE_NAME,
-                    asyncio.ensure_future(self._prnu.analyze_image(file_bytes, filename)),
-                ))
+                all_analyzers.append((self._prnu.MODULE_NAME, self._prnu))
+            # Heavy ML modules (previously Group 2 — sequential)
+            if self._cnn and self._cnn.MODULE_NAME not in skip:
+                all_analyzers.append((self._cnn.MODULE_NAME, self._cnn))
+            if self._mesorch and self._mesorch.MODULE_NAME not in skip:
+                all_analyzers.append((self._mesorch.MODULE_NAME, self._mesorch))
+            if self._semantic and self._semantic.MODULE_NAME not in skip:
+                all_analyzers.append((self._semantic.MODULE_NAME, self._semantic))
+            if self._aigen and self._aigen.MODULE_NAME not in skip:
+                all_analyzers.append((self._aigen.MODULE_NAME, self._aigen))
+            if self._commfor and self._commfor.MODULE_NAME not in skip:
+                all_analyzers.append((self._commfor.MODULE_NAME, self._commfor))
+            if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
+                all_analyzers.append((self._vae_recon.MODULE_NAME, self._vae_recon))
 
-            # Await all Group 1 tasks concurrently
-            if group1_tasks:
-                task_objects = [t for _, t in group1_tasks]
-                results = await asyncio.gather(*task_objects, return_exceptions=True)
+            if all_analyzers:
+                loop = asyncio.get_event_loop()
 
-                for (mod_name, _task), result in zip(group1_tasks, results):
+                async def _run_module(name: str, analyzer) -> tuple[str, ModuleResult | Exception]:
+                    try:
+                        result = await loop.run_in_executor(
+                            self._executor,
+                            lambda: asyncio.run(analyzer.analyze_image(file_bytes, filename)),
+                        )
+                        return name, result
+                    except Exception as e:
+                        return name, e
+
+                tasks = [_run_module(name, analyzer) for name, analyzer in all_analyzers]
+                results = await asyncio.gather(*tasks)
+
+                for mod_name, result in results:
                     if isinstance(result, Exception):
                         logger.error("Module %s failed: %s", mod_name, result)
                         modules.append(ModuleResult(
@@ -508,46 +515,9 @@ class ForensicPipeline:
                     _report_progress(mod_name)
 
                 logger.info(
-                    "Group 1 (parallel) complete: %d modules in parallel",
-                    len(group1_tasks),
+                    "All %d modules complete (parallel thread pool)",
+                    len(all_analyzers),
                 )
-
-            # ── Group 2: Heavy ML modules — run SEQUENTIALLY ─────────
-            # These consume significant memory; running them in parallel
-            # would risk OOM on the CPU-only server.
-            if self._cnn and self._cnn.MODULE_NAME not in skip:
-                result = await self._cnn.analyze_image(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._cnn.MODULE_NAME)
-
-            # Mesorch — dual-backbone DCT tampering, 2-5s on CPU
-            if self._mesorch and self._mesorch.MODULE_NAME not in skip:
-                result = await self._mesorch.analyze_image(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._mesorch.MODULE_NAME)
-
-            if self._semantic and self._semantic.MODULE_NAME not in skip:
-                result = await self._semantic.analyze_image(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._semantic.MODULE_NAME)
-
-            # AI generation detection — heaviest models, run last
-            if self._aigen and self._aigen.MODULE_NAME not in skip:
-                result = await self._aigen.analyze_image(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._aigen.MODULE_NAME)
-
-            # Community Forensics — ViT-Small, 87 MB, 0.5-2s on CPU
-            if self._commfor and self._commfor.MODULE_NAME not in skip:
-                result = await self._commfor.analyze_image(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._commfor.MODULE_NAME)
-
-            # VAE reconstruction error — requires SD VAE (~2GB RAM)
-            if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
-                result = await self._vae_recon.analyze_image(file_bytes, filename)
-                modules.append(result)
-                _report_progress(self._vae_recon.MODULE_NAME)
 
         overall_score, overall_score_100, overall_level, verdict_probs = fuse_scores(modules)
         total_time = sum(m.processing_time_ms for m in modules)
