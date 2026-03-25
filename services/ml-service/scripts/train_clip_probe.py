@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--output", default="models/clip_ai/probe_weights.npz")
     parser.add_argument("--region", default="eu-central-1")
     parser.add_argument("--max-images", type=int, default=0, help="Limit images (0=all)")
+    parser.add_argument("--s3-prefix", default="processed", help="S3 prefix for images/labels")
     args = parser.parse_args()
 
     import torch
@@ -56,7 +57,8 @@ def main():
 
     # Load labels from S3
     s3 = boto3.client("s3", region_name=args.region)
-    resp = s3.get_object(Bucket=args.bucket, Key=f"{S3_PREFIX}/labels.csv")
+    s3_prefix = args.s3_prefix
+    resp = s3.get_object(Bucket=args.bucket, Key=f"{s3_prefix}/labels.csv")
     content = resp["Body"].read().decode("utf-8")
     labels = {}
     for row in csv.DictReader(io.StringIO(content)):
@@ -77,7 +79,7 @@ def main():
 
     for filename, gt in tqdm(items, desc="Extracting CLIP embeddings", total=len(items)):
         try:
-            resp = s3.get_object(Bucket=args.bucket, Key=f"{S3_PREFIX}/{filename}")
+            resp = s3.get_object(Bucket=args.bucket, Key=f"{s3_prefix}/{filename}")
             image_bytes = resp["Body"].read()
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
