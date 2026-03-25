@@ -126,9 +126,10 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         if os.path.exists(probe_path):
             try:
                 data = np.load(probe_path)
+                bias_val = data["bias"]
                 self._probe = {
                     "weights": data["weights"],
-                    "bias": float(data["bias"]),
+                    "bias": float(bias_val.flat[0]) if hasattr(bias_val, "flat") else float(bias_val),
                 }
                 logger.info("CLIP probe loaded from %s", probe_path)
                 return
@@ -213,10 +214,9 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
             embedding_normed = embedding
 
         if self._probe is not None and "weights" in self._probe:
-            # Linear probe: sigmoid(w . x + b)
-            calibrated_bias = float(self._probe["bias"]) - 0.5
+            # Linear probe: sigmoid(w . x + b) — trained on calibration data
             logit = float(np.dot(self._probe["weights"], embedding_normed)
-                          + calibrated_bias)
+                          + float(self._probe["bias"]))
             score = 1.0 / (1.0 + np.exp(-logit))
         else:
             score = self._heuristic_score(embedding, embedding_normed, norm)
