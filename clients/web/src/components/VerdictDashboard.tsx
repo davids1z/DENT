@@ -313,8 +313,8 @@ export function VerdictDashboard({
         </div>
       )}
 
-      {/* Verdict Badge */}
-      <div
+      {/* Verdict Badge — hidden when decision outcome already shown (avoids contradictions) */}
+      {!decisionOutcome && <div
         className={cn(
           "flex justify-center mb-6 transition-opacity duration-500",
           animated ? "opacity-100" : "opacity-0"
@@ -332,7 +332,7 @@ export function VerdictDashboard({
           {(badge.icon === "warning" || badge.icon === "alert") && <WarningIcon />}
           {badge.label}
         </div>
-      </div>
+      </div>}
 
       <div className="flex flex-col lg:flex-row items-center gap-10">
         {/* Risk Gauge */}

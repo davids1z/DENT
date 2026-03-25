@@ -86,14 +86,15 @@ public static class DecisionEngine
             EvaluationOrder = 5
         });
 
-        // Rule 6: Multiple findings
+        // Rule 6: Multiple findings (only relevant when risk is elevated)
+        var findingsWithRisk = findingCount > 3 && hasMediumFraud;
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Vise nalaza",
-            RuleDescription = "Detektirano vise od 3 sumnjiva nalaza",
-            Triggered = findingCount > 3,
-            ThresholdValue = "3 nalaza",
-            ActualValue = $"{findingCount} nalaza",
+            RuleName = "Vise nalaza uz poviseni rizik",
+            RuleDescription = "Detektirano vise od 3 sumnjiva nalaza uz forenzicki rizik >= 15%",
+            Triggered = findingsWithRisk,
+            ThresholdValue = "3 nalaza + >= 15% rizik",
+            ActualValue = $"{findingCount} nalaza, rizik {fraudRiskScore:P0}",
             EvaluationOrder = 6
         });
 
@@ -161,7 +162,9 @@ public static class DecisionEngine
             if (crossValidated) reasons.Add($"cross-validacija AI ({aiGenScore:P0}) + spektral ({spectralScore:P0})");
             reason = $"Sumnja na krivotvorinu: {string.Join(", ", reasons)}";
         }
-        else if (hasHighFraud || hasSevereFinding || findingCount > 3
+        // findingCount only triggers review when risk is elevated (>= 15%).
+        // Low-risk images with many findings = false positives from noisy modules.
+        else if (hasHighFraud || hasSevereFinding || findingsWithRisk
             || uploadWithRisk || cnnScore >= 0.50)
         {
             outcome = "HumanReview";
