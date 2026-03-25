@@ -50,15 +50,18 @@ _AI_DETECTOR_MODULES = frozenset({
 })
 
 # Core AI detection modules — only these determine AI generation score
-# Community Forensics (CVPR 2025, 4803 generators) = generator fingerprints
-# NPR (CVPR 2024, 92.2% accuracy) = upsampling artifacts (complementary signal)
-# Swin ensemble = general CNN features (prone to FP, lower weight)
+# Weights based on calibration analysis (2007 images):
+#   CommFor: best discriminator (auth 0.04 vs AI 0.15), highest weight
+#   Swin: decent but 37.8% FP on authentic cars, moderate weight
+#   CLIP: constant ~0.15 output (no trained probe yet), minimal weight
+#   NPR: JPEG destroys upsampling signal, bimodal random, minimal weight
+#   VAE: DIRE hypothesis fails for modern generators, minimal weight
 _CORE_AI_WEIGHTS = {
-    "community_forensics_detection": 0.30,
-    "npr_ai_detection": 0.25,
-    "ai_generation_detection": 0.20,
-    "clip_ai_detection": 0.15,
-    "vae_reconstruction": 0.10,
+    "community_forensics_detection": 0.45,
+    "ai_generation_detection": 0.35,
+    "npr_ai_detection": 0.08,
+    "clip_ai_detection": 0.07,
+    "vae_reconstruction": 0.05,
 }
 
 
@@ -110,13 +113,21 @@ def fuse_scores(
         verdict_probs = meta_learner.predict_proba(modules)
 
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
-    # Trained classifiers (Swin, CLIP, VAE) are the primary decision makers.
+    # CommFor is the most reliable AI detector (4.3% FP vs Swin's 37.8%).
+    # When CommFor says "not AI" (< 0.10), dampen Swin to reduce FP.
+    commfor = _get_module(active, "community_forensics_detection")
+    commfor_low = commfor is not None and commfor.risk_score < 0.10
+
     core_weighted = 0.0
     core_total_w = 0.0
     for m in active:
         if m.module_name in _CORE_AI_WEIGHTS:
             w = _CORE_AI_WEIGHTS[m.module_name]
-            core_weighted += m.risk_score * w
+            score = m.risk_score
+            # Dampen Swin when CommFor disagrees (reduces 37.8% FP on authentic)
+            if m.module_name == "ai_generation_detection" and commfor_low and score < 0.80:
+                score *= 0.40
+            core_weighted += score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
@@ -124,9 +135,10 @@ def fuse_scores(
     meta = _get_module(active, "metadata_analysis")
     prnu = _get_module(active, "prnu_detection")
 
-    has_authentic_sensor = prnu is not None and any(
-        f.code == "PRNU_AUTHENTIC_SENSOR" for f in prnu.findings
-    )
+    # PRNU disabled as context signal — 90% of AI images falsely get
+    # PRNU_AUTHENTIC_SENSOR due to crude 5x5 denoiser detecting image
+    # structure instead of sensor noise. Needs wavelet denoiser rewrite.
+    has_authentic_sensor = False
     has_c2pa_valid = meta is not None and any(
         f.code == "META_C2PA_VALID" for f in meta.findings
     )

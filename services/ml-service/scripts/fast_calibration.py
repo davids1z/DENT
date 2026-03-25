@@ -164,8 +164,9 @@ async def main():
     if done:
         print(f"Resume: {len(done)} already done")
 
-    to_process = [(fn, gt) for fn, gt in labels.items() if fn not in done]
+    to_process = sorted([(fn, gt) for fn, gt in labels.items() if fn not in done])
     # Parallel worker split: each worker processes only its share
+    # IMPORTANT: sorted() ensures deterministic order across Python versions
     if args.total_workers > 1:
         to_process = [
             (fn, gt) for i, (fn, gt) in enumerate(to_process)
