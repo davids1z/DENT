@@ -167,7 +167,7 @@ async def main():
     print("Initializing forensic pipeline (direct, no HTTP)...")
     pipeline = ForensicPipeline(
         semantic_enabled=False,     # Skip Gemini (API cost)
-        cnn_enabled=True,           # TruFor (tampering detection), CatNet disabled in code
+        cnn_enabled=False,          # TruFor skipped (13s/img, weak signal ~0.05-0.20)
         mesorch_enabled=True,       # Mesorch (AAAI 2025, JPEG F1=0.774)
         vae_recon_enabled=True,     # VAE snap-back (AI detection)
         aigen_enabled=True,         # Swin Transformer ensemble
