@@ -36,6 +36,7 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "community_forensics_detection": 0.10,
     "npr_ai_detection": 0.08,
     "mesorch_detection": 0.10,
+    "efficientnet_ai_detection": 0.10,
 }
 
 # Module names that are dedicated AI / synthetic-content detectors
@@ -47,20 +48,20 @@ _AI_DETECTOR_MODULES = frozenset({
     "prnu_detection",
     "community_forensics_detection",
     "npr_ai_detection",
+    "efficientnet_ai_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
-# Weights based on calibration analysis (2007 images):
-#   CommFor: best discriminator (auth 0.04 vs AI 0.15), highest weight
-#   Swin: decent but 37.8% FP on authentic cars, moderate weight
-#   CLIP: constant ~0.15 output (no trained probe yet), minimal weight
-#   NPR: JPEG destroys upsampling signal, bimodal random, minimal weight
-#   VAE: DIRE hypothesis fails for modern generators, minimal weight
+# CommFor: best discriminator, highest weight
+# EfficientNet-B4: fast CNN (0.5-1s), 98.59% accuracy, replaces Swin as primary
+# Swin: still available but disabled for speed (37.8% FP, 35s)
+# CLIP: trained probe F1=0.816
 _CORE_AI_WEIGHTS = {
-    "community_forensics_detection": 0.45,
-    "ai_generation_detection": 0.35,
-    "npr_ai_detection": 0.08,
-    "clip_ai_detection": 0.07,
+    "community_forensics_detection": 0.40,
+    "efficientnet_ai_detection": 0.25,
+    "clip_ai_detection": 0.15,
+    "ai_generation_detection": 0.10,
+    "npr_ai_detection": 0.05,
     "vae_reconstruction": 0.05,
 }
 

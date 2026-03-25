@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Community Forensics AI detection (CVPR 2025, ViT-Small, 4803 generators)
     forensics_community_forensics_enabled: bool = True
 
+    # EfficientNet-B4 AI detection (fast CNN, 19.3M params, 0.5-1s CPU)
+    forensics_efficientnet_ai_enabled: bool = True
+    forensics_efficientnet_ai_model: str = "Dafilab/ai-image-detector"
+
     # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
     forensics_npr_enabled: bool = True
 

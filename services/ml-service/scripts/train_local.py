@@ -14,6 +14,7 @@ MODULE_ORDER = [
     "vae_reconstruction",
     "community_forensics_detection",
     "npr_ai_detection",
+    "efficientnet_ai_detection",
     "prnu_detection",
     "deep_modification_detection",
     "mesorch_detection",

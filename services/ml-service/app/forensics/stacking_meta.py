@@ -5,8 +5,8 @@ logistic regression model that captures pairwise module interactions
 (e.g., PRNU x AI, spectral x AI) automatically from labeled data.
 
 Architecture:
-  - Input: 17 modules → (risk_score, avg_confidence, num_findings_norm) each
-  - Feature engineering: 51 base + 136 pairwise interactions + 17 squared = 204 features
+  - Input: 18 modules → (risk_score, avg_confidence, num_findings_norm) each
+  - Feature engineering: 54 base + 153 pairwise interactions + 18 squared = 225 features
   - Model: Ridge-regularized logistic regression (numpy only)
   - Output: sigmoid probability in [0, 1]
 
@@ -33,6 +33,7 @@ MODULE_ORDER: list[str] = [
     "vae_reconstruction",
     "community_forensics_detection",
     "npr_ai_detection",
+    "efficientnet_ai_detection",
     # Authenticity / sensor
     "prnu_detection",
     # Tampering detection
