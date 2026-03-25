@@ -174,12 +174,37 @@ def test_safe_plus_swin_no_floor():
     assert overall < 0.70, f"SAFE+Swin+NPR without DINOv2 should NOT reach 0.70, got {overall}"
 
 
-def test_safe_plus_dinov2_triggers_floor():
-    """SAFE + DINOv2 agreeing should trigger cross-validation floor."""
+def test_safe_plus_effnet_triggers_floor():
+    """SAFE + EfficientNet agreeing should trigger cross-validation floor."""
     modules = [
         _make_module("safe_ai_detection", 0.60),
-        _make_module("dinov2_ai_detection", 0.85),
-        _make_module("ai_generation_detection", 0.0),
+        _make_module("efficientnet_ai_detection", 0.55),
+        _make_module("dinov2_ai_detection", 0.85),  # DINOv2 excluded from reliable
+        _make_module("clip_ai_detection", 0.0),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall >= 0.70, f"SAFE+EfficientNet should trigger floor, got {overall}"
+
+
+def test_dinov2_alone_no_floor():
+    """DINOv2 alone (even high) should NOT trigger floor — biased probe.
+    Needs at least one non-DINOv2 reliable detector to agree."""
+    modules = [
+        _make_module("safe_ai_detection", 0.30),  # below 0.50 — doesn't count
+        _make_module("dinov2_ai_detection", 0.90),
+        _make_module("community_forensics_detection", 0.0),
+        _make_module("clip_ai_detection", 0.0),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.70, f"DINOv2 alone should NOT reach 0.70, got {overall}"
+
+
+def test_safe_plus_dinov2_triggers_floor():
+    """SAFE + DINOv2 both agreeing SHOULD trigger floor (SAFE is non-DINOv2)."""
+    modules = [
+        _make_module("safe_ai_detection", 0.60),
+        _make_module("dinov2_ai_detection", 0.90),
+        _make_module("community_forensics_detection", 0.0),
         _make_module("clip_ai_detection", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)

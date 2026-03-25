@@ -59,15 +59,17 @@ _AI_DETECTOR_MODULES = frozenset({
 # CommFor: CVPR 2025, trained on 4803 generators
 # EfficientNet: fast CNN, 98.59% on older generators
 # CLIP: trained probe F1=0.816
+# NOTE: DINOv2 probe is biased (trained on CarDD only as authentic).
+# Weight reduced to 0.10 until retrained on diverse authentic photos.
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.25,
-    "dinov2_ai_detection": 0.20,
-    "community_forensics_detection": 0.20,
-    "efficientnet_ai_detection": 0.12,
+    "safe_ai_detection": 0.28,
+    "community_forensics_detection": 0.22,
+    "efficientnet_ai_detection": 0.15,
     "clip_ai_detection": 0.12,
+    "dinov2_ai_detection": 0.10,
     "ai_generation_detection": 0.05,
-    "npr_ai_detection": 0.03,
-    "vae_reconstruction": 0.03,
+    "npr_ai_detection": 0.04,
+    "vae_reconstruction": 0.04,
 }
 
 
@@ -217,8 +219,10 @@ def fuse_scores(
 
     # ── Step 6: Cross-validation AI boost ─────────────────────────────
     # Only RELIABLE detectors participate in cross-validation.
-    # Swin (65% FP on JPEG), NPR (22% FP), VAE (disabled) are excluded
-    # because they produce too many false agreements with SAFE.
+    # Excluded: Swin (65% FP on JPEG), NPR (22% FP), VAE (disabled).
+    # DINOv2 included BUT cannot trigger floor alone — needs at least
+    # one non-DINOv2 reliable detector to agree (probe is biased on
+    # non-CarDD authentic photos).
     _RELIABLE_AI_DETECTORS = {
         "safe_ai_detection",
         "dinov2_ai_detection",
@@ -228,11 +232,19 @@ def fuse_scores(
     }
     ai_gen = _get_module(active, "ai_generation_detection")
     commfor = _get_module(active, "community_forensics_detection")
+    dinov2 = _get_module(active, "dinov2_ai_detection")
 
     # Count how many RELIABLE core AI detectors agree at >= 0.50
     high_ai_count = sum(
         1 for m in active
         if m.module_name in _RELIABLE_AI_DETECTORS and m.risk_score >= 0.50
+    )
+    # Count non-DINOv2 reliable detectors (to prevent DINOv2-only floor)
+    non_dinov2_reliable = sum(
+        1 for m in active
+        if m.module_name in _RELIABLE_AI_DETECTORS
+        and m.module_name != "dinov2_ai_detection"
+        and m.risk_score >= 0.50
     )
 
     # Swin boost ONLY if corroborated by CommFor OR 2+ reliable detectors
@@ -241,11 +253,11 @@ def fuse_scores(
         if commfor_agrees or high_ai_count >= 3:
             overall = max(overall, ai_gen.risk_score)
         elif high_ai_count >= 2:
-            # Partial corroboration — moderate boost
             overall = max(overall, ai_gen.risk_score * 0.75)
 
     # Cross-validation: 2+ RELIABLE detectors agree → floor at 0.70
-    if high_ai_count >= 2:
+    # BUT at least one must be non-DINOv2 (DINOv2 probe is biased)
+    if high_ai_count >= 2 and non_dinov2_reliable >= 1:
         overall = max(overall, 0.70)
 
     overall = max(0.0, min(1.0, overall))
