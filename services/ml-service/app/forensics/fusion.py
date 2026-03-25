@@ -113,21 +113,16 @@ def fuse_scores(
         verdict_probs = meta_learner.predict_proba(modules)
 
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
-    # CommFor is the most reliable AI detector (4.3% FP vs Swin's 37.8%).
-    # When CommFor says "not AI" (< 0.10), dampen Swin to reduce FP.
-    commfor = _get_module(active, "community_forensics_detection")
-    commfor_low = commfor is not None and commfor.risk_score < 0.10
-
+    # Weight redistribution handles FP reduction:
+    #   CommFor 45% (best discriminator) + Swin 35% (decent but noisy)
+    #   NPR/CLIP/VAE reduced to 5-8% (noisy/broken signals)
+    # No per-module dampening — it hurts AI detection more than it helps.
     core_weighted = 0.0
     core_total_w = 0.0
     for m in active:
         if m.module_name in _CORE_AI_WEIGHTS:
             w = _CORE_AI_WEIGHTS[m.module_name]
-            score = m.risk_score
-            # Dampen Swin when CommFor disagrees (reduces 37.8% FP on authentic)
-            if m.module_name == "ai_generation_detection" and commfor_low and score < 0.80:
-                score *= 0.40
-            core_weighted += score * w
+            core_weighted += m.risk_score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
