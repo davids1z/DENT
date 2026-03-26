@@ -212,10 +212,19 @@ def fuse_scores(
     # ── Step 5: Final risk = max of all channels ──────────────────────
     overall = max(ai_combined, tampering, text_ai_score, content_score)
 
-    # ── Step 6: Cross-validation AI boost ─────────────────────────────
-    # Only RELIABLE detectors participate in cross-validation.
-    # Excluded: Swin (65% FP on JPEG), NPR (22% FP), VAE (disabled).
-    # DINOv2 retrained on diverse data — 0% FP on auth, fully reliable now.
+    # ── Step 6: Cross-validation AI boost (consensus with diversity) ────
+    #
+    # Problem: EfficientNet + DINOv2 share CNN bias — both fire on certain
+    # authentic JPEGs (e.g., 25220902d9b0.jpg: Eff=1.00, DINOv2=0.90, but
+    # SAFE=0.01, CommFor=0.001, CLIP=0.00). That's DISAGREEMENT, not consensus.
+    #
+    # Solution: require consensus WITH diversity. When detectors disagree
+    # strongly (some HIGH, others near ZERO), that's a red flag for detector
+    # bias, not evidence of AI generation.
+    #
+    # Architecture families:
+    #   CNN-family: EfficientNet, DINOv2 (both feed-forward vision transformers/CNNs)
+    #   Independent: SAFE (pixel correlations), CommFor (4803 generators), CLIP (language-vision)
     _RELIABLE_AI_DETECTORS = {
         "safe_ai_detection",
         "dinov2_ai_detection",
@@ -223,28 +232,47 @@ def fuse_scores(
         "efficientnet_ai_detection",
         "clip_ai_detection",
     }
+    # Independent detectors use fundamentally different methods
+    _INDEPENDENT_DETECTORS = {
+        "safe_ai_detection",           # Pixel correlation (KDD 2025)
+        "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
+        "clip_ai_detection",           # Language-vision embedding
+    }
+
     ai_gen = _get_module(active, "ai_generation_detection")
-    commfor = _get_module(active, "community_forensics_detection")
-    dinov2 = _get_module(active, "dinov2_ai_detection")
 
-    # Count how many RELIABLE core AI detectors agree at >= 0.60.
-    # Research (Advances in Physiology Education, 2025) shows:
-    #   - 2/5 at 0.50 → too aggressive, causes FP on authentic JPEG
-    #   - 3/5 at 0.80 → near-zero FP but may miss some AI
-    #   - 3/5 at 0.60 → good balance for our 5-detector ensemble
-    high_ai_count = sum(
-        1 for m in active
-        if m.module_name in _RELIABLE_AI_DETECTORS and m.risk_score >= 0.60
+    # Collect scores from reliable detectors
+    reliable_scores = {}
+    for m in active:
+        if m.module_name in _RELIABLE_AI_DETECTORS and not m.error:
+            reliable_scores[m.module_name] = m.risk_score
+
+    n_high = sum(1 for s in reliable_scores.values() if s >= 0.50)
+    n_low = sum(1 for s in reliable_scores.values() if s < 0.15)
+    n_total = len(reliable_scores)
+
+    # How many INDEPENDENT detectors confirm?
+    independent_high = sum(
+        1 for name in _INDEPENDENT_DETECTORS
+        if reliable_scores.get(name, 0) >= 0.40
     )
-    # Swin boost ONLY if corroborated by CommFor OR 3+ reliable detectors
-    if ai_gen and ai_gen.risk_score >= 0.60:
-        commfor_agrees = commfor is not None and commfor.risk_score >= 0.60
-        if commfor_agrees or high_ai_count >= 3:
-            overall = max(overall, ai_gen.risk_score)
 
-    # Cross-validation: 3+ RELIABLE detectors at >= 0.60 → floor at 0.70
-    if high_ai_count >= 3:
-        overall = max(overall, 0.70)
+    # Consensus boost rules:
+    # 1. Strong consensus: 3+ reliable high AND at most 1 low → floor 0.75
+    # 2. Moderate consensus: 2+ high AND 1+ independent confirms (>=0.40) → floor 0.65
+    #    The independent confirmation is the KEY differentiator:
+    #    - Auth FP: Eff+DINOv2 high but SAFE=0.01, CommFor=0.00, CLIP=0.00 → ind=0 → NO boost
+    #    - Real AI: Eff+DINOv2 high AND CLIP=0.49 (ind confirms) → ind>=1 → boost
+    # 3. Pure CNN agreement without independent: NO boost (possible shared bias)
+    if n_high >= 3 and n_low <= 1:
+        overall = max(overall, 0.75)
+    elif n_high >= 2 and independent_high >= 1:
+        overall = max(overall, 0.65)
+    # else: no boost — only CNN-family detectors agree, independents don't confirm
+
+    # Swin boost ONLY if independent detector confirms
+    if ai_gen and ai_gen.risk_score >= 0.60 and independent_high >= 2:
+        overall = max(overall, ai_gen.risk_score)
 
     overall = max(0.0, min(1.0, overall))
 

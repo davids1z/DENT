@@ -77,8 +77,8 @@ def test_empty_modules():
 # Strong AI signal from multiple detectors → High risk
 # ---------------------------------------------------------------------------
 
-def test_safe_plus_commfor_high():
-    """3+ detectors at >=0.60 should trigger cross-validation floor >= 0.70."""
+def test_strong_consensus_three_high():
+    """3+ detectors high with at most 1 low → floor 0.75."""
     modules = [
         _make_module("safe_ai_detection", 0.80),
         _make_module("community_forensics_detection", 0.60),
@@ -174,16 +174,17 @@ def test_safe_plus_swin_no_floor():
     assert overall < 0.70, f"SAFE+Swin+NPR without DINOv2 should NOT reach 0.70, got {overall}"
 
 
-def test_three_detectors_trigger_floor():
-    """3 reliable detectors at >=0.60 should trigger cross-validation floor."""
+def test_moderate_consensus_with_independent():
+    """2 high + 1 independent confirms → floor 0.65 (typical AI image pattern)."""
     modules = [
-        _make_module("safe_ai_detection", 0.60),
-        _make_module("efficientnet_ai_detection", 0.65),
-        _make_module("dinov2_ai_detection", 0.85),
-        _make_module("clip_ai_detection", 0.0),
+        _make_module("efficientnet_ai_detection", 0.95),
+        _make_module("dinov2_ai_detection", 0.90),
+        _make_module("clip_ai_detection", 0.49),   # Independent confirms (>=0.40)
+        _make_module("safe_ai_detection", 0.04),
+        _make_module("community_forensics_detection", 0.001),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall >= 0.70, f"3 detectors at >=0.60 should trigger floor, got {overall}"
+    assert overall >= 0.65, f"2 high + CLIP independent confirm should reach 0.65, got {overall}"
 
 
 def test_single_detector_no_floor():
@@ -198,16 +199,18 @@ def test_single_detector_no_floor():
     assert overall < 0.70, f"Single detector should NOT reach 0.70, got {overall}"
 
 
-def test_two_detectors_no_floor():
-    """Only 2 detectors at >=0.60 should NOT trigger floor (need 3+)."""
+def test_disagreement_no_boost():
+    """2 CNN-family high but 3 independent near-zero → disagreement, NO boost.
+    This is the key FP case: EfficientNet + DINOv2 fire but SAFE/CommFor/CLIP don't."""
     modules = [
-        _make_module("safe_ai_detection", 0.60),
+        _make_module("efficientnet_ai_detection", 1.00),
         _make_module("dinov2_ai_detection", 0.90),
-        _make_module("community_forensics_detection", 0.0),
-        _make_module("clip_ai_detection", 0.0),
+        _make_module("safe_ai_detection", 0.01),
+        _make_module("community_forensics_detection", 0.001),
+        _make_module("clip_ai_detection", 0.00),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.70, f"Only 2 detectors should NOT trigger floor, got {overall}"
+    assert overall < 0.65, f"Disagreement (2 high, 3 zero) should NOT boost, got {overall}"
 
 
 # ---------------------------------------------------------------------------
