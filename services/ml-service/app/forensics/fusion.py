@@ -45,10 +45,8 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 _AI_DETECTOR_MODULES = frozenset({
     "ai_generation_detection",
     "clip_ai_detection",
-    "vae_reconstruction",
     "prnu_detection",
     "community_forensics_detection",
-    "npr_ai_detection",
     "efficientnet_ai_detection",
     "safe_ai_detection",
     "dinov2_ai_detection",
@@ -56,16 +54,17 @@ _AI_DETECTOR_MODULES = frozenset({
 
 # Core AI detection modules — only these determine AI generation score
 # Retrained on diverse dataset (3799 images, 9 generators + RAISE/CarDD auth)
-# DINOv2: 0% FP on diverse auth, CLIP: F1=0.746, both retrained
+# DINOv2: 0% FP on diverse auth (best discriminator, 0.55 separation)
+# SAFE: KDD 2025, JPEG-dampened (×0.70 for compression artifacts)
+# CommFor: CVPR 2025, 4803 generators
+# CLIP: retrained probe F1=0.746
+# Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.25,
-    "dinov2_ai_detection": 0.20,
-    "community_forensics_detection": 0.20,
+    "safe_ai_detection": 0.30,
+    "dinov2_ai_detection": 0.25,
+    "community_forensics_detection": 0.25,
     "clip_ai_detection": 0.15,
-    "efficientnet_ai_detection": 0.10,
-    "ai_generation_detection": 0.04,
-    "npr_ai_detection": 0.03,
-    "vae_reconstruction": 0.03,
+    "ai_generation_detection": 0.05,
 }
 
 
@@ -252,22 +251,35 @@ def fuse_scores(
     # overall score. When they diverge too much, override verdict bars
     # to match the rule-based decision.
     if verdict_probs is not None:
-        meta_max_class = max(verdict_probs, key=verdict_probs.get)
-        meta_max_prob = verdict_probs[meta_max_class]
+        # Low risk (< 0.15) → verdict bars MUST strongly favor authentic.
+        # The meta-learner was trained on calibration data with different
+        # module behavior; noisy modules inflate its non-authentic scores.
+        if overall < 0.15:
+            # Low risk → verdict bars MUST strongly favor authentic.
+            # Meta-learner trained on different module behavior inflates
+            # non-authentic scores for noisy low-signal inputs.
+            verdict_probs = {
+                "authentic": round(max(0.85, 1.0 - overall * 2), 4),
+                "ai_generated": round(overall * 0.4, 4),
+                "tampered": round(overall * 0.6 * overall, 4),
+            }
+        else:
+            meta_max_class = max(verdict_probs, key=verdict_probs.get)
+            meta_max_prob = verdict_probs[meta_max_class]
 
-        # If rule-based says low risk but meta says high AI/tampered
-        if overall < 0.30 and meta_max_class != "authentic" and meta_max_prob > 0.50:
-            verdict_probs = {
-                "authentic": max(0.60, 1.0 - overall),
-                "ai_generated": overall * 0.6,
-                "tampered": overall * 0.4,
-            }
-        # If rule-based says high risk but meta says authentic
-        elif overall > 0.70 and meta_max_class == "authentic" and meta_max_prob > 0.50:
-            verdict_probs = {
-                "authentic": max(0.05, 1.0 - overall),
-                "ai_generated": ai_combined / max(overall, 0.01) * overall * 0.7,
-                "tampered": tampering / max(overall, 0.01) * overall * 0.7,
-            }
+            # If rule-based says low-medium risk but meta says high AI/tampered
+            if overall < 0.30 and meta_max_class != "authentic" and meta_max_prob > 0.50:
+                verdict_probs = {
+                    "authentic": max(0.60, 1.0 - overall),
+                    "ai_generated": overall * 0.6,
+                    "tampered": overall * 0.4,
+                }
+            # If rule-based says high risk but meta says authentic
+            elif overall > 0.70 and meta_max_class == "authentic" and meta_max_prob > 0.50:
+                verdict_probs = {
+                    "authentic": max(0.05, 1.0 - overall),
+                    "ai_generated": ai_combined / max(overall, 0.01) * overall * 0.7,
+                    "tampered": tampering / max(overall, 0.01) * overall * 0.7,
+                }
 
     return overall, round(overall * 100), _risk_level(overall), verdict_probs

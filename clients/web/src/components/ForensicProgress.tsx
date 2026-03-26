@@ -10,7 +10,7 @@ export interface ForensicStep {
 }
 
 const DEFAULT_STEPS: ForensicStep[] = [
-  // Group 1: All modules run in parallel (~8s total)
+  // All forensic modules run in parallel (~15s total wall clock)
   { id: "metadata_analysis", label: "Metadata analiza", status: "pending" },
   { id: "modification_detection", label: "ELA detekcija modifikacija", status: "pending" },
   { id: "safe_ai_detection", label: "SAFE AI detekcija", status: "pending" },
@@ -19,32 +19,29 @@ const DEFAULT_STEPS: ForensicStep[] = [
   { id: "efficientnet_ai_detection", label: "EfficientNet AI detekcija", status: "pending" },
   { id: "clip_ai_detection", label: "CLIP AI detekcija", status: "pending" },
   { id: "mesorch_detection", label: "Mesorch detekcija manipulacija", status: "pending" },
-  { id: "prnu_detection", label: "PRNU senzorska analiza", status: "pending" },
-  { id: "npr_ai_detection", label: "NPR detekcija artefakata", status: "pending" },
   // Post-processing
   { id: "agent", label: "Agent evaluacija", status: "pending" },
   { id: "evidence", label: "Digitalni pecat", status: "pending" },
 ];
 
 /**
- * Approximate durations (seconds) per step — used for timed progress simulation.
- * All forensic modules run in PARALLEL (~8s), but we show them sequentially
- * for visual feedback. Durations are spread to fill the ~8s parallel window.
- * Agent + evidence run after forensics complete.
+ * Durations tuned for parallel backend execution.
+ * All forensic modules run simultaneously via ThreadPoolExecutor (~15s wall clock),
+ * but shown sequentially for visual feedback. Durations spread across the window.
+ * Agent LLM call (~15s) and evidence hashing (~5s) run after forensics.
+ * Total: ~40s (matches real wall clock time).
  */
 const STEP_DURATIONS: Record<string, number> = {
   metadata_analysis: 1,
-  modification_detection: 1,
-  safe_ai_detection: 1,
-  dinov2_ai_detection: 1,
-  community_forensics_detection: 1,
-  efficientnet_ai_detection: 1,
-  clip_ai_detection: 1,
-  mesorch_detection: 1,
-  prnu_detection: 1,
-  npr_ai_detection: 1,
-  agent: 8,
-  evidence: 3,
+  modification_detection: 2,
+  safe_ai_detection: 2,
+  dinov2_ai_detection: 2,
+  community_forensics_detection: 2,
+  efficientnet_ai_detection: 2,
+  clip_ai_detection: 2,
+  mesorch_detection: 2,
+  agent: 15,
+  evidence: 5,
 };
 
 /** The last step never auto-completes — it stays spinning until real API returns. */
