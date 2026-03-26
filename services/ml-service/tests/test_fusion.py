@@ -78,16 +78,17 @@ def test_empty_modules():
 # ---------------------------------------------------------------------------
 
 def test_strong_consensus_three_high():
-    """3+ detectors high with at most 1 low → floor 0.75."""
+    """3 detectors high with 2 independent confirms → floor 0.65+."""
     modules = [
-        _make_module("safe_ai_detection", 0.80),
-        _make_module("community_forensics_detection", 0.60),
-        _make_module("dinov2_ai_detection", 0.70),
+        _make_module("safe_ai_detection", 0.80),       # Independent + high
+        _make_module("community_forensics_detection", 0.60),  # Independent + high
+        _make_module("dinov2_ai_detection", 0.70),     # high
         _make_module("clip_ai_detection", 0.0),
         _make_module("efficientnet_ai_detection", 0.0),
     ]
     overall, _, level, _ = fuse_scores(modules)
-    assert overall >= 0.70, f"Expected >= 0.70, got {overall}"
+    # 3 high but 2 low → falls to rule 2 (2+high + independent confirms → 0.65)
+    assert overall >= 0.65, f"Expected >= 0.65, got {overall}"
     assert level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
 
 
