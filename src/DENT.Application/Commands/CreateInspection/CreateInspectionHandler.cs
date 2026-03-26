@@ -189,12 +189,37 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
         try
         {
-            // ── Step 1: Run forensics ───────────────────────────────────
+            // ── Step 1: Run forensics on EACH uploaded file ──────────────
+            // Each file gets its own forensic analysis (PDF→document modules,
+            // image→AI detection modules). The highest-risk result becomes primary.
             MlForensicResult? forensicResult = null;
             try
             {
-                forensicResult = await mlService.RunForensicsAsync(
-                    data.FirstImageData, data.FirstImageFileName, CancellationToken.None);
+                var allForensicResults = new List<(string fileName, MlForensicResult result)>();
+                foreach (var image in data.AllImages)
+                {
+                    try
+                    {
+                        var fileResult = await mlService.RunForensicsAsync(
+                            image.Data, image.FileName, CancellationToken.None);
+                        allForensicResults.Add((image.FileName, fileResult));
+                        logger.LogInformation(
+                            "Forensics for {FileName}: risk={Risk:F2} ({Level})",
+                            image.FileName, fileResult.OverallRiskScore, fileResult.OverallRiskLevel);
+                    }
+                    catch (Exception fileEx)
+                    {
+                        logger.LogWarning(fileEx, "Forensics failed for {FileName}", image.FileName);
+                    }
+                }
+
+                // Use highest-risk result as primary
+                forensicResult = allForensicResults
+                    .OrderByDescending(r => r.result.OverallRiskScore)
+                    .Select(r => r.result)
+                    .FirstOrDefault()
+                    ?? await mlService.RunForensicsAsync(
+                        data.FirstImageData, data.FirstImageFileName, CancellationToken.None);
 
                 string? elaUrl = null;
                 if (forensicResult.ElaHeatmapB64 is not null)
@@ -270,44 +295,11 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     inspection.Id);
             }
 
-            // ── Step 2: Run AI visual analysis (images only) ──────────
-            // Documents (PDF, DOCX, XLSX) are fully analyzed by forensics
-            // in Step 1 — no need for Gemini/VLM visual analysis.
-            var docExtensions = new[] { ".pdf", ".docx", ".xlsx", ".xls", ".doc" };
-            var isDocument = docExtensions.Any(ext =>
-                data.FirstImageFileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
-
-            MlAnalysisResult result;
-            if (isDocument)
-            {
-                // Documents: skip visual analysis, use forensic results directly
-                result = new MlAnalysisResult { Success = true };
-                logger.LogInformation("Document detected ({FileName}), skipping visual analysis",
-                    data.FirstImageFileName);
-            }
-            else if (forensicResult != null && data.AllImages.Count == 1)
-            {
-                result = await mlService.AnalyzeImageWithContextAsync(
-                    data.FirstImageData, data.FirstImageFileName, forensicResult,
-                    data.CaptureSource, CancellationToken.None);
-            }
-            else if (data.AllImages.Count == 1)
-            {
-                using var mlStream = new MemoryStream(data.FirstImageData);
-                result = await mlService.AnalyzeImageAsync(mlStream, data.FirstImageFileName, CancellationToken.None);
-            }
-            else
-            {
-                var mlImages = data.AllImages.Select(img => new MlImageInput
-                {
-                    Data = img.Data,
-                    FileName = img.FileName,
-                }).ToList();
-                result = await mlService.AnalyzeMultipleImagesAsync(
-                    mlImages,
-                    data.VehicleMake, data.VehicleModel, data.VehicleYear, data.Mileage,
-                    CancellationToken.None);
-            }
+            // ── Step 2: Skip — Gemini/VLM visual analysis disabled ─────
+            // All detection is done by forensic modules in Step 1.
+            // Each file was independently analyzed (documents → document modules,
+            // images → AI detection modules). No external API calls needed.
+            MlAnalysisResult result = new MlAnalysisResult { Success = true };
 
             if (result.Success)
             {

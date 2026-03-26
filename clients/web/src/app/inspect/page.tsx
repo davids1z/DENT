@@ -18,7 +18,8 @@ export default function InspectPage() {
   const [selectedDamageIndex, setSelectedDamageIndex] = useState<number | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const forensicProgress = useForensicProgress(isLoading);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const forensicProgress = useForensicProgress(isLoading, uploadedFiles[0]?.name);
 
   const currentStep = result ? 2 : isLoading ? 1 : 0;
 
@@ -27,6 +28,7 @@ export default function InspectPage() {
     setError(null);
     setResult(null);
     setSelectedDamageIndex(null);
+    setUploadedFiles(files);
 
     try {
       // Upload returns immediately with status=Analyzing
@@ -101,7 +103,9 @@ export default function InspectPage() {
         <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 max-w-lg mx-auto">
           <h3 className="font-heading font-semibold text-lg mb-1 text-center">Forenzicka analiza u tijeku</h3>
           <p className="text-sm text-muted mb-6 text-center">
-            12 forenzickih modula provjerava autenticnost, detektira manipulacije i AI-generirani sadrzaj.
+            {uploadedFiles.length > 1
+              ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi forenzicku provjeru.`
+              : "Forenzicki moduli provjeravaju autenticnost, detektiraju manipulacije i AI-generirani sadrzaj."}
           </p>
           <ForensicProgress
             steps={forensicProgress.steps}
