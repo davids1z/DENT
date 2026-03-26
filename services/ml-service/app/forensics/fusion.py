@@ -116,16 +116,40 @@ def fuse_scores(
         verdict_probs = meta_learner.predict_proba(modules)
 
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
-    # Weight redistribution handles FP reduction:
-    #   CommFor 45% (best discriminator) + Swin 35% (decent but noisy)
-    #   NPR/CLIP/VAE reduced to 5-8% (noisy/broken signals)
-    # No per-module dampening — it hurts AI detection more than it helps.
+    #
+    # Isolation dampening: DINOv2 and EfficientNet share a CNN/transformer
+    # architecture family. When they fire high but SAFE, CommFor, and CLIP
+    # (independent architectures) all stay low, it's likely a shared bias
+    # false positive. Dampen CNN-family contributions when independents
+    # don't confirm.
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection"}
+    _INDEPENDENT_AI_DETECTORS = {
+        "safe_ai_detection",              # Pixel correlation (KDD 2025)
+        "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
+        "clip_ai_detection",              # Language-vision embedding
+    }
+
+    max_independent_score = max(
+        (m.risk_score for m in active
+         if m.module_name in _INDEPENDENT_AI_DETECTORS and not m.error),
+        default=0.0,
+    )
+
+    # CNN dampening factor: 1.0 (full) when independent confirms (>= 0.30),
+    # scales down linearly to 0.30 when no independent signal at all.
+    cnn_dampening = 1.0
+    if max_independent_score < 0.30:
+        cnn_dampening = 0.30 + 0.70 * (max_independent_score / 0.30)
+
     core_weighted = 0.0
     core_total_w = 0.0
     for m in active:
         if m.module_name in _CORE_AI_WEIGHTS:
             w = _CORE_AI_WEIGHTS[m.module_name]
-            core_weighted += m.risk_score * w
+            score = m.risk_score
+            if m.module_name in _CNN_FAMILY_DETECTORS:
+                score *= cnn_dampening
+            core_weighted += score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
