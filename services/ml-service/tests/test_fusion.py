@@ -78,12 +78,12 @@ def test_empty_modules():
 # ---------------------------------------------------------------------------
 
 def test_safe_plus_commfor_high():
-    """SAFE=0.80 + CommFor=0.60 should trigger cross-validation boost >= 0.70."""
+    """3+ detectors at >=0.60 should trigger cross-validation floor >= 0.70."""
     modules = [
         _make_module("safe_ai_detection", 0.80),
         _make_module("community_forensics_detection", 0.60),
+        _make_module("dinov2_ai_detection", 0.70),
         _make_module("clip_ai_detection", 0.0),
-        _make_module("dinov2_ai_detection", 0.0),
         _make_module("efficientnet_ai_detection", 0.0),
     ]
     overall, _, level, _ = fuse_scores(modules)
@@ -174,16 +174,16 @@ def test_safe_plus_swin_no_floor():
     assert overall < 0.70, f"SAFE+Swin+NPR without DINOv2 should NOT reach 0.70, got {overall}"
 
 
-def test_safe_plus_effnet_triggers_floor():
-    """SAFE + EfficientNet agreeing should trigger cross-validation floor."""
+def test_three_detectors_trigger_floor():
+    """3 reliable detectors at >=0.60 should trigger cross-validation floor."""
     modules = [
         _make_module("safe_ai_detection", 0.60),
-        _make_module("efficientnet_ai_detection", 0.55),
-        _make_module("dinov2_ai_detection", 0.85),  # DINOv2 excluded from reliable
+        _make_module("efficientnet_ai_detection", 0.65),
+        _make_module("dinov2_ai_detection", 0.85),
         _make_module("clip_ai_detection", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall >= 0.70, f"SAFE+EfficientNet should trigger floor, got {overall}"
+    assert overall >= 0.70, f"3 detectors at >=0.60 should trigger floor, got {overall}"
 
 
 def test_single_detector_no_floor():
@@ -198,8 +198,8 @@ def test_single_detector_no_floor():
     assert overall < 0.70, f"Single detector should NOT reach 0.70, got {overall}"
 
 
-def test_safe_plus_dinov2_triggers_floor():
-    """SAFE + DINOv2 both agreeing SHOULD trigger floor (SAFE is non-DINOv2)."""
+def test_two_detectors_no_floor():
+    """Only 2 detectors at >=0.60 should NOT trigger floor (need 3+)."""
     modules = [
         _make_module("safe_ai_detection", 0.60),
         _make_module("dinov2_ai_detection", 0.90),
@@ -207,7 +207,7 @@ def test_safe_plus_dinov2_triggers_floor():
         _make_module("clip_ai_detection", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall >= 0.70, f"SAFE+DINOv2 should trigger floor, got {overall}"
+    assert overall < 0.70, f"Only 2 detectors should NOT trigger floor, got {overall}"
 
 
 # ---------------------------------------------------------------------------
