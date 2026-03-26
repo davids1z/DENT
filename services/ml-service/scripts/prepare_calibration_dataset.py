@@ -29,8 +29,8 @@ import uuid
 import boto3
 from PIL import Image
 
-S3_PREFIX_RAW = "raw"
-S3_PREFIX_PROCESSED = "processed"
+S3_PREFIX_RAW = "raw"         # overridden by --raw-prefix
+S3_PREFIX_PROCESSED = "processed"  # overridden by --out-prefix
 CATEGORIES = ["authentic", "ai_generated", "tampered"]
 
 
@@ -108,7 +108,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare calibration dataset")
     parser.add_argument("--bucket", required=True, help="S3 bucket name")
     parser.add_argument("--region", default="eu-central-1", help="AWS region")
+    parser.add_argument("--raw-prefix", default="raw", help="S3 prefix for raw images (default: raw)")
+    parser.add_argument("--out-prefix", default="processed", help="S3 prefix for output (default: processed)")
     args = parser.parse_args()
+
+    global S3_PREFIX_RAW, S3_PREFIX_PROCESSED
+    S3_PREFIX_RAW = args.raw_prefix
+    S3_PREFIX_PROCESSED = args.out_prefix
 
     s3 = boto3.client("s3", region_name=args.region)
 
