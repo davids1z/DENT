@@ -123,24 +123,25 @@ def fuse_scores(
     # false positive. Dampen CNN-family contributions when independents
     # don't confirm.
     # DINOv2 uses our trained probe (potentially biased by training data).
-    # EfficientNet uses pre-trained HuggingFace weights (not our probe) —
-    # it's an independent signal that doesn't share DINOv2's training bias.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection"}
-    _INDEPENDENT_AI_DETECTORS = {
+    # EfficientNet uses pre-trained HuggingFace weights (not our probe).
+    #
+    # For DAMPENING: check if method-diverse detectors confirm (SAFE/CommFor/CLIP).
+    # EfficientNet and DINOv2 are both CNN-family for dampening purposes.
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection"}
+    _DAMPENING_INDEPENDENT = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",              # Language-vision embedding
-        "efficientnet_ai_detection",      # Pre-trained CNN (HuggingFace weights)
     }
 
     max_independent_score = max(
         (m.risk_score for m in active
-         if m.module_name in _INDEPENDENT_AI_DETECTORS and not m.error),
+         if m.module_name in _DAMPENING_INDEPENDENT and not m.error),
         default=0.0,
     )
 
-    # CNN dampening factor: 1.0 (full) when independent confirms (>= 0.30),
-    # scales down linearly to 0.30 when no independent signal at all.
+    # CNN dampening factor: 1.0 (full) when SAFE/CommFor/CLIP confirm (>= 0.30),
+    # scales down linearly to 0.30 when no method-diverse signal at all.
     cnn_dampening = 1.0
     if max_independent_score < 0.30:
         cnn_dampening = 0.30 + 0.70 * (max_independent_score / 0.30)
@@ -260,14 +261,14 @@ def fuse_scores(
         "efficientnet_ai_detection",
         "clip_ai_detection",
     }
-    # Independent detectors use fundamentally different methods.
-    # EfficientNet uses pre-trained HuggingFace weights (not our probe),
-    # so it's independent from DINOv2's training bias.
+    # For CONSENSUS: method-diverse detectors that must confirm.
+    # EfficientNet is CNN-architecture (like DINOv2) — when both fire high
+    # but SAFE/CommFor/CLIP don't, that's CNN-family bias, not real AI.
+    # Keep consensus independent = SAFE/CommFor/CLIP only.
     _INDEPENDENT_DETECTORS = {
         "safe_ai_detection",           # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",           # Language-vision embedding
-        "efficientnet_ai_detection",   # Pre-trained CNN (HuggingFace)
     }
 
     ai_gen = _get_module(active, "ai_generation_detection")
@@ -284,10 +285,12 @@ def fuse_scores(
     n_low = sum(1 for s in reliable_scores.values() if s < 0.15)
     n_total = len(reliable_scores)
 
-    # How many INDEPENDENT detectors confirm?
+    # How many method-diverse INDEPENDENT detectors confirm?
+    # Threshold 0.30 catches SAFE/CommFor signals that indicate AI presence
+    # (auth images typically have SAFE < 0.25, so 0.30 is safe)
     independent_high = sum(
         1 for name in _INDEPENDENT_DETECTORS
-        if reliable_scores.get(name, 0) >= 0.40
+        if reliable_scores.get(name, 0) >= 0.30
     )
 
     # Consensus boost rules:
