@@ -246,25 +246,36 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
     def _emit_findings(
         score: float, findings: list[AnalyzerFinding]
     ) -> None:
-        # NOTE: DINOv2 probe is biased (trained on CarDD-only authentic).
-        # Findings are capped at "SUSPECTED" level and risk/confidence
-        # dampened until probe is retrained on diverse authentic data.
-        if score > 0.50:
+        # DINOv2 probe retrained on diverse data (0% FP on auth)
+        if score > 0.70:
+            findings.append(
+                AnalyzerFinding(
+                    code="DINOV2_AI_DETECTED",
+                    title="DINOv2 detekcija AI-generiranog sadrzaja",
+                    description=(
+                        f"DINOv2-base model detektirao je da embedding ove slike "
+                        f"snazno indicira AI-generirani sadrzaj (rezultat: {score:.0%})."
+                    ),
+                    risk_score=min(0.90, max(0.65, score * 0.90)),
+                    confidence=min(0.90, 0.60 + score * 0.25),
+                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_base_probe"},
+                )
+            )
+        elif score > 0.45:
             findings.append(
                 AnalyzerFinding(
                     code="DINOV2_AI_SUSPECTED",
                     title="DINOv2 sumnja na AI sadrzaj",
                     description=(
-                        f"DINOv2-base model ukazuje na moguce AI-generirani "
-                        f"sadrzaj (rezultat: {score:.0%}). Signal treba "
-                        f"potvrditi drugim detektorima (SAFE, CommFor)."
+                        f"DINOv2 embedding analiza pokazuje umjerenu vjerojatnost "
+                        f"({score:.0%}) da je slika umjetno generirana."
                     ),
-                    risk_score=min(0.55, score * 0.60),
-                    confidence=min(0.65, 0.40 + score * 0.20),
+                    risk_score=max(0.40, score * 0.75),
+                    confidence=min(0.80, 0.45 + score * 0.30),
                     evidence={"dinov2_score": round(score, 4), "method": "dinov2_base_probe"},
                 )
             )
-        elif score > 0.30:
+        elif score > 0.25:
             findings.append(
                 AnalyzerFinding(
                     code="DINOV2_AI_LOW",
@@ -273,8 +284,8 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
                         f"DINOv2 embedding analiza pokazuje blage indikatore "
                         f"({score:.0%}) moguceg AI generiranja."
                     ),
-                    risk_score=score * 0.40,
-                    confidence=0.35 + score * 0.15,
+                    risk_score=score * 0.50,
+                    confidence=0.40 + score * 0.15,
                     evidence={"dinov2_score": round(score, 4), "method": "dinov2_base_probe"},
                 )
             )

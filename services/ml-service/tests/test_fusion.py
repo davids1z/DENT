@@ -186,17 +186,16 @@ def test_safe_plus_effnet_triggers_floor():
     assert overall >= 0.70, f"SAFE+EfficientNet should trigger floor, got {overall}"
 
 
-def test_dinov2_alone_no_floor():
-    """DINOv2 alone (even high) should NOT trigger floor — biased probe.
-    Needs at least one non-DINOv2 reliable detector to agree."""
+def test_single_detector_no_floor():
+    """Single detector alone should NOT trigger floor — needs 2+."""
     modules = [
-        _make_module("safe_ai_detection", 0.30),  # below 0.50 — doesn't count
+        _make_module("safe_ai_detection", 0.30),
         _make_module("dinov2_ai_detection", 0.90),
         _make_module("community_forensics_detection", 0.0),
         _make_module("clip_ai_detection", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.70, f"DINOv2 alone should NOT reach 0.70, got {overall}"
+    assert overall < 0.70, f"Single detector should NOT reach 0.70, got {overall}"
 
 
 def test_safe_plus_dinov2_triggers_floor():
