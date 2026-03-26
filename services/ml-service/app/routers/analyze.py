@@ -525,24 +525,14 @@ def _enforce_forensic_severity(
                     " [Forenzicki moduli ukazuju na visok rizik manipulacije.]"
                 )
 
-    # ── AI-specific "Autenticno" override (defence-in-depth) ─────────
-    # Even if the fusion score is below t_high, individual AI detectors
-    # that fire with risk >= 0.45 must block "Autenticno" findings.
+    # ── AI-specific override REMOVED ──────────────────────────────────
+    # Previously: individual AI detectors with risk >= 0.45 would override
+    # "Autenticno" findings to "AI generiranje" + Critical, BYPASSING
+    # the fusion score.  This caused false positives on authentic images
+    # (e.g., car5.jpg: 22% fusion risk but EfficientNet=0.43 triggered
+    # override).  The fusion score already handles consensus — individual
+    # modules should not override it.
     modules = forensic_data.get("modules", [])
-    any_ai_high = any(
-        m.get("risk_score", 0) >= reg.enforcement.ai_detector_override
-        for m in modules
-        if m.get("module_name") in _AI_DETECTOR_MODULES
-    )
-    if any_ai_high:
-        for d in response.damages:
-            if _is_authentic_cause(d.damage_cause):
-                d.damage_cause = "AI generiranje"
-                d.severity = "Severe"
-                d.safety_rating = "Critical"
-                d.description += (
-                    " [AI detekcijski moduli identificirali su sinteticki sadrzaj.]"
-                )
 
     # Enforce urgency_level consistency
     old_urgency = response.urgency_level
@@ -823,15 +813,21 @@ def _compute_deterministic_verdict(
                 "description": "",
             })
 
-    # ── Determine overall verdict ──
-    if risk >= reg.verdict.forged_risk or len(findings) >= reg.verdict.forged_min_findings:
+    # ── Determine overall verdict — DRIVEN BY FUSION RISK SCORE ONLY ──
+    # Individual module findings are informational — they appear in the
+    # report but do NOT override the fused risk score.  The fusion layer
+    # (fusion.py) already applies cross-validation, weighting, and
+    # meta-learner consensus.  Counting findings here caused false
+    # positives on authentic images (e.g. car5.jpg: 22% risk but 3
+    # weak findings → "Potreban pregled").
+    if risk >= reg.verdict.forged_risk:
         overall_verdict = "Krivotvoreno"
-    elif risk >= reg.verdict.suspicious_risk or len(findings) >= reg.verdict.suspicious_min_findings:
+    elif risk >= reg.verdict.suspicious_risk:
         overall_verdict = "Sumnjivo"
     else:
         overall_verdict = "Autenticno"
 
-    # ── Urgency ──
+    # ── Urgency — also driven by risk score only ──
     if risk >= reg.verdict.urgency_critical:
         urgency = "Critical"
     elif risk >= reg.verdict.urgency_high:
