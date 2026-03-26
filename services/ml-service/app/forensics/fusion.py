@@ -122,11 +122,15 @@ def fuse_scores(
     # (independent architectures) all stay low, it's likely a shared bias
     # false positive. Dampen CNN-family contributions when independents
     # don't confirm.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection"}
+    # DINOv2 uses our trained probe (potentially biased by training data).
+    # EfficientNet uses pre-trained HuggingFace weights (not our probe) —
+    # it's an independent signal that doesn't share DINOv2's training bias.
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection"}
     _INDEPENDENT_AI_DETECTORS = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",              # Language-vision embedding
+        "efficientnet_ai_detection",      # Pre-trained CNN (HuggingFace weights)
     }
 
     max_independent_score = max(
@@ -256,11 +260,14 @@ def fuse_scores(
         "efficientnet_ai_detection",
         "clip_ai_detection",
     }
-    # Independent detectors use fundamentally different methods
+    # Independent detectors use fundamentally different methods.
+    # EfficientNet uses pre-trained HuggingFace weights (not our probe),
+    # so it's independent from DINOv2's training bias.
     _INDEPENDENT_DETECTORS = {
         "safe_ai_detection",           # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",           # Language-vision embedding
+        "efficientnet_ai_detection",   # Pre-trained CNN (HuggingFace)
     }
 
     ai_gen = _get_module(active, "ai_generation_detection")
@@ -271,7 +278,9 @@ def fuse_scores(
         if m.module_name in _RELIABLE_AI_DETECTORS and not m.error:
             reliable_scores[m.module_name] = m.risk_score
 
-    n_high = sum(1 for s in reliable_scores.values() if s >= 0.50)
+    # CLIP consistently gives 0.48-0.49 on AI images (just below 0.50).
+    # Using 0.45 threshold captures these borderline-but-real AI signals.
+    n_high = sum(1 for s in reliable_scores.values() if s >= 0.45)
     n_low = sum(1 for s in reliable_scores.values() if s < 0.15)
     n_total = len(reliable_scores)
 
