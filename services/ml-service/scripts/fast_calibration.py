@@ -162,6 +162,13 @@ async def main():
         except Exception as e:
             print(f"WARNING: TruFor download failed: {e}")
 
+    # DINOv2 probe weights (download if not present)
+    dinov2_dir = models_dir / "dinov2"
+    dinov2_dir.mkdir(parents=True, exist_ok=True)
+    dinov2_probe = dinov2_dir / "dinov2_probe_weights.npz"
+    if not dinov2_probe.exists():
+        print("WARNING: DINOv2 probe weights not found — DINOv2 will use heuristic fallback")
+
     from app.forensics.pipeline import ForensicPipeline
 
     print("Initializing forensic pipeline (direct, no HTTP)...")
@@ -174,6 +181,7 @@ async def main():
         community_forensics_enabled=True,  # CommFor (CVPR 2025, 4803 generators)
         npr_enabled=True,           # NPR (CVPR 2024, 92.2% accuracy)
         clip_ai_enabled=True,       # CLIP probe
+        dinov2_ai_enabled=True,     # DINOv2 probe (97.2% on Flux)
         spectral_enabled=True,      # FFT (~1s)
         optical_enabled=True,       # Moire/perspective (~1s)
         prnu_enabled=True,          # PRNU (~1s)

@@ -246,8 +246,8 @@ export interface VehicleContext {
   mileage?: number;
 }
 
-/** 30s timeout for upload (server returns immediately now, analysis runs in background). */
-const UPLOAD_TIMEOUT_MS = 30_000;
+/** 120s timeout for upload — server uploads images to storage before responding. */
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 /** Poll interval for checking analysis completion. */
 const POLL_INTERVAL_MS = 3_000;
@@ -666,8 +666,15 @@ export function forensicModuleLabel(moduleName: string): string {
     ai_generation_detection: "Detekcija AI generiranja",
     spectral_forensics: "Spektralna forenzika",
     clip_ai_detection: "CLIP AI detekcija",
+    dinov2_ai_detection: "DINOv2 AI detekcija",
+    safe_ai_detection: "SAFE AI detekcija",
+    efficientnet_ai_detection: "EfficientNet AI detekcija",
+    community_forensics_detection: "Community Forensics detekcija",
+    npr_ai_detection: "NPR detekcija artefakata",
+    mesorch_detection: "Mesorch detekcija manipulacija",
     vae_reconstruction: "VAE rekonstrukcija",
     text_ai_detection: "AI tekst detekcija",
+    content_validation: "Validacija sadrzaja",
     prnu_detection: "PRNU senzorska analiza",
   };
   return labels[moduleName] || moduleName;

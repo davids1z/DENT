@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Train CLIP linear probe for AI image detection from S3 calibration data.
+"""Train DINOv2 linear probe for AI image detection from S3 calibration data.
 
-Extracts CLIP ViT-L/14 embeddings from calibration images on S3,
-trains a logistic regression probe, saves weights as probe_weights.npz.
+Extracts DINOv2-base CLS embeddings from calibration images on S3,
+trains a logistic regression probe, saves weights as dinov2_probe_weights.npz.
 
 Usage:
   cd /root/DENT/services/ml-service
-  python3 -m scripts.train_clip_probe \
+  python3 -m scripts.train_dinov2_probe \
     --bucket dent-calibration-data \
-    --output models/clip_ai/probe_weights.npz
+    --output models/dinov2/dinov2_probe_weights.npz
 """
 import argparse
 import csv
@@ -30,34 +30,34 @@ except ImportError:
                 print(f"  [{i}/{total}]", flush=True)
             yield x
 
-S3_PREFIX = "processed"
+S3_PREFIX = "processed"  # overridden by --s3-prefix
 VALID_CLASSES = {"authentic", "ai_generated", "tampered"}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train CLIP AI detection probe")
+    parser = argparse.ArgumentParser(description="Train DINOv2 AI detection probe")
     parser.add_argument("--bucket", required=True)
-    parser.add_argument("--output", default="models/clip_ai/probe_weights.npz")
+    parser.add_argument("--output", default="models/dinov2/dinov2_probe_weights.npz")
     parser.add_argument("--region", default="eu-central-1")
     parser.add_argument("--max-images", type=int, default=0, help="Limit images (0=all)")
     parser.add_argument("--s3-prefix", default="processed", help="S3 prefix for images/labels")
     args = parser.parse_args()
 
     import torch
-    from transformers import CLIPModel, CLIPProcessor
+    from transformers import AutoImageProcessor, AutoModel
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    print("Loading CLIP ViT-L/14...")
-    model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
-    processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+    print("Loading DINOv2-base...")
+    processor = AutoImageProcessor.from_pretrained("facebook/dinov2-base")
+    model = AutoModel.from_pretrained("facebook/dinov2-base").to(device)
     model.eval()
-    print("CLIP loaded")
+    print("DINOv2 loaded")
 
     # Load labels from S3
-    s3 = boto3.client("s3", region_name=args.region)
     s3_prefix = args.s3_prefix
+    s3 = boto3.client("s3", region_name=args.region)
     resp = s3.get_object(Bucket=args.bucket, Key=f"{s3_prefix}/labels.csv")
     content = resp["Body"].read().decode("utf-8")
     labels = {}
@@ -77,7 +77,7 @@ def main():
     y_labels = []
     errors = 0
 
-    for filename, gt in tqdm(items, desc="Extracting CLIP embeddings", total=len(items)):
+    for filename, gt in tqdm(items, desc="Extracting DINOv2 embeddings", total=len(items)):
         try:
             resp = s3.get_object(Bucket=args.bucket, Key=f"{s3_prefix}/{filename}")
             image_bytes = resp["Body"].read()
@@ -85,18 +85,14 @@ def main():
 
             inputs = processor(images=img, return_tensors="pt").to(device)
             with torch.no_grad():
-                output = model.get_image_features(**inputs)
-                # Handle both tensor and BaseModelOutputWithPooling
-                if hasattr(output, "pooler_output"):
-                    features = output.pooler_output
-                elif hasattr(output, "last_hidden_state"):
-                    features = output.last_hidden_state[:, 0]
-                elif isinstance(output, torch.Tensor):
-                    features = output
-                else:
-                    features = output[0] if isinstance(output, (tuple, list)) else output
-                features = features / features.norm(dim=-1, keepdim=True)
-                embedding = features.cpu().numpy().flatten()
+                outputs = model(**inputs)
+                # CLS token from last hidden state
+                cls_embedding = outputs.last_hidden_state[:, 0, :]  # (1, 768)
+                embedding = cls_embedding.cpu().numpy().flatten()  # (768,)
+                # L2 normalize
+                norm = np.linalg.norm(embedding)
+                if norm > 0:
+                    embedding = embedding / norm
 
             embeddings.append(embedding)
             y_labels.append(0 if gt == "authentic" else 1)

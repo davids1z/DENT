@@ -38,6 +38,7 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "mesorch_detection": 0.10,
     "efficientnet_ai_detection": 0.10,
     "safe_ai_detection": 0.12,
+    "dinov2_ai_detection": 0.12,
 }
 
 # Module names that are dedicated AI / synthetic-content detectors
@@ -48,21 +49,22 @@ _AI_DETECTOR_MODULES = frozenset({
     "community_forensics_detection",
     "efficientnet_ai_detection",
     "safe_ai_detection",
+    "dinov2_ai_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
-# SAFE: KDD 2025, pixel correlations, JPEG-dampened (×0.70)
-# CommFor: CVPR 2025, trained on 4803 generators
-# CLIP: trained probe F1=0.816
-# Swin: ensemble, noisy on authentic JPEG
-# EfficientNet: fast CNN (fixed download)
+# Retrained on diverse dataset (3799 images, 9 generators + RAISE/CarDD auth)
+# DINOv2: 0% FP on diverse auth (best discriminator, 0.55 separation)
+# SAFE: KDD 2025, JPEG-dampened (×0.70 for compression artifacts)
+# CommFor: CVPR 2025, 4803 generators
+# CLIP: retrained probe F1=0.746
 # Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.35,
-    "community_forensics_detection": 0.30,
-    "clip_ai_detection": 0.20,
-    "ai_generation_detection": 0.10,
-    "efficientnet_ai_detection": 0.05,
+    "safe_ai_detection": 0.30,
+    "dinov2_ai_detection": 0.25,
+    "community_forensics_detection": 0.25,
+    "clip_ai_detection": 0.15,
+    "ai_generation_detection": 0.05,
 }
 
 
@@ -211,27 +213,34 @@ def fuse_scores(
     overall = max(ai_combined, tampering, text_ai_score, content_score)
 
     # ── Step 6: Cross-validation AI boost ─────────────────────────────
-    # No single model can boost alone — requires corroboration.
-    # Swin ViT has high false positive rate on authentic JPEG photos.
+    # Only RELIABLE detectors participate in cross-validation.
+    # Excluded: Swin (65% FP on JPEG), NPR (22% FP), VAE (disabled).
+    # DINOv2 retrained on diverse data — 0% FP on auth, fully reliable now.
+    _RELIABLE_AI_DETECTORS = {
+        "safe_ai_detection",
+        "dinov2_ai_detection",
+        "community_forensics_detection",
+        "efficientnet_ai_detection",
+        "clip_ai_detection",
+    }
     ai_gen = _get_module(active, "ai_generation_detection")
     commfor = _get_module(active, "community_forensics_detection")
+    dinov2 = _get_module(active, "dinov2_ai_detection")
 
-    # Count how many core AI detectors agree at >= 0.50
+    # Count how many RELIABLE core AI detectors agree at >= 0.50
     high_ai_count = sum(
         1 for m in active
-        if m.module_name in _CORE_AI_WEIGHTS and m.risk_score >= 0.50
+        if m.module_name in _RELIABLE_AI_DETECTORS and m.risk_score >= 0.50
     )
-
-    # Swin boost ONLY if corroborated by CommFor OR 2+ other detectors
+    # Swin boost ONLY if corroborated by CommFor OR 2+ reliable detectors
     if ai_gen and ai_gen.risk_score >= 0.60:
         commfor_agrees = commfor is not None and commfor.risk_score >= 0.50
         if commfor_agrees or high_ai_count >= 3:
             overall = max(overall, ai_gen.risk_score)
         elif high_ai_count >= 2:
-            # Partial corroboration — moderate boost
             overall = max(overall, ai_gen.risk_score * 0.75)
 
-    # Cross-validation: 2+ core detectors agree → floor at 0.70
+    # Cross-validation: 2+ RELIABLE detectors agree → floor at 0.70
     if high_ai_count >= 2:
         overall = max(overall, 0.70)
 
