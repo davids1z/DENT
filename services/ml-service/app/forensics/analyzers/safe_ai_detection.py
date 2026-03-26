@@ -197,6 +197,13 @@ class SAFEAiDetectionAnalyzer(BaseAnalyzer):
                 # Class 1 = synthetic
                 synthetic_prob = float(probs[0, 1])
 
+            # JPEG compression creates pixel correlation patterns similar to
+            # AI generator artifacts. Dampen score for JPEG inputs to reduce
+            # false positives on authentic camera photos.
+            is_jpeg = image_bytes[:2] == b'\xff\xd8'
+            if is_jpeg:
+                synthetic_prob *= 0.70
+
             if synthetic_prob > 0.75:
                 findings.append(AnalyzerFinding(
                     code="SAFE_AI_DETECTED",

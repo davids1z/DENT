@@ -29,7 +29,9 @@ DETERMINISTICKI i NEPOBITNI — tvoj posao je objasniti ZASTO su moduli dali tak
 - 2+ AI detektora se slazu (oba >= 0.40) → outcome MORA biti "Escalate"
 - text_ai_detection risk >= 0.50 → outcome MORA biti "HumanReview" ili "Escalate"
 - spectral_forensics + ai_generation_detection OBA >= 0.35 → outcome MORA biti "Escalate"
-- SAMO ako SVI moduli imaju rizik < 0.20 → smije biti "AutoApprove"
+- Ako je overall_forensic_risk < 0.15 → outcome MORA biti "AutoApprove"
+- Ako je overall_forensic_risk < 0.20 i nijedan modul >= 0.40 → slika je vjerojatno
+  autenticna. Fokusiraj se na potvrdu autenticnosti, ne na trazenje problema.
 Ova pravila su APSOLUTNA. Nikakvo vizualno opazanje ih ne moze ponistavati.
 
 TVOJ FOKUS:
@@ -117,50 +119,65 @@ def build_evidence_prompt(
     else:
         sections.append("## NALAZI AI ANALIZE\nNema detektiranih anomalija - slika izgleda autenticna.")
 
-    # Forensic analysis
+    # Forensic analysis — only send modules with significant signals (>= 0.40)
+    # to prevent the LLM from overreacting to low-score noise.
+    _MIN_AGENT_SCORE = 0.40
+    significant_modules = [
+        m for m in forensic_modules
+        if m.get("riskScore", 0) >= _MIN_AGENT_SCORE and not m.get("error")
+    ]
+
     forensic_lines = [
         f"Ukupni rizik: {overall_forensic_risk:.2f} ({overall_forensic_level})"
     ]
-    for m in forensic_modules:
-        name = m.get("moduleLabel") or m.get("moduleName", "?")
-        score = m.get("riskScore", 0)
-        level = m.get("riskLevel", "?")
-        forensic_lines.append(f"\n### {name} — Rizik: {score:.2f} ({level})")
 
-        findings = m.get("findings", [])
-        if findings:
-            for f in findings:
-                forensic_lines.append(
-                    f"  - [{f.get('code', '?')}] {f.get('title', '?')}: "
-                    f"{f.get('description', '')} "
-                    f"(rizik: {f.get('riskScore', 0):.2f}, pouzdanost: {f.get('confidence', 0):.0%})"
-                )
+    if not significant_modules:
+        forensic_lines.append(
+            "\nSvi forenzicki moduli pokazuju nizak rizik (< 0.40). "
+            "Nema znacajnih indikatora manipulacije ili AI generiranja."
+        )
+    else:
+        for m in significant_modules:
+            name = m.get("moduleLabel") or m.get("moduleName", "?")
+            score = m.get("riskScore", 0)
+            level = m.get("riskLevel", "?")
+            forensic_lines.append(f"\n### {name} — Rizik: {score:.2f} ({level})")
 
-        error = m.get("error")
-        if error:
-            forensic_lines.append(f"  ⚠ Greska modula: {error}")
+            findings = m.get("findings", [])
+            if findings:
+                for f in findings:
+                    forensic_lines.append(
+                        f"  - [{f.get('code', '?')}] {f.get('title', '?')}: "
+                        f"{f.get('description', '')} "
+                        f"(rizik: {f.get('riskScore', 0):.2f}, pouzdanost: {f.get('confidence', 0):.0%})"
+                    )
 
+            error = m.get("error")
+            if error:
+                forensic_lines.append(f"  ⚠ Greska modula: {error}")
+
+    forensic_lines.append(
+        f"\n(Filtrirano: prikazano {len(significant_modules)}/{len(forensic_modules)} modula "
+        f"s rizikom >= {_MIN_AGENT_SCORE:.0%}. Moduli ispod praga ne ukazuju na probleme.)"
+    )
     sections.append("## FORENZICKA ANALIZA\n" + "\n".join(forensic_lines))
 
-    # ── Highlight AI / manipulation signals so the agent cannot miss them ──
+    # ── Highlight AI / manipulation signals (only for significant modules) ──
     _AI_WARNING_MODULES = {
         "ai_generation_detection": ("SWIN ENSEMBLE",
             "Swin Transformer klasifikatori (obuceni na 500k+ slika)"),
         "clip_ai_detection": ("CLIP DETEKTOR",
             "CLIP ViT-L/14 embeddinzi indiciraju sinteticki sadrzaj"),
-        "vae_reconstruction": ("VAE REKONSTRUKCIJA",
-            "Niska rekonstrukcijska greska = slika je na AI manifoldu"),
         "spectral_forensics": ("SPEKTRALNA ANALIZA",
             "Frekvencijske anomalije tipicne za difuzijske generatore"),
         "text_ai_detection": ("TEXT AI DETEKCIJA",
             "AI-generirani tekst detektiran u dokumentu"),
     }
     warn_lines: list[str] = []
-    for m in forensic_modules:
+    for m in significant_modules:
         mod_name = m.get("moduleName", "")
         mod_score = m.get("riskScore", 0)
-        threshold = 0.35 if mod_name == "spectral_forensics" else 0.40
-        if mod_name in _AI_WARNING_MODULES and mod_score >= threshold:
+        if mod_name in _AI_WARNING_MODULES and mod_score >= _MIN_AGENT_SCORE:
             label, desc = _AI_WARNING_MODULES[mod_name]
             warn_lines.append(f"- {label}: rizik {mod_score:.2f} — {desc}")
 

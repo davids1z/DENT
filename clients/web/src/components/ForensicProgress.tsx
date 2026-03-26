@@ -12,14 +12,11 @@ export interface ForensicStep {
 const DEFAULT_STEPS: ForensicStep[] = [
   { id: "metadata_analysis", label: "Metadata analiza", status: "pending" },
   { id: "modification_detection", label: "ELA detekcija modifikacija", status: "pending" },
-  { id: "optical_forensics", label: "Opticka forenzika", status: "pending" },
   { id: "spectral_forensics", label: "Spektralna forenzika", status: "pending" },
   { id: "clip_ai_detection", label: "CLIP AI detekcija", status: "pending" },
-  { id: "prnu_detection", label: "PRNU senzorska analiza", status: "pending" },
   { id: "deep_modification_detection", label: "CNN duboka analiza", status: "pending" },
   { id: "semantic_forensics", label: "Semanticka analiza", status: "pending" },
   { id: "ai_generation_detection", label: "AI generiranje detekcija", status: "pending" },
-  { id: "vae_reconstruction", label: "VAE rekonstrukcija", status: "pending" },
   { id: "text_ai_detection", label: "AI tekst detekcija", status: "pending" },
   { id: "gemini", label: "Semantička analiza", status: "pending" },
   { id: "agent", label: "Agent evaluacija", status: "pending" },
@@ -33,20 +30,24 @@ const DEFAULT_STEPS: ForensicStep[] = [
  * Group 2 (sequential): CNN, semantic, AI gen are heavy on CPU.
  * Then: Gemini (API call), Agent (LLM call), Evidence (hashing).
  */
+/**
+ * Durations tuned for parallel backend execution.
+ * All image modules run simultaneously via ThreadPoolExecutor,
+ * so the first ~8 steps complete in ~15s (max of parallel group).
+ * Then: Gemini API (~8s), Agent LLM (~15s), Evidence hashing (~5s).
+ * Total: ~43s (matches real wall clock time).
+ */
 const STEP_DURATIONS: Record<string, number> = {
-  metadata_analysis: 2,
-  modification_detection: 3,
-  optical_forensics: 2,
-  spectral_forensics: 4,
-  clip_ai_detection: 4,
-  prnu_detection: 3,
-  deep_modification_detection: 12,
-  semantic_forensics: 8,
-  ai_generation_detection: 12,
-  vae_reconstruction: 6,
-  text_ai_detection: 5,
-  gemini: 18,
-  agent: 12,
+  metadata_analysis: 1,
+  modification_detection: 1,
+  spectral_forensics: 2,
+  clip_ai_detection: 2,
+  deep_modification_detection: 3,
+  semantic_forensics: 3,
+  ai_generation_detection: 3,
+  text_ai_detection: 1,
+  gemini: 8,
+  agent: 15,
   evidence: 5,
 };
 

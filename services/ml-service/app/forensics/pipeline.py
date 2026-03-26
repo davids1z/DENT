@@ -54,7 +54,7 @@ class ForensicPipeline:
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
-        npr_enabled: bool = True,
+        npr_enabled: bool = False,
         clip_ai_enabled: bool = True,
         vae_recon_enabled: bool = True,
         text_ai_enabled: bool = True,
@@ -469,6 +469,9 @@ class ForensicPipeline:
                     _report_progress(mod_name)
 
         else:  # image (default)
+            import time as _time
+            _wall_start = _time.perf_counter()
+
             # ── ALL modules in PARALLEL via thread pool ────────────────
             # PyTorch releases GIL during tensor ops, so ThreadPoolExecutor
             # gives real CPU parallelism on multi-core servers.
@@ -544,7 +547,12 @@ class ForensicPipeline:
                 )
 
         overall_score, overall_score_100, overall_level, verdict_probs = fuse_scores(modules)
-        total_time = sum(m.processing_time_ms for m in modules)
+        # Use wall clock time for images (modules run in parallel).
+        # For documents, sum is correct (sequential execution).
+        if file_category not in ("pdf", "docx", "xlsx"):
+            total_time = int((_time.perf_counter() - _wall_start) * 1000)
+        else:
+            total_time = sum(m.processing_time_ms for m in modules)
 
         # Extract ELA heatmap if available, fall back to CNN heatmap
         ela_heatmap = self._modification.ela_heatmap_b64

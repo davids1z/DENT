@@ -165,5 +165,39 @@ if [ -f "/app/models_stage/clip_ai/probe_weights.npz" ] && [ ! -f "/app/models/c
     cp /app/models_stage/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
 fi
 
+# EfficientNet-B4 AI detector (~75 MB, public HuggingFace repo)
+efficientnet_path="/app/models/efficientnet_ai/pytorch_model.pth"
+if [ ! -f "$efficientnet_path" ]; then
+    echo "[entrypoint] Downloading EfficientNet-B4 AI detector (~75 MB)..."
+    mkdir -p "$(dirname "$efficientnet_path")"
+    HF_HUB_OFFLINE=0 python3 -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download('Dafilab/ai-image-detector', 'pytorch_model.pth',
+                local_dir='/app/models/efficientnet_ai')
+" || echo "[entrypoint] WARNING: EfficientNet download failed"
+else
+    echo "[entrypoint] EfficientNet-B4 already cached"
+fi
+
+# SAFE AI detector (~6 MB, GitHub)
+safe_path="/app/models/safe_ai/checkpoint-best.pth"
+if [ ! -f "$safe_path" ]; then
+    echo "[entrypoint] Downloading SAFE checkpoint (~6 MB)..."
+    mkdir -p "$(dirname "$safe_path")"
+    python3 -c "
+import urllib.request, sys
+try:
+    urllib.request.urlretrieve(
+        'https://raw.githubusercontent.com/Ouxiang-Li/SAFE/main/checkpoint/checkpoint-best.pth',
+        '$safe_path'
+    )
+    print('[entrypoint] SAFE checkpoint downloaded')
+except Exception as e:
+    print(f'[entrypoint] WARNING: SAFE download failed: {e}', file=sys.stderr)
+" || true
+else
+    echo "[entrypoint] SAFE checkpoint already cached"
+fi
+
 echo "[entrypoint] Starting uvicorn..."
 exec "$@"
