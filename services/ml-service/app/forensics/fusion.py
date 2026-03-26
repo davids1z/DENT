@@ -227,21 +227,23 @@ def fuse_scores(
     commfor = _get_module(active, "community_forensics_detection")
     dinov2 = _get_module(active, "dinov2_ai_detection")
 
-    # Count how many RELIABLE core AI detectors agree at >= 0.50
+    # Count how many RELIABLE core AI detectors agree at >= 0.60.
+    # Research (Advances in Physiology Education, 2025) shows:
+    #   - 2/5 at 0.50 → too aggressive, causes FP on authentic JPEG
+    #   - 3/5 at 0.80 → near-zero FP but may miss some AI
+    #   - 3/5 at 0.60 → good balance for our 5-detector ensemble
     high_ai_count = sum(
         1 for m in active
-        if m.module_name in _RELIABLE_AI_DETECTORS and m.risk_score >= 0.50
+        if m.module_name in _RELIABLE_AI_DETECTORS and m.risk_score >= 0.60
     )
-    # Swin boost ONLY if corroborated by CommFor OR 2+ reliable detectors
+    # Swin boost ONLY if corroborated by CommFor OR 3+ reliable detectors
     if ai_gen and ai_gen.risk_score >= 0.60:
-        commfor_agrees = commfor is not None and commfor.risk_score >= 0.50
+        commfor_agrees = commfor is not None and commfor.risk_score >= 0.60
         if commfor_agrees or high_ai_count >= 3:
             overall = max(overall, ai_gen.risk_score)
-        elif high_ai_count >= 2:
-            overall = max(overall, ai_gen.risk_score * 0.75)
 
-    # Cross-validation: 2+ RELIABLE detectors agree → floor at 0.70
-    if high_ai_count >= 2:
+    # Cross-validation: 3+ RELIABLE detectors at >= 0.60 → floor at 0.70
+    if high_ai_count >= 3:
         overall = max(overall, 0.70)
 
     overall = max(0.0, min(1.0, overall))

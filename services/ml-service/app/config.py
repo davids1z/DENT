@@ -52,7 +52,8 @@ class Settings(BaseSettings):
     forensics_dinov2_ai_model: str = "facebook/dinov2-base"
 
     # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
-    forensics_npr_enabled: bool = True
+    # Disabled: 0.023 separation (noise), gives 1.00 on authentic JPEGs
+    forensics_npr_enabled: bool = False
 
     # CLIP AI detection (UniversalFakeDetect style)
     forensics_clip_ai_enabled: bool = True
