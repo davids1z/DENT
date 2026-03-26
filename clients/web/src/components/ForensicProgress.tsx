@@ -9,7 +9,7 @@ export interface ForensicStep {
   status: "pending" | "active" | "complete";
 }
 
-const DEFAULT_STEPS: ForensicStep[] = [
+const IMAGE_STEPS: ForensicStep[] = [
   // All forensic modules run in parallel (~15s total wall clock)
   { id: "metadata_analysis", label: "Metadata analiza", status: "pending" },
   { id: "modification_detection", label: "ELA detekcija modifikacija", status: "pending" },
@@ -20,18 +20,36 @@ const DEFAULT_STEPS: ForensicStep[] = [
   { id: "clip_ai_detection", label: "CLIP AI detekcija", status: "pending" },
   { id: "mesorch_detection", label: "Mesorch detekcija manipulacija", status: "pending" },
   // Post-processing
-  { id: "agent", label: "Agent evaluacija", status: "pending" },
   { id: "evidence", label: "Digitalni pecat", status: "pending" },
 ];
 
+const DOCUMENT_STEPS: ForensicStep[] = [
+  { id: "document_forensics", label: "Analiza strukture dokumenta", status: "pending" },
+  { id: "text_ai_detection", label: "Detekcija AI teksta", status: "pending" },
+  { id: "content_validation", label: "Validacija sadrzaja (OIB/IBAN)", status: "pending" },
+  { id: "embedded_images", label: "Forenzika ugradenih slika", status: "pending" },
+  { id: "evidence", label: "Digitalni pecat", status: "pending" },
+];
+
+/** Determine steps based on filename extension. */
+function getStepsForFile(filename?: string): ForensicStep[] {
+  if (!filename) return IMAGE_STEPS;
+  const ext = filename.toLowerCase().split(".").pop() || "";
+  if (["pdf", "docx", "xlsx", "doc", "xls"].includes(ext)) {
+    return DOCUMENT_STEPS;
+  }
+  return IMAGE_STEPS;
+}
+
+const DEFAULT_STEPS = IMAGE_STEPS;
+
 /**
  * Durations tuned for parallel backend execution.
- * All forensic modules run simultaneously via ThreadPoolExecutor (~15s wall clock),
- * but shown sequentially for visual feedback. Durations spread across the window.
- * Agent LLM call (~15s) and evidence hashing (~5s) run after forensics.
- * Total: ~40s (matches real wall clock time).
+ * Image modules run simultaneously (~15s wall clock).
+ * Document modules run in parallel (~3s).
  */
 const STEP_DURATIONS: Record<string, number> = {
+  // Image modules (parallel, ~15s total)
   metadata_analysis: 1,
   modification_detection: 2,
   safe_ai_detection: 2,
@@ -40,7 +58,12 @@ const STEP_DURATIONS: Record<string, number> = {
   efficientnet_ai_detection: 2,
   clip_ai_detection: 2,
   mesorch_detection: 2,
-  agent: 15,
+  // Document modules (parallel, ~3s total)
+  document_forensics: 2,
+  text_ai_detection: 2,
+  content_validation: 2,
+  embedded_images: 3,
+  // Post-processing
   evidence: 5,
 };
 
@@ -134,8 +157,9 @@ export function ForensicProgress({ steps, progress }: ForensicProgressProps) {
 // Hook: useForensicProgress — timed simulation of forensic step progression
 // ---------------------------------------------------------------------------
 
-export function useForensicProgress(isActive: boolean) {
-  const [steps, setSteps] = useState<ForensicStep[]>(() => createForensicSteps());
+export function useForensicProgress(isActive: boolean, filename?: string) {
+  const stepsTemplate = getStepsForFile(filename);
+  const [steps, setSteps] = useState<ForensicStep[]>(() => createForensicSteps(filename));
   const [progress, setProgress] = useState(0);
   const stepIndexRef = useRef(0);
   const stepElapsedRef = useRef(0);
@@ -143,7 +167,7 @@ export function useForensicProgress(isActive: boolean) {
   // Reset whenever analysis starts
   useEffect(() => {
     if (isActive) {
-      const fresh = createForensicSteps();
+      const fresh = createForensicSteps(filename);
       // Activate first step
       fresh[0].status = "active";
       setSteps(fresh);
@@ -151,28 +175,30 @@ export function useForensicProgress(isActive: boolean) {
       stepIndexRef.current = 0;
       stepElapsedRef.current = 0;
     }
-  }, [isActive]);
+  }, [isActive, filename]);
 
   // Tick every 500ms to advance simulated progress
   useEffect(() => {
     if (!isActive) return;
 
-    const stepIds = DEFAULT_STEPS.map((s) => s.id);
+    const stepIds = stepsTemplate.map((s) => s.id);
     const tick = 0.5; // seconds per interval
 
     const interval = setInterval(() => {
       stepElapsedRef.current += tick;
       const idx = stepIndexRef.current;
 
+      const lastStepIdx = stepIds.length - 1;
+
       // Already past all steps (complete() was called) — nothing to do
-      if (idx > LAST_STEP_INDEX) return;
+      if (idx > lastStepIdx) return;
 
       const currentId = stepIds[idx];
       const duration = STEP_DURATIONS[currentId] || 3;
 
       // Last step: NEVER auto-complete — keep it spinning until complete() is called.
       // Slowly creep progress from ~90% toward 98% using asymptotic curve.
-      if (idx === LAST_STEP_INDEX) {
+      if (idx === lastStepIdx) {
         const extraTime = stepElapsedRef.current;
         // Asymptotic creep: 0.90 + 0.08 * (1 - e^(-t/40)) → approaches 0.98
         const creep = 0.90 + 0.08 * (1 - Math.exp(-extraTime / 40));
@@ -233,10 +259,10 @@ export function useForensicProgress(isActive: boolean) {
 // ---------------------------------------------------------------------------
 
 /**
- * Create a mutable steps array for use with SSE events.
+ * Create a mutable steps array based on file type.
  */
-export function createForensicSteps(): ForensicStep[] {
-  return DEFAULT_STEPS.map((s) => ({ ...s }));
+export function createForensicSteps(filename?: string): ForensicStep[] {
+  return getStepsForFile(filename).map((s) => ({ ...s }));
 }
 
 /**
