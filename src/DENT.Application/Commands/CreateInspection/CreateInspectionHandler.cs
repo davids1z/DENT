@@ -270,9 +270,22 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                     inspection.Id);
             }
 
-            // ── Step 2: Run AI analysis WITH forensic context ───────────
+            // ── Step 2: Run AI visual analysis (images only) ──────────
+            // Documents (PDF, DOCX, XLSX) are fully analyzed by forensics
+            // in Step 1 — no need for Gemini/VLM visual analysis.
+            var docExtensions = new[] { ".pdf", ".docx", ".xlsx", ".xls", ".doc" };
+            var isDocument = docExtensions.Any(ext =>
+                data.FirstImageFileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+
             MlAnalysisResult result;
-            if (forensicResult != null && data.AllImages.Count == 1)
+            if (isDocument)
+            {
+                // Documents: skip visual analysis, use forensic results directly
+                result = new MlAnalysisResult { Success = true };
+                logger.LogInformation("Document detected ({FileName}), skipping visual analysis",
+                    data.FirstImageFileName);
+            }
+            else if (forensicResult != null && data.AllImages.Count == 1)
             {
                 result = await mlService.AnalyzeImageWithContextAsync(
                     data.FirstImageData, data.FirstImageFileName, forensicResult,
