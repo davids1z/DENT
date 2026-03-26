@@ -220,7 +220,10 @@ def fuse_scores(
 
     deep_mod_score = deep_mod.risk_score if deep_mod and deep_mod.risk_score >= 0.55 else 0.0
     mesorch_score = mesorch.risk_score if mesorch and mesorch.risk_score >= 0.40 else 0.0
-    mod_det_score = (mod_det.risk_score * 0.50) if mod_det and mod_det.risk_score >= 0.70 else 0.0
+    # ELA/modification at 0.50+ indicates real tampering (lowered from 0.70
+    # because with CNN disabled, ELA is the only other tampering signal).
+    # Scale by 0.80 to prevent minor ELA anomalies from dominating.
+    mod_det_score = (mod_det.risk_score * 0.80) if mod_det and mod_det.risk_score >= 0.50 else 0.0
 
     # Require at least 2 tampering signals to flag as tampered
     tamp_signals = [s for s in [deep_mod_score, mesorch_score, mod_det_score] if s > 0]

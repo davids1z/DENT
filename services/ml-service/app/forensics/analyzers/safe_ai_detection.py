@@ -200,9 +200,10 @@ class SAFEAiDetectionAnalyzer(BaseAnalyzer):
             # JPEG compression creates pixel correlation patterns similar to
             # AI generator artifacts. Dampen score for JPEG inputs to reduce
             # false positives on authentic camera photos.
+            # 0.60 dampening: a SAFE raw score of 0.60 becomes 0.36 (below Medium).
             is_jpeg = image_bytes[:2] == b'\xff\xd8'
             if is_jpeg:
-                synthetic_prob *= 0.70
+                synthetic_prob *= 0.60
 
             if synthetic_prob > 0.75:
                 findings.append(AnalyzerFinding(
