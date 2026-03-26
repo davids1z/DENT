@@ -146,6 +146,22 @@ def fuse_scores(
     if max_independent_score < 0.30:
         cnn_dampening = 0.30 + 0.70 * (max_independent_score / 0.30)
 
+    # SAFE isolation check: when SAFE fires alone (CommFor+CLIP+DINOv2+Eff all low),
+    # it's likely a JPEG artifact FP. Dampen SAFE's contribution.
+    safe_mod = _get_module(active, "safe_ai_detection")
+    safe_score_raw = safe_mod.risk_score if safe_mod and not safe_mod.error else 0.0
+    other_core_max = max(
+        (m.risk_score for m in active
+         if m.module_name in _CORE_AI_WEIGHTS
+         and m.module_name != "safe_ai_detection"
+         and not m.error),
+        default=0.0,
+    )
+    safe_dampening = 1.0
+    if safe_score_raw > 0.20 and other_core_max < 0.20:
+        # SAFE alone, no corroboration → dampen
+        safe_dampening = 0.50
+
     core_weighted = 0.0
     core_total_w = 0.0
     for m in active:
@@ -154,6 +170,8 @@ def fuse_scores(
             score = m.risk_score
             if m.module_name in _CNN_FAMILY_DETECTORS:
                 score *= cnn_dampening
+            if m.module_name == "safe_ai_detection":
+                score *= safe_dampening
             core_weighted += score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
@@ -225,12 +243,15 @@ def fuse_scores(
     # Scale by 0.80 to prevent minor ELA anomalies from dominating.
     mod_det_score = (mod_det.risk_score * 0.80) if mod_det and mod_det.risk_score >= 0.50 else 0.0
 
-    # Require at least 2 tampering signals to flag as tampered
+    # Require at least 2 tampering signals to flag as tampered.
+    # With CNN disabled, Mesorch is often the only tampering detector.
+    # A single Mesorch/mod_det signal >= 0.50 is reliable enough to flag.
     tamp_signals = [s for s in [deep_mod_score, mesorch_score, mod_det_score] if s > 0]
     if len(tamp_signals) >= 2:
         tampering = max(tamp_signals)
-    elif len(tamp_signals) == 1 and max(tamp_signals) >= 0.65:
-        # Single very strong signal still counts
+    elif len(tamp_signals) == 1 and max(tamp_signals) >= 0.50:
+        # Single strong signal (lowered from 0.65 because CNN is disabled
+        # and Mesorch alone at 0.50+ is a reliable tampering indicator)
         tampering = max(tamp_signals) * 0.85
     else:
         tampering = 0.0
