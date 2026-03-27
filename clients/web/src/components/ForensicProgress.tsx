@@ -72,21 +72,21 @@ const IMAGE_STEP_DURATIONS: Record<string, number> = {
 };
 
 const DOCUMENT_STEP_DURATIONS: Record<string, number> = {
-  doc_structure: 0.6,
-  doc_metadata: 0.6,
-  doc_fonts: 0.8,
-  doc_signatures: 0.6,
-  doc_redaction: 0.6,
-  doc_shadow: 0.8,
-  doc_visual_ocr: 1.5,
-  doc_char_metrics: 0.8,
-  doc_version_diff: 1.2,
-  doc_actions: 0.5,
-  doc_tounicode: 0.8,
-  doc_annotations: 0.6,
-  doc_embedded_ela: 1.0,
-  text_ai_detection: 0.8,
-  content_validation: 0.6,
+  doc_structure: 0.8,
+  doc_metadata: 0.8,
+  doc_fonts: 1.0,
+  doc_signatures: 0.8,
+  doc_redaction: 0.8,
+  doc_shadow: 1.0,
+  doc_visual_ocr: 2.0,
+  doc_char_metrics: 1.0,
+  doc_version_diff: 1.5,
+  doc_actions: 0.7,
+  doc_tounicode: 1.0,
+  doc_annotations: 0.8,
+  doc_embedded_ela: 1.2,
+  text_ai_detection: 1.0,
+  content_validation: 0.8,
 };
 
 const SHARED_STEP_DURATIONS: Record<string, number> = {
