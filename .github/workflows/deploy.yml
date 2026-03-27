@@ -52,10 +52,10 @@ jobs:
             else
               cd "$DEPLOY_DIR"
               git fetch origin main
-              # Fix ownership on files that Docker may have created as root
-              sudo chown -R "$(whoami):$(id -gn)" services/ml-service/models/ 2>/dev/null || true
-              sudo chown -R "$(whoami):$(id -gn)" config/ 2>/dev/null || true
-              git checkout -- . 2>/dev/null || true
+              # Remove root-owned files that git can't overwrite
+              # (Docker volume mounts create these as root)
+              find services/ml-service/models -not -writable -delete 2>/dev/null || true
+              find config -not -writable -delete 2>/dev/null || true
               git reset --hard origin/main
             fi
 
