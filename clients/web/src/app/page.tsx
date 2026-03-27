@@ -269,29 +269,41 @@ export default function Dashboard() {
               </h2>
             </div>
             <DashboardStats stats={stats} />
-            {stats.recentInspections.length > 0 && (
-              <div className="mt-10">
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="font-heading font-semibold">
-                    Zadnje analize
-                  </h3>
-                  <Link
-                    href="/inspections"
-                    className="text-sm text-accent hover:text-accent-hover transition-colors font-medium"
-                  >
-                    Vidi sve
-                  </Link>
+            {stats.recentInspections.length > 0 && (() => {
+              const recent = stats.recentInspections.slice(0, 3);
+              const extra = stats.totalInspections - recent.length;
+              return (
+                <div className="mt-10">
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="font-heading font-semibold">
+                      Zadnje analize
+                    </h3>
+                    {extra > 0 && (
+                      <Link
+                        href="/inspections"
+                        className="text-sm text-accent hover:text-accent-hover transition-colors font-medium"
+                      >
+                        Pogledaj sve analize
+                      </Link>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                    {recent.map((inspection, idx) => (
+                      <div key={inspection.id} className="relative">
+                        <InspectionCard inspection={inspection} />
+                        {extra > 0 && idx === Math.floor(recent.length / 2) && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <span className="bg-accent text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-lg">
+                              +{extra}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {stats.recentInspections.map((inspection) => (
-                    <InspectionCard
-                      key={inspection.id}
-                      inspection={inspection}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </section>
       )}
