@@ -26,12 +26,12 @@ export function DecisionBadge({ outcome, reason, className }: DecisionBadgeProps
     <div
       className={cn(
         "rounded-xl border p-4",
-        badgeStyles[outcome] || "bg-gray-50 border-gray-200 text-gray-700",
+        badgeStyles[outcome] || "bg-card border-border text-foreground",
         className
       )}
     >
       <div className="flex items-center gap-3">
-        <div className={cn("flex-shrink-0", iconColor[outcome] || "text-gray-500")}>
+        <div className={cn("flex-shrink-0", iconColor[outcome] || "text-muted")}>
           {outcome === "AutoApprove" && <CheckIcon />}
           {outcome === "HumanReview" && <EyeIcon />}
           {outcome === "Escalate" && <AlertIcon />}

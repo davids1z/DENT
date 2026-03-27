@@ -131,7 +131,7 @@ function InspectionsContent() {
                   <tr key={i.id} className="border-b border-border hover:bg-card-hover transition-colors cursor-pointer">
                     <td className="px-4 py-3">
                       <Link href={`/inspections/${i.id}`} className="flex items-center gap-3">
-                        <img src={i.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
+                        <img src={i.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-card-hover flex-shrink-0" />
                         <span className="font-medium truncate">{i.originalFileName}</span>
                       </Link>
                     </td>

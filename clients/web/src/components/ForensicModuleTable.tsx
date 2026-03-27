@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 // ── Icons ────────────────────────────────────────────────────────
 
 function PillarIcon({ icon }: { icon: string }) {
-  const cls = "w-4 h-4 text-slate-400";
+  const cls = "w-4 h-4 text-muted-light";
   switch (icon) {
     case "lock":
       return (
@@ -73,7 +73,7 @@ function riskLevelBg(level: string): string {
     case "Medium": return "bg-amber-500";
     case "High": return "bg-orange-500";
     case "Critical": return "bg-red-500";
-    default: return "bg-gray-400";
+    default: return "bg-muted-light";
   }
 }
 
@@ -97,21 +97,21 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
   const hasFindings = mod.findings.length > 0;
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-white">
+    <div className="rounded-lg border border-border bg-background">
       <button
         onClick={() => hasFindings && setOpen(!open)}
         className={cn(
           "w-full flex items-center gap-3 px-3 py-2 text-left",
-          hasFindings && "hover:bg-gray-50 transition-colors"
+          hasFindings && "hover:bg-card transition-colors"
         )}
       >
-        <span className="text-xs font-medium flex-1 truncate text-slate-700">
+        <span className="text-xs font-medium flex-1 truncate text-foreground">
           {forensicModuleLabel(mod.moduleName)}
         </span>
         {mod.error && (
           <span className="text-[10px] px-1.5 py-0.5 bg-red-50 text-red-500 rounded border border-red-200">Greška</span>
         )}
-        <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
+        <div className="w-16 h-1.5 bg-card-hover rounded-full overflow-hidden flex-shrink-0">
           <div
             className={cn("h-full rounded-full", riskLevelBg(mod.riskLevel))}
             style={{ width: `${riskPct}%` }}
@@ -122,7 +122,7 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
         </span>
         {hasFindings && (
           <svg
-            className={cn("w-3 h-3 text-slate-400 transition-transform flex-shrink-0", open && "rotate-180")}
+            className={cn("w-3 h-3 text-muted-light transition-transform flex-shrink-0", open && "rotate-180")}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -139,7 +139,7 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-2 space-y-1 border-t border-gray-50">
+            <div className="px-3 pb-2 space-y-1 border-t border-border">
               {mod.findings.map((f, j) => (
                 <div key={j} className="flex items-start gap-2 py-1.5">
                   <div
@@ -149,12 +149,12 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
                     )}
                   />
                   <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-slate-700 block">{f.title}</span>
+                    <span className="text-[11px] text-foreground block">{f.title}</span>
                     {f.description && (
-                      <span className="text-[10px] text-slate-400 block truncate">{f.description.slice(0, 100)}</span>
+                      <span className="text-[10px] text-muted-light block truncate">{f.description.slice(0, 100)}</span>
                     )}
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
+                  <span className="text-[10px] font-mono text-muted-light flex-shrink-0">
                     {Math.round(f.confidence * 100)}%
                   </span>
                 </div>
@@ -188,16 +188,16 @@ function HeatmapViewer({
     : heatmapUrl || fftSpectrumUrl;
 
   return (
-    <div className="border-t border-gray-100 pt-3 mt-2">
+    <div className="border-t border-border pt-3 mt-2">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           {hasTabs && (
-            <div className="flex rounded-md border border-gray-200 overflow-hidden">
+            <div className="flex rounded-md border border-border overflow-hidden">
               <button
                 onClick={() => setTab("spectral")}
                 className={cn(
                   "px-2 py-0.5 text-[10px] font-medium transition-colors",
-                  tab === "spectral" ? "bg-accent text-white" : "bg-white text-slate-400 hover:bg-gray-50"
+                  tab === "spectral" ? "bg-accent text-white" : "bg-background text-muted-light hover:bg-card"
                 )}
               >
                 Heatmap
@@ -206,7 +206,7 @@ function HeatmapViewer({
                 onClick={() => setTab("fft")}
                 className={cn(
                   "px-2 py-0.5 text-[10px] font-medium transition-colors",
-                  tab === "fft" ? "bg-accent text-white" : "bg-white text-slate-400 hover:bg-gray-50"
+                  tab === "fft" ? "bg-accent text-white" : "bg-background text-muted-light hover:bg-card"
                 )}
               >
                 FFT
@@ -217,7 +217,7 @@ function HeatmapViewer({
             onClick={() => setVisible(!visible)}
             className={cn(
               "text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors",
-              visible ? "bg-accent text-white" : "bg-gray-100 text-slate-500 hover:bg-gray-200"
+              visible ? "bg-accent text-white" : "bg-card-hover text-muted hover:bg-card-hover"
             )}
           >
             {visible ? "Sakrij" : "Prikaži toplinski prikaz"}
@@ -225,7 +225,7 @@ function HeatmapViewer({
         </div>
         {visible && (
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-400">{opacity}%</span>
+            <span className="text-[10px] text-muted-light">{opacity}%</span>
             <input
               type="range"
               min={10}
@@ -239,7 +239,7 @@ function HeatmapViewer({
       </div>
 
       {visible && activeUrl && (
-        <div className="relative rounded-lg overflow-hidden bg-gray-900" style={{ maxHeight: 240 }}>
+        <div className="relative rounded-lg overflow-hidden bg-foreground" style={{ maxHeight: 240 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={originalImageUrl} alt="Original" className="w-full object-contain" style={{ maxHeight: 240 }} />
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -268,7 +268,7 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50/50 transition-colors"
+        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-card/50 transition-colors"
       >
         {/* Status dot */}
         <div className={cn("w-2 h-2 rounded-full flex-shrink-0", statusDotColor(status))} />
@@ -278,13 +278,13 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
 
         {/* Name */}
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-slate-800 block">{data.pillar.label}</span>
-          <span className="text-[11px] text-slate-400 block truncate">{data.pillar.description}</span>
+          <span className="text-sm font-medium text-foreground block">{data.pillar.label}</span>
+          <span className="text-[11px] text-muted-light block truncate">{data.pillar.description}</span>
         </div>
 
         {/* Risk bar */}
         <div className="w-20 flex items-center gap-2 flex-shrink-0">
-          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
             <div
               className={cn("h-full rounded-full", statusDotColor(status))}
               style={{ width: `${riskPct}%` }}
@@ -297,7 +297,7 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
 
         {/* Findings count */}
         {findingsCount > 0 && (
-          <span className="text-[10px] bg-gray-100 text-slate-500 px-2 py-0.5 rounded-full flex-shrink-0">
+          <span className="text-[10px] bg-card-hover text-muted px-2 py-0.5 rounded-full flex-shrink-0">
             {findingsCount}
           </span>
         )}
@@ -309,7 +309,7 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
 
         {/* Chevron */}
         <svg
-          className={cn("w-4 h-4 text-slate-400 transition-transform flex-shrink-0", expanded && "rotate-180")}
+          className={cn("w-4 h-4 text-muted-light transition-transform flex-shrink-0", expanded && "rotate-180")}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -325,7 +325,7 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-4 space-y-2 bg-gray-50/30">
+            <div className="px-5 pb-4 space-y-2 bg-card/30">
               {data.modules.map((mod) => (
                 <ModuleRow key={mod.moduleName} module={mod} />
               ))}
@@ -360,7 +360,7 @@ export function ForensicModuleTable({ result, originalImageUrl }: ForensicModule
       <h2 className="font-heading text-lg font-semibold mb-4">
         Forenzički moduli ({pillars.length})
       </h2>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+      <div className="bg-background rounded-2xl border border-border shadow-sm overflow-hidden divide-y divide-border">
         {pillars.map((p) => (
           <PillarSection key={p.pillar.id} data={p} originalImageUrl={originalImageUrl} />
         ))}

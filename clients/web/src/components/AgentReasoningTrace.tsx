@@ -132,7 +132,7 @@ export function AgentReasoningTrace({
                     ? "bg-red-50 border-red-200"
                     : decision.weatherVerification.corroboratesClaim === true
                       ? "bg-green-50 border-green-200"
-                      : "bg-gray-50 border-gray-200"
+                      : "bg-card border-border"
                 )}
               >
                 <div className="flex items-center gap-4 text-xs mb-1.5">

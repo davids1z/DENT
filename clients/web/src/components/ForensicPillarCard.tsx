@@ -107,9 +107,9 @@ export function ForensicPillarCard({ data, originalImageUrl }: ForensicPillarCar
   const status = getPillarStatus(data.aggregateRiskScore);
 
   const borderColor =
-    status === "fail" ? "border-red-200" : status === "warning" ? "border-amber-200" : "border-gray-200";
+    status === "fail" ? "border-red-200" : status === "warning" ? "border-amber-200" : "border-border";
   const headerBg =
-    status === "fail" ? "bg-red-50/50" : status === "warning" ? "bg-amber-50/30" : "bg-gray-50/50";
+    status === "fail" ? "bg-red-50/50" : status === "warning" ? "bg-amber-50/30" : "bg-card/50";
 
   return (
     <div className={cn("rounded-xl border overflow-hidden bg-card", borderColor)}>
@@ -198,7 +198,7 @@ function ModuleRow({ module: mod }: { module: PillarData["modules"][number] }) {
   const hasFindings = mod.findings.length > 0;
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-white/60 text-sm">
+    <div className="rounded-lg border border-border bg-background/60 text-sm">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-3 py-1.5 text-left"
@@ -208,7 +208,7 @@ function ModuleRow({ module: mod }: { module: PillarData["modules"][number] }) {
           {mod.error && (
             <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded">Greska</span>
           )}
-          <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="w-12 h-1.5 bg-border rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full",
@@ -329,16 +329,16 @@ function HeatmapSection({
     : heatmapUrl || fftSpectrumUrl;
 
   return (
-    <div className="border-t border-gray-100 pt-2 mt-1">
+    <div className="border-t border-border pt-2 mt-1">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
           {hasTabs && (
-            <div className="flex rounded-md border border-gray-200 overflow-hidden">
+            <div className="flex rounded-md border border-border overflow-hidden">
               <button
                 onClick={() => setActiveTab("spectral")}
                 className={cn(
                   "px-2 py-0.5 text-[10px] font-medium transition-colors",
-                  activeTab === "spectral" ? "bg-accent-solid text-white" : "bg-white text-muted hover:bg-gray-50",
+                  activeTab === "spectral" ? "bg-accent-solid text-white" : "bg-background text-muted hover:bg-card",
                 )}
               >
                 Heatmap
@@ -347,7 +347,7 @@ function HeatmapSection({
                 onClick={() => setActiveTab("fft")}
                 className={cn(
                   "px-2 py-0.5 text-[10px] font-medium transition-colors",
-                  activeTab === "fft" ? "bg-accent-solid text-white" : "bg-white text-muted hover:bg-gray-50",
+                  activeTab === "fft" ? "bg-accent-solid text-white" : "bg-background text-muted hover:bg-card",
                 )}
               >
                 FFT
@@ -358,7 +358,7 @@ function HeatmapSection({
             onClick={() => setShowHeatmap(!showHeatmap)}
             className={cn(
               "text-[11px] font-medium px-2 py-0.5 rounded transition-colors",
-              showHeatmap ? "bg-accent-solid text-white" : "bg-gray-100 text-muted hover:bg-gray-200",
+              showHeatmap ? "bg-accent-solid text-white" : "bg-card-hover text-muted hover:bg-card-hover",
             )}
           >
             {showHeatmap ? "Sakrij" : "Prikazi"}
@@ -380,7 +380,7 @@ function HeatmapSection({
       </div>
 
       {showHeatmap && activeUrl && (
-        <div className="relative rounded-lg overflow-hidden bg-gray-900" style={{ maxHeight: 200 }}>
+        <div className="relative rounded-lg overflow-hidden bg-foreground" style={{ maxHeight: 200 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={originalImageUrl} alt="Original" className="w-full object-contain" style={{ maxHeight: 200 }} />
           {/* eslint-disable-next-line @next/next/no-img-element */}

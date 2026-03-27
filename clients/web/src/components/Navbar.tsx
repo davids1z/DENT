@@ -16,7 +16,7 @@ function useDarkMode() {
 
   useEffect(() => {
     const saved = localStorage.getItem("dent_theme");
-    if (saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+    if (saved === "dark") {
       document.documentElement.classList.add("dark");
       setDark(true);
     }

@@ -32,23 +32,8 @@
   --muted-light: #64748b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --background: #0f172a;
-    --foreground: #f1f5f9;
-    --card: #1e293b;
-    --card-hover: #334155;
-    --border: #334155;
-    --accent-solid: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-light: #1e3a5f;
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --muted: #94a3b8;
-    --muted-light: #64748b;
-  }
-}
+/* Dark mode only activates via .dark class on <html> (toggle in Navbar).
+   Light mode is the default — no automatic system preference detection. */
 
 @theme inline {
   --color-background: var(--background);
@@ -75,6 +60,11 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+*, *::before, *::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {

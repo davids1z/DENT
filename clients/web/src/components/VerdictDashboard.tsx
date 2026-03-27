@@ -206,12 +206,12 @@ function ModuleBar({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-500">{label}</span>
-        <span className="text-sm font-mono font-bold text-slate-900">
+        <span className="text-sm text-muted">{label}</span>
+        <span className="text-sm font-mono font-bold text-foreground">
           {value.toFixed(1)}%
         </span>
       </div>
-      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-card-hover rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-[600ms] ease-out"
           style={{
@@ -308,13 +308,13 @@ export function VerdictDashboard({
   }, []);
 
   return (
-    <div className="bg-white shadow-sm rounded-2xl border border-gray-100 p-6 md:p-8">
+    <div className="bg-background shadow-sm rounded-2xl border border-border p-6 md:p-8">
       {/* Decision Outcome (if available) */}
       {decisionOutcome && (
         <div className="flex justify-center mb-4">
           <div className={cn(
             "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold",
-            decisionStyles[decisionOutcome] || "bg-gray-50 text-gray-700 border-gray-200"
+            decisionStyles[decisionOutcome] || "bg-card text-foreground border-border"
           )}>
             {decisionOutcomeLabel(decisionOutcome)}
             {decisionReason && (
@@ -353,7 +353,7 @@ export function VerdictDashboard({
 
         {/* Module Breakdown */}
         <div className="flex-1 w-full space-y-5">
-          <p className="text-xs uppercase tracking-[2px] text-slate-400 font-medium">
+          <p className="text-xs uppercase tracking-[2px] text-muted-light font-medium">
             Razrada rizika
           </p>
 
@@ -377,7 +377,7 @@ export function VerdictDashboard({
           />
 
           {/* Badges */}
-          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border">
             {c2paStatus === "valid" && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -392,11 +392,11 @@ export function VerdictDashboard({
               </span>
             )}
             {predictedSource && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-card text-muted border border-border">
                 Izvor: {predictedSource} ({sourceConfidence}%)
               </span>
             )}
-            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 text-slate-500 border border-gray-200">
+            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-card text-muted border border-border">
               {(totalProcessingTimeMs / 1000).toFixed(1)}s
             </span>
             <ExportButton inspectionId={inspectionId} />
@@ -406,11 +406,11 @@ export function VerdictDashboard({
 
       {/* AI Summary */}
       {summary && (
-        <div className="mt-6 pt-5 border-t border-gray-100">
-          <p className="text-sm text-slate-600 leading-relaxed">
+        <div className="mt-6 pt-5 border-t border-border">
+          <p className="text-sm text-muted leading-relaxed">
             {sanitizeLlmText(summary)}
           </p>
-          <p className="text-[10px] text-slate-400 mt-1.5 italic">
+          <p className="text-[10px] text-muted-light mt-1.5 italic">
             Sažetak generirao jezični model
           </p>
         </div>

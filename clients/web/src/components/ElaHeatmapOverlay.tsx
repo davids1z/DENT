@@ -29,7 +29,7 @@ export function ElaHeatmapOverlay({
             "px-3 py-1 text-xs font-medium rounded-full border transition-colors",
             showHeatmap
               ? "bg-orange-50 border-orange-200 text-orange-700"
-              : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+              : "bg-card border-border text-muted hover:bg-card-hover"
           )}
         >
           {showHeatmap ? "Sakrij ELA" : "Prikazi ELA"}
@@ -63,7 +63,7 @@ export function ElaHeatmapOverlay({
             max={100}
             value={opacity}
             onChange={(e) => setOpacity(Number(e.target.value))}
-            className="flex-1 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-orange-500"
+            className="flex-1 h-1.5 bg-border rounded-full appearance-none cursor-pointer accent-orange-500"
           />
           <span className="text-xs font-mono text-muted w-8 text-right">
             {opacity}%

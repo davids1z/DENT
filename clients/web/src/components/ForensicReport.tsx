@@ -57,7 +57,7 @@ export function ForensicReport({ result }: ForensicReportProps) {
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
           {/* Overall risk bar */}
-          <div className="px-3 py-2 bg-gray-50 rounded-lg">
+          <div className="px-3 py-2 bg-card rounded-lg">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-muted">Ukupni rizik</span>
               <span
@@ -70,7 +70,7 @@ export function ForensicReport({ result }: ForensicReportProps) {
                 {fraudRiskLabel(result.overallRiskLevel)}
               </span>
             </div>
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-2 bg-border rounded-full overflow-hidden">
               <div
                 className={cn(
                   "h-full rounded-full transition-all",
@@ -111,7 +111,7 @@ function ModuleCard({
           ? "border-red-200 bg-red-50/50"
           : hasFindings
             ? "border-amber-200 bg-amber-50/30"
-            : "border-gray-100 bg-gray-50/50"
+            : "border-border bg-card/50"
       )}
     >
       <button
@@ -130,7 +130,7 @@ function ModuleCard({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xs text-muted">{mod.processingTimeMs}ms</span>
-          <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="w-16 h-1.5 bg-border rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full",
@@ -177,7 +177,7 @@ function ModuleCard({
           {mod.findings.map((f, j) => (
             <div
               key={j}
-              className="flex items-start gap-2 px-2 py-1.5 bg-white/60 rounded border border-gray-100"
+              className="flex items-start gap-2 px-2 py-1.5 bg-background/60 rounded border border-border"
             >
               <div
                 className={cn(

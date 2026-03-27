@@ -65,7 +65,7 @@ export function OverridePanel({ inspectionId, currentOutcome, overrides, onOverr
             <select
               value={newOutcome}
               onChange={(e) => setNewOutcome(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
             >
               <option value="">Odaberite...</option>
               {availableOutcomes.map((o) => (
@@ -80,7 +80,7 @@ export function OverridePanel({ inspectionId, currentOutcome, overrides, onOverr
               onChange={(e) => setReason(e.target.value)}
               placeholder="Razlog za promjenu odluke..."
               rows={2}
-              className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none"
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none"
             />
           </div>
           <div>
@@ -90,7 +90,7 @@ export function OverridePanel({ inspectionId, currentOutcome, overrides, onOverr
               value={operatorName}
               onChange={(e) => setOperatorName(e.target.value)}
               placeholder="Vaše ime..."
-              className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
             />
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -117,7 +117,7 @@ export function OverridePanel({ inspectionId, currentOutcome, overrides, onOverr
           <p className="text-xs text-muted mt-3 mb-2">Povijest promjena:</p>
           <div className="space-y-2">
             {overrides.map((o, i) => (
-              <div key={i} className="bg-gray-50 rounded-lg px-3 py-2 text-xs">
+              <div key={i} className="bg-card rounded-lg px-3 py-2 text-xs">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-muted">{decisionOutcomeLabel(o.originalOutcome)}</span>
                   <span className="text-muted">&rarr;</span>

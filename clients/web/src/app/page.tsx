@@ -225,7 +225,7 @@ export default function Dashboard() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col px-4 py-4 bg-white rounded-xl border border-border"
+                className="flex flex-col px-4 py-4 bg-background rounded-xl border border-border"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
@@ -236,19 +236,19 @@ export default function Dashboard() {
             ))}
           </div>
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
+            <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">6</div>
               <div className="text-xs text-muted">Forenzičkih modula</div>
             </div>
-            <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
+            <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">CNN</div>
               <div className="text-xs text-muted">Deepfake detekcija</div>
             </div>
-            <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
+            <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">VLM</div>
               <div className="text-xs text-muted">Vizualno-jezična analiza</div>
             </div>
-            <div className="text-center py-6 px-4 bg-white rounded-2xl border border-border">
+            <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">RFC 3161</div>
               <div className="text-xs text-muted">Vremenski pečat</div>
             </div>

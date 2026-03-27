@@ -50,7 +50,7 @@ export function QrHandoff() {
           className="w-[180px] h-[180px] mx-auto rounded-lg border border-border"
         />
       ) : (
-        <div className="w-[180px] h-[180px] mx-auto rounded-lg bg-gray-100 animate-pulse" />
+        <div className="w-[180px] h-[180px] mx-auto rounded-lg bg-card-hover animate-pulse" />
       )}
 
       <p className="text-[11px] text-muted break-all">{INSPECT_URL}</p>

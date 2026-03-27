@@ -31,10 +31,10 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="min-h-[400px] flex items-center justify-center p-8">
           <div className="max-w-md text-center">
             <div className="text-6xl mb-4">!</div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <h2 className="text-xl font-semibold text-foreground mb-2">
               Nesto je poslo krivo
             </h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-muted mb-6">
               Doslo je do neocekivane greske. Pokusajte osvjeziti stranicu.
             </p>
             <button

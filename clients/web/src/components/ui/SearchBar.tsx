@@ -45,7 +45,7 @@ export function SearchBar({ value, onChange, placeholder = "Pretraži..." }: Sea
         placeholder={placeholder}
         className="w-full pl-9 pr-12 py-2 bg-card border border-border rounded-lg text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
       />
-      <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-muted bg-gray-100 rounded border border-border font-mono">
+      <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-muted bg-card-hover rounded border border-border font-mono">
         <span className="text-xs">&#8984;</span>K
       </kbd>
     </div>

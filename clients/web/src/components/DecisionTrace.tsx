@@ -49,7 +49,7 @@ export function DecisionTrace({ traces }: DecisionTraceProps) {
                   "flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm",
                   trace.triggered
                     ? "bg-red-50 border border-red-100"
-                    : "bg-gray-50"
+                    : "bg-card"
                 )}
               >
                 <div className={cn(
@@ -68,7 +68,7 @@ export function DecisionTrace({ traces }: DecisionTraceProps) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={cn("font-medium", trace.triggered ? "text-red-700" : "text-gray-600")}>
+                    <span className={cn("font-medium", trace.triggered ? "text-red-700" : "text-muted")}>
                       {trace.ruleName}
                     </span>
                     <span className={cn(

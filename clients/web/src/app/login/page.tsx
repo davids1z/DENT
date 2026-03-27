@@ -69,7 +69,7 @@ export default function LoginPage() {
             onClick={() => { setTab("login"); setError(""); }}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
               tab === "login"
-                ? "bg-white text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-sm"
                 : "text-muted hover:text-foreground"
             }`}
           >
@@ -79,7 +79,7 @@ export default function LoginPage() {
             onClick={() => { setTab("register"); setError(""); }}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
               tab === "register"
-                ? "bg-white text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-sm"
                 : "text-muted hover:text-foreground"
             }`}
           >
@@ -97,7 +97,7 @@ export default function LoginPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Ivan Horvat"
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
                 required
               />
             </div>
@@ -110,7 +110,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="vas@email.com"
-              className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
               required
             />
           </div>
@@ -123,7 +123,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Najmanje 6 znakova"
-                className="w-full px-4 py-2.5 pr-11 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
+                className="w-full px-4 py-2.5 pr-11 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
                 required
                 minLength={6}
               />

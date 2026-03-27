@@ -49,7 +49,7 @@ function FindingTooltip({ damage }: { damage: ParsedDamage }) {
         transform: "translate(-50%, -100%) translateY(-8px)",
       }}
     >
-      <div className="bg-white border border-border rounded-lg px-3 py-2 text-xs shadow-lg">
+      <div className="bg-background border border-border rounded-lg px-3 py-2 text-xs shadow-lg">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
           <span className="font-medium">#{index + 1} {findingCategoryLabel(d.damageCause)}</span>
@@ -120,7 +120,7 @@ export function ImageOverlay({
           <img
             src={imageUrl}
             alt="Analizirani sadrzaj"
-            className="w-full h-auto object-contain bg-gray-50"
+            className="w-full h-auto object-contain bg-card"
             onLoad={() => setImageLoaded(true)}
           />
         </div>
@@ -212,7 +212,7 @@ export function ImageOverlay({
               >
                 <div className={cn(
                   "w-3.5 h-3.5 rounded border flex items-center justify-center",
-                  showOverlay ? "bg-accent/10 border-accent" : "border-gray-300"
+                  showOverlay ? "bg-accent/10 border-accent" : "border-border"
                 )}>
                   {showOverlay && (
                     <svg className="w-2.5 h-2.5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>

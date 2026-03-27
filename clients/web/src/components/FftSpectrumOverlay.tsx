@@ -26,7 +26,7 @@ export function FftSpectrumOverlay({ fftSpectrumUrl }: FftSpectrumOverlayProps) 
             "px-3 py-1 text-xs font-medium rounded-full border transition-colors",
             showSpectrum
               ? "bg-violet-50 border-violet-200 text-violet-700"
-              : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+              : "bg-card border-border text-muted hover:bg-card-hover"
           )}
         >
           {showSpectrum ? "Sakrij FFT spektar" : "Prikazi FFT spektar"}

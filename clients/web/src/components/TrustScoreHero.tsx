@@ -27,7 +27,7 @@ function trustBg(riskLevel: string): string {
     case "Medium": return "bg-amber-50 border-amber-200";
     case "High": return "bg-orange-50 border-orange-200";
     case "Critical": return "bg-red-50 border-red-200";
-    default: return "bg-gray-50 border-gray-200";
+    default: return "bg-card border-border";
   }
 }
 
@@ -107,11 +107,11 @@ export function TrustScoreHero({
               </span>
             )}
             {predictedSource && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/60 text-gray-700 border border-gray-200">
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-background/60 text-foreground border border-border">
                 Izvor: {predictedSource} ({sourceConfidence}%)
               </span>
             )}
-            <span className="px-2 py-0.5 rounded-full text-xs text-muted bg-white/40 border border-gray-100">
+            <span className="px-2 py-0.5 rounded-full text-xs text-muted bg-background/40 border border-border">
               {totalProcessingTimeMs}ms
             </span>
           </div>

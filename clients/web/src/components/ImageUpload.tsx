@@ -72,7 +72,7 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
           "border-2 border-dashed rounded-xl transition-colors",
           isDragging
             ? "border-accent bg-accent/5"
-            : "border-gray-300 hover:border-accent/50",
+            : "border-border hover:border-accent/50",
           isLoading && "pointer-events-none opacity-60"
         )}
       >
@@ -118,7 +118,7 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
                 {src ? (
                   <img src={src} alt={`Preview ${i + 1}`} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-gray-50 flex flex-col items-center justify-center text-muted">
+                  <div className="w-full h-full bg-card flex flex-col items-center justify-center text-muted">
                     <svg className="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                     </svg>
@@ -143,7 +143,7 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
               </div>
             ))}
             {files.length < MAX_IMAGES && !isLoading && (
-              <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-accent/50 flex items-center justify-center cursor-pointer transition-colors">
+              <label className="aspect-square rounded-lg border-2 border-dashed border-border hover:border-accent/50 flex items-center justify-center cursor-pointer transition-colors">
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/heic,application/pdf,.pdf,.docx,.xlsx"
@@ -167,7 +167,7 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
           className={cn(
             "w-full py-3 rounded-lg font-medium text-sm transition-colors",
             isLoading
-              ? "bg-gray-100 text-muted cursor-wait"
+              ? "bg-card-hover text-muted cursor-wait"
               : "bg-accent text-white hover:bg-accent-hover"
           )}
         >

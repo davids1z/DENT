@@ -26,7 +26,7 @@ export function ProgressSteps({ currentStep }: ProgressStepsProps) {
                 className={cn(
                   "w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium",
                   (isCompleted || isActive) && "bg-accent text-white",
-                  !isCompleted && !isActive && "bg-gray-100 text-muted"
+                  !isCompleted && !isActive && "bg-card-hover text-muted"
                 )}
               >
                 {isCompleted ? (

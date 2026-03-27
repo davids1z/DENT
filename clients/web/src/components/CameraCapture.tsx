@@ -332,7 +332,7 @@ export function CameraCapture({
           <div
             className={cn(
               "w-12 h-12 rounded-full bg-white transition-colors",
-              isCapturing && "bg-gray-300"
+              isCapturing && "bg-border"
             )}
           />
         </button>
@@ -455,7 +455,7 @@ export function CameraCapture({
           className={cn(
             "w-full py-3 rounded-lg font-medium text-sm transition-colors",
             isLoading
-              ? "bg-gray-100 text-muted cursor-wait"
+              ? "bg-card-hover text-muted cursor-wait"
               : "bg-accent text-white hover:bg-accent-hover"
           )}
         >

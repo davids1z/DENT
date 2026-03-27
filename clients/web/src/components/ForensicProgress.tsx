@@ -145,7 +145,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
               )}
             </span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-card-hover rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-700 ease-linear",
@@ -179,7 +179,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
                   ) : fp.status === "active" ? (
                     <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <div className="w-2 h-2 rounded-full bg-gray-300" />
+                    <div className="w-2 h-2 rounded-full bg-border" />
                   )}
                 </div>
                 <span className={cn(
@@ -217,7 +217,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
                         ) : step.status === "active" ? (
                           <div className="w-2.5 h-2.5 border-[1.5px] border-accent border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-border" />
                         )}
                       </div>
                       <span>{step.label}</span>
@@ -275,7 +275,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
             )}
           </span>
         </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-2 bg-card-hover rounded-full overflow-hidden">
           <div
             className={cn(
               "h-full rounded-full transition-[width] duration-700 ease-linear",
@@ -316,7 +316,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
               ) : step.status === "active" ? (
                 <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
               ) : (
-                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                <div className="w-2 h-2 rounded-full bg-border" />
               )}
             </div>
 

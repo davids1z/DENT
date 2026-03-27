@@ -88,7 +88,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
               const color = risk >= 0.65 ? "#ef4444" : risk >= 0.40 ? "#f97316" : risk >= 0.20 ? "#f59e0b" : "#22c55e";
               const levelText = risk >= 0.65 ? "Kritican" : risk >= 0.40 ? "Visok" : risk >= 0.20 ? "Umjeren" : "Nizak";
               return (
-                <div key={m.moduleName || idx} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                <div key={m.moduleName || idx} className="bg-background border border-border rounded-xl overflow-hidden shadow-sm">
                   <div className="h-1 w-full" style={{ backgroundColor: color }} />
                   <div className="p-4">
                     <div className="flex items-center gap-3 mb-2">
@@ -98,7 +98,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
                       <div className="flex-1 min-w-0">
                         <span className="font-semibold text-sm block">{m.moduleLabel || m.moduleName}</span>
                         {m.findings?.length > 0 && (
-                          <span className="text-xs text-slate-400 block truncate">
+                          <span className="text-xs text-muted-light block truncate">
                             {m.findings[0]?.title || m.findings[0]?.code || ""}
                           </span>
                         )}
@@ -108,11 +108,11 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-3">
-                      <span className="text-[10px] text-slate-400 flex-shrink-0">Rizik</span>
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <span className="text-[10px] text-muted-light flex-shrink-0">Rizik</span>
+                      <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
                         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${risk * 100}%`, backgroundColor: color }} />
                       </div>
-                      <span className="text-xs text-slate-500 font-mono">{Math.round(risk * 100)}%</span>
+                      <span className="text-xs text-muted font-mono">{Math.round(risk * 100)}%</span>
                     </div>
                   </div>
                 </div>
@@ -181,7 +181,7 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
     <div ref={cardRef}>
       <div
         className={cn(
-          "bg-white border border-gray-100 rounded-xl overflow-hidden cursor-pointer transition-all shadow-sm",
+          "bg-background border border-border rounded-xl overflow-hidden cursor-pointer transition-all shadow-sm",
           isSelected && "ring-2 ring-accent/20"
         )}
       >
@@ -198,7 +198,7 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
             </div>
             <div className="flex-1 min-w-0">
               <span className="font-semibold text-sm block">{deriveFindingCategory(d, forensicResult ?? null)}</span>
-              <span className="text-xs text-slate-400 block truncate">{sanitizeLlmText(d.description).slice(0, 80)}...</span>
+              <span className="text-xs text-muted-light block truncate">{sanitizeLlmText(d.description).slice(0, 80)}...</span>
             </div>
             <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium border flex-shrink-0", severityBg(d.severity), severityColor(d.severity))}>
               {severityLabel(d.severity)}
@@ -210,17 +210,17 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
 
           {/* Confidence bar */}
           <div className="flex items-center gap-2 mt-3">
-            <span className="text-[10px] text-slate-400 flex-shrink-0">Pouzdanost</span>
-            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <span className="text-[10px] text-muted-light flex-shrink-0">Pouzdanost</span>
+            <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
               <div className="h-full rounded-full transition-all duration-300" style={{ width: `${d.confidence * 100}%`, backgroundColor: borderColor }} />
             </div>
-            <span className="text-xs text-slate-500 font-mono">{Math.round(d.confidence * 100)}%</span>
+            <span className="text-xs text-muted font-mono">{Math.round(d.confidence * 100)}%</span>
           </div>
         </div>
 
         {expanded && (
-          <div className="px-4 pb-4 pt-3 border-t border-gray-50 bg-gray-50/50">
-            <p className="text-sm text-slate-600 leading-relaxed mb-3">{sanitizeLlmText(d.description)}</p>
+          <div className="px-4 pb-4 pt-3 border-t border-border bg-card/50">
+            <p className="text-sm text-muted leading-relaxed mb-3">{sanitizeLlmText(d.description)}</p>
             <div className="grid grid-cols-2 gap-2 text-sm">
               {d.safetyRating && (() => {
                 // Override safetyRating based on description content
@@ -230,15 +230,15 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
                 const descSaysManipulated = ["manipulacij", "krivotvor", "montaž", "zamućen", "prebrisano", "kopiran"].some(kw => desc.includes(kw));
                 const effectiveRating = descSaysAuthentic && !descSaysManipulated ? "Safe" : d.safetyRating;
                 return (
-                  <div className="bg-white rounded-lg p-2 border border-gray-100">
-                    <div className="text-slate-400 text-xs mb-0.5">Verdikt</div>
+                  <div className="bg-background rounded-lg p-2 border border-border">
+                    <div className="text-muted-light text-xs mb-0.5">Verdikt</div>
                     <div className={cn("font-medium", safetyRatingColor(effectiveRating))}>{safetyRatingLabel(effectiveRating)}</div>
                   </div>
                 );
               })()}
               {d.damageCause && (
-                <div className="bg-white rounded-lg p-2 border border-gray-100">
-                  <div className="text-slate-400 text-xs mb-0.5">Kategorija</div>
+                <div className="bg-background rounded-lg p-2 border border-border">
+                  <div className="text-muted-light text-xs mb-0.5">Kategorija</div>
                   <div className="font-medium">{deriveFindingCategory(d, forensicResult ?? null)}</div>
                 </div>
               )}

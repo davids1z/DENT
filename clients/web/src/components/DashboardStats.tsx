@@ -43,7 +43,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
             {topDamageTypes.map(([type, count]) => (
               <div key={type} className="flex items-center gap-3">
                 <div className="w-32 text-sm truncate">{damageTypeLabel(type)}</div>
-                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="flex-1 h-2 bg-card-hover rounded-full overflow-hidden">
                   <div className="h-full rounded-full bg-accent" style={{ width: `${(count / totalDamages) * 100}%` }} />
                 </div>
                 <div className="text-sm text-muted w-8 text-right font-mono">{count}</div>
