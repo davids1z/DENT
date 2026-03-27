@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
@@ -15,6 +15,14 @@ export function Navbar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    window.addEventListener("scroll", closeMenu, true);
+    return () => window.removeEventListener("scroll", closeMenu, true);
+  }, [menuOpen, closeMenu]);
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
