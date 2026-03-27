@@ -8,16 +8,20 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 
+const PAGE_SIZE = 15;
+
 export default function InspectionsPage() {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "table">("grid");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
-    getInspections(1, 50, filter || undefined)
+    setPage(1);
+    getInspections(1, 200, filter || undefined)
       .then(setInspections)
       .catch(() => setInspections([]))
       .finally(() => setLoading(false));
@@ -33,6 +37,12 @@ export default function InspectionsPage() {
         (i.vehicleModel && i.vehicleModel.toLowerCase().includes(q))
     );
   }, [inspections, search]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginatedItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Reset page when search changes
+  useEffect(() => { setPage(1); }, [search]);
 
   const filters = [
     { value: "", label: "Sve" },
@@ -93,7 +103,7 @@ export default function InspectionsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((i) => {
+              {paginatedItems.map((i) => {
                 const worst = i.damages.reduce((w, d) => {
                   const order = ["Minor", "Moderate", "Severe", "Critical"];
                   return order.indexOf(d.severity) > order.indexOf(w) ? d.severity : w;
@@ -123,7 +133,48 @@ export default function InspectionsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)}
+          {paginatedItems.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-8">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-border bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            ←
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+            .map((p, idx, arr) => (
+              <span key={p}>
+                {idx > 0 && arr[idx - 1] !== p - 1 && (
+                  <span className="text-muted px-1">…</span>
+                )}
+                <button
+                  onClick={() => setPage(p)}
+                  className={cn(
+                    "w-9 h-9 rounded-lg text-sm font-medium transition-colors",
+                    p === page ? "bg-accent text-white" : "border border-border bg-card hover:bg-card-hover"
+                  )}
+                >
+                  {p}
+                </button>
+              </span>
+            ))}
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page === totalPages}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-border bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            →
+          </button>
+          <span className="text-xs text-muted ml-3">
+            {filtered.length} {filtered.length === 1 ? "analiza" : "analiza"}
+          </span>
         </div>
       )}
     </div>
