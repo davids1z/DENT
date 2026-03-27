@@ -28,25 +28,13 @@ export const IMAGE_STEPS: ForensicStep[] = [
 ];
 
 export const DOCUMENT_STEPS: ForensicStep[] = [
-  // Structure & revisions
-  { id: "doc_structure", label: "XREF struktura i revizije", status: "pending" },
-  { id: "doc_metadata", label: "Metapodaci i XMP asimetrija", status: "pending" },
-  { id: "doc_fonts", label: "Analiza fontova i glifova", status: "pending" },
-  { id: "doc_signatures", label: "Digitalni potpisi", status: "pending" },
-  // Content manipulation
-  { id: "doc_redaction", label: "Detekcija lazne redakcije", status: "pending" },
-  { id: "doc_shadow", label: "Shadow napadi i OCG slojevi", status: "pending" },
-  { id: "doc_visual_ocr", label: "Vizualna vs OCR usporedba", status: "pending" },
-  { id: "doc_char_metrics", label: "Metrike znakova (baseline/kerning)", status: "pending" },
-  // Advanced checks
-  { id: "doc_version_diff", label: "Pixel diff izmedu verzija", status: "pending" },
-  { id: "doc_actions", label: "JavaScript i opasne akcije", status: "pending" },
-  { id: "doc_tounicode", label: "ToUnicode/ActualText provjera", status: "pending" },
-  { id: "doc_annotations", label: "Evil Annotation detekcija", status: "pending" },
-  // Other modules
-  { id: "doc_embedded_ela", label: "ELA ugradenih slika", status: "pending" },
-  { id: "text_ai_detection", label: "Detekcija AI teksta", status: "pending" },
-  { id: "content_validation", label: "Validacija sadrzaja (OIB/IBAN)", status: "pending" },
+  { id: "doc_structure", label: "Struktura, revizije i metapodaci", status: "pending" },
+  { id: "doc_fonts", label: "Fontovi, glifovi i metrike znakova", status: "pending" },
+  { id: "doc_signatures", label: "Potpisi i redakcija", status: "pending" },
+  { id: "doc_manipulation", label: "Shadow napadi, OCG i anotacije", status: "pending" },
+  { id: "doc_visual", label: "Vizualna vs OCR analiza", status: "pending" },
+  { id: "doc_advanced", label: "ToUnicode, JavaScript i ELA", status: "pending" },
+  { id: "doc_content", label: "AI tekst i validacija sadrzaja", status: "pending" },
 ];
 
 const SHARED_STEPS: ForensicStep[] = [
@@ -72,21 +60,13 @@ const IMAGE_STEP_DURATIONS: Record<string, number> = {
 };
 
 const DOCUMENT_STEP_DURATIONS: Record<string, number> = {
-  doc_structure: 0.8,
-  doc_metadata: 0.8,
-  doc_fonts: 1.0,
-  doc_signatures: 0.8,
-  doc_redaction: 0.8,
-  doc_shadow: 1.0,
-  doc_visual_ocr: 2.0,
-  doc_char_metrics: 1.0,
-  doc_version_diff: 1.5,
-  doc_actions: 0.7,
-  doc_tounicode: 1.0,
-  doc_annotations: 0.8,
-  doc_embedded_ela: 1.2,
-  text_ai_detection: 1.0,
-  content_validation: 0.8,
+  doc_structure: 1.0,
+  doc_fonts: 1.2,
+  doc_signatures: 1.0,
+  doc_manipulation: 1.2,
+  doc_visual: 1.5,
+  doc_advanced: 1.3,
+  doc_content: 1.0,
 };
 
 const SHARED_STEP_DURATIONS: Record<string, number> = {
