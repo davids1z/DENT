@@ -82,9 +82,10 @@ jobs:
               | gzip > "$DEPLOY_DIR/backups/pre-deploy-$(date +%Y%m%d_%H%M%S).sql.gz" || \
               echo "WARNING: Database backup failed (DB may not be running yet)"
 
-            # Build and deploy
+            # Build and deploy (remove orphan containers first to avoid name conflicts)
             docker compose -f docker-compose.server.yml build --parallel
-            docker compose -f docker-compose.server.yml up -d --force-recreate
+            docker compose -f docker-compose.server.yml down --remove-orphans 2>/dev/null || true
+            docker compose -f docker-compose.server.yml up -d
             docker image prune -f
 
             # Post-deploy: verify API health
