@@ -26,6 +26,7 @@ out/
 
 # Docker
 docker-compose.override.yml
+secrets/
 
 # OS
 .DS_Store

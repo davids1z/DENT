@@ -1,10 +1,24 @@
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  admin_password:
+    file: ./secrets/admin_password.txt
+  minio_access_key:
+    file: ./secrets/minio_access_key.txt
+  minio_secret_key:
+    file: ./secrets/minio_secret_key.txt
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: dent
       POSTGRES_USER: dent
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     deploy:
@@ -24,8 +38,11 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_secret_key
+    secrets:
+      - minio_access_key
+      - minio_secret_key
     volumes:
       - minio_data:/data
     healthcheck:
@@ -40,9 +57,14 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    secrets:
+      - minio_access_key
+      - minio_secret_key
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
+      MINIO_USER=$$(cat /run/secrets/minio_access_key);
+      MINIO_PASS=$$(cat /run/secrets/minio_secret_key);
+      mc alias set local http://minio:9000 $$MINIO_USER $$MINIO_PASS;
       mc mb local/dent-images --ignore-existing;
       mc anonymous set public local/dent-images;
       exit 0;
@@ -123,23 +145,31 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    secrets:
+      - db_password
+      - jwt_secret
+      - admin_password
+      - minio_access_key
+      - minio_secret_key
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__DefaultConnection: "Host=postgres;Database=dent;Username=dent;Password=${DB_PASSWORD}"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=dent;Username=dent;Password=FROM_SECRET"
       MlService__BaseUrl: "http://ml-service:8000"
       Storage__ServiceUrl: "http://minio:9000"
-      Storage__AccessKey: ${MINIO_ACCESS_KEY}
-      Storage__SecretKey: ${MINIO_SECRET_KEY}
+      Storage__AccessKey: "FROM_SECRET"
+      Storage__SecretKey: "FROM_SECRET"
       Storage__BucketName: dent-images
       Storage__PublicUrl: "https://dent.xyler.ai/storage/dent-images"
-      Jwt__Secret: "${JWT_SECRET}"
+      Jwt__Secret: "FROM_SECRET"
       Jwt__Issuer: "DENT"
       Jwt__Audience: "DENT"
       Jwt__ExpiryHours: "24"
       Admin__Email: "${ADMIN_EMAIL:-admin@dent.hr}"
-      Admin__Password: "${ADMIN_PASSWORD}"
+      Admin__Password: "FROM_SECRET"
       Cors__Origins__0: "https://dent.xyler.ai"
       Cors__Origins__1: "http://dent.xyler.ai"
+      # Paths to Docker secrets files (read by Program.cs)
+      SECRETS_DIR: /run/secrets
     depends_on:
       postgres:
         condition: service_healthy

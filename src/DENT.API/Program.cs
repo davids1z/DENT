@@ -14,6 +14,34 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Docker secrets: override config from /run/secrets/ files if available
+var secretsDir = Environment.GetEnvironmentVariable("SECRETS_DIR") ?? "/run/secrets";
+if (Directory.Exists(secretsDir))
+{
+    string ReadSecret(string name) =>
+        File.Exists(Path.Combine(secretsDir, name))
+            ? File.ReadAllText(Path.Combine(secretsDir, name)).Trim()
+            : "";
+
+    var secDbPass = ReadSecret("db_password");
+    var secJwt = ReadSecret("jwt_secret");
+    var secAdminPass = ReadSecret("admin_password");
+    var secMinioKey = ReadSecret("minio_access_key");
+    var secMinioSecret = ReadSecret("minio_secret_key");
+
+    if (!string.IsNullOrEmpty(secDbPass))
+        builder.Configuration["ConnectionStrings:DefaultConnection"] =
+            $"Host=postgres;Database=dent;Username=dent;Password={secDbPass}";
+    if (!string.IsNullOrEmpty(secJwt))
+        builder.Configuration["Jwt:Secret"] = secJwt;
+    if (!string.IsNullOrEmpty(secAdminPass))
+        builder.Configuration["Admin:Password"] = secAdminPass;
+    if (!string.IsNullOrEmpty(secMinioKey))
+        builder.Configuration["Storage:AccessKey"] = secMinioKey;
+    if (!string.IsNullOrEmpty(secMinioSecret))
+        builder.Configuration["Storage:SecretKey"] = secMinioSecret;
+}
+
 // Infrastructure (DB, Storage, ML Client, Auth)
 builder.Services.AddInfrastructure(builder.Configuration);
 
