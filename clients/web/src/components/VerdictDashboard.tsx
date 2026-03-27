@@ -79,26 +79,26 @@ function getVerdictBadge(riskPercent: number) {
   if (riskPercent >= 75) {
     return {
       label: "KRITIČAN RIZIK: DETEKTIRANA MANIPULACIJA",
-      bgClass: "bg-red-50",
-      textClass: "text-red-700",
-      borderClass: "border-red-200",
+      bgClass: "bg-red-500/10",
+      textClass: "text-red-600 dark:text-red-400",
+      borderClass: "border-red-500/20",
       icon: "warning" as const,
     };
   }
   if (riskPercent <= 20) {
     return {
       label: "SIGURNO: AUTENTIČNI MEDIJ",
-      bgClass: "bg-green-50",
-      textClass: "text-green-700",
-      borderClass: "border-green-200",
+      bgClass: "bg-green-500/10",
+      textClass: "text-green-600 dark:text-green-400",
+      borderClass: "border-green-500/20",
       icon: "check" as const,
     };
   }
   return {
     label: "UMJEREN RIZIK: POTREBNA PROVJERA",
-    bgClass: "bg-amber-50",
-    textClass: "text-amber-700",
-    borderClass: "border-amber-200",
+    bgClass: "bg-amber-500/10",
+    textClass: "text-amber-600 dark:text-amber-400",
+    borderClass: "border-amber-500/20",
     icon: "alert" as const,
   };
 }
@@ -144,9 +144,10 @@ function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
       <path
         d={bgArc}
         fill="none"
-        stroke="#e5e7eb"
+        stroke="currentColor"
         strokeWidth={strokeWidth}
         strokeLinecap="round"
+        className="text-border"
       />
 
       {/* Fill arc — always in DOM, animated via stroke-dashoffset */}
@@ -166,9 +167,10 @@ function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
         x={cx}
         y={cy - 14}
         textAnchor="middle"
-        fill="#0f172a"
+        fill="currentColor"
         fontSize="42"
         fontWeight="900"
+        className="text-foreground"
         style={{
           opacity: animated ? 1 : 0,
           transition: "opacity 0.4s ease-in 0.2s",
@@ -180,9 +182,10 @@ function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
         x={cx}
         y={cy + 10}
         textAnchor="middle"
-        fill="#94a3b8"
+        fill="currentColor"
         fontSize="10"
         letterSpacing="3"
+        className="text-muted"
       >
         INDEKS RIZIKA
       </text>
@@ -245,9 +248,9 @@ function WarningIcon() {
 // ── Decision Outcome Label ───────────────────────────────────────
 
 const decisionStyles: Record<string, string> = {
-  AutoApprove: "bg-green-50 text-green-700 border-green-200",
-  HumanReview: "bg-amber-50 text-amber-700 border-amber-200",
-  Escalate: "bg-red-50 text-red-700 border-red-200",
+  AutoApprove: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20",
+  HumanReview: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  Escalate: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
 };
 
 // ── Main Component ───────────────────────────────────────────────
@@ -379,7 +382,7 @@ export function VerdictDashboard({
           {/* Badges */}
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border">
             {c2paStatus === "valid" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -387,7 +390,7 @@ export function VerdictDashboard({
               </span>
             )}
             {c2paStatus === "ai_generated" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
                 C2PA: AI generirano
               </span>
             )}
