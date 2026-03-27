@@ -104,12 +104,13 @@ export async function pollInspectionUntilComplete(id: string): Promise<Inspectio
   const start = Date.now();
 
   while (Date.now() - start < POLL_MAX_MS) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-
+    // Check FIRST, sleep after — saves up to 1s on every completion
     const inspection = await getInspection(id);
     if (inspection.status !== "Analyzing") {
       return inspection;
     }
+
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 
   throw new Error("Analiza traje predugo. Provjerite rezultat na popisu inspekcija.");

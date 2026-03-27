@@ -541,60 +541,30 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
 
   /**
    * Call when the real API result arrives.
-   * Completes remaining steps one-by-one (250ms each) via a simple interval,
-   * then resolves the Promise so the caller can show the result screen.
+   * Completes all remaining steps instantly, then resolves the Promise
+   * so the caller can show the result screen without delay.
    */
   const complete = useCallback((): Promise<void> => {
     // Stop the normal tick timers
     stepIndexRef.current = 999;
     fileIndexRef.current = 999;
 
-    return new Promise<void>((resolve) => {
-      const TICK = 120; // ms between each step turning green
+    // Complete everything immediately — no animation delay.
+    // The user has been waiting long enough for the ML analysis.
+    setSteps((prev) =>
+      prev.map((s) => ({ ...s, status: "complete" as const }))
+    );
+    setFileProgresses((prev) =>
+      prev.map((f) => ({
+        ...f,
+        status: "complete" as const,
+        steps: f.steps.map((s) => ({ ...s, status: "complete" as const })),
+      }))
+    );
+    setProgress(1);
 
-      const iv = setInterval(() => {
-        let madeProgress = false;
-
-        // ── Single-file mode: complete next pending/active step ──
-        setSteps((prev) => {
-          const idx = prev.findIndex((s) => s.status !== "complete");
-          if (idx === -1) return prev; // all done
-          madeProgress = true;
-          return prev.map((s, i) => (i === idx ? { ...s, status: "complete" as const } : s));
-        });
-
-        // ── Multi-file mode: complete next pending/active step across files ──
-        setFileProgresses((prev) => {
-          if (prev.length === 0) return prev;
-          for (let fi = 0; fi < prev.length; fi++) {
-            const fp = prev[fi];
-            const si = fp.steps.findIndex((s) => s.status !== "complete");
-            if (si !== -1) {
-              madeProgress = true;
-              return prev.map((f, fIdx) => {
-                if (fIdx !== fi) return f;
-                const newSteps = f.steps.map((s, sIdx) =>
-                  sIdx === si ? { ...s, status: "complete" as const } : s
-                );
-                const allDone = newSteps.every((s) => s.status === "complete");
-                return { ...f, status: allDone ? "complete" as const : "active" as const, steps: newSteps };
-              });
-            }
-          }
-          return prev; // all files done
-        });
-
-        // Ramp progress toward 100%
-        setProgress((p) => Math.min(p + 0.08, 1));
-
-        // Check if everything is done
-        if (!madeProgress) {
-          clearInterval(iv);
-          setProgress(1);
-          resolve();
-        }
-      }, TICK);
-    });
+    // Small delay for React to render the final state
+    return new Promise<void>((resolve) => setTimeout(resolve, 150));
   }, []);
 
   /** Reset to initial state. */

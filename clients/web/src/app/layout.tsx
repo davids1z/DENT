@@ -37,7 +37,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("dent_theme");if(t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme:dark)").matches))d.classList.add("dark");if(localStorage.getItem("dent_token"))d.dataset.auth="1"}catch(e){}})()`,
+            __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("dent_theme");if(t==="dark")d.classList.add("dark");if(localStorage.getItem("dent_token"))d.dataset.auth="1"}catch(e){}})()`,
           }}
         />
       </head>
@@ -51,9 +51,7 @@ export default function RootLayout({
               {children}
             </ErrorBoundary>
           </main>
-          <div className="hidden md:block">
-            <Footer />
-          </div>
+          <Footer />
           <MobileNav />
         </AuthProvider>
       </body>

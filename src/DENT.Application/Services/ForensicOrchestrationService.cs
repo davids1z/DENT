@@ -103,12 +103,17 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
 
                     try
                     {
-                        string? elaUrl = await UploadHeatmap(forensicResult.ElaHeatmapB64,
+                        // Upload all heatmaps in parallel (saves ~0.5s vs sequential)
+                        var elaTask = UploadHeatmap(forensicResult.ElaHeatmapB64,
                             $"ela_{inspection.Id}_{sortOrder}.png", ct);
-                        string? fftUrl = await UploadHeatmap(forensicResult.FftSpectrumB64,
+                        var fftTask = UploadHeatmap(forensicResult.FftSpectrumB64,
                             $"fft_{inspection.Id}_{sortOrder}.png", ct);
-                        string? spectralUrl = await UploadHeatmap(forensicResult.SpectralHeatmapB64,
+                        var spectralTask = UploadHeatmap(forensicResult.SpectralHeatmapB64,
                             $"spectral_{inspection.Id}_{sortOrder}.png", ct);
+                        await Task.WhenAll(elaTask, fftTask, spectralTask);
+                        string? elaUrl = await elaTask;
+                        string? fftUrl = await fftTask;
+                        string? spectralUrl = await spectralTask;
 
                         List<string>? pagePreviewUrls = null;
                         if (forensicResult.PagePreviewsB64 is { Count: > 0 })
@@ -277,8 +282,8 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                 allHashes.Sort();
                 inspection.EvidenceHash = _evidence.ComputeSha256(string.Join(":", allHashes));
 
-                await ObtainTimestamp(inspection, custodyLog, ct);
-
+                // Save custody log WITHOUT timestamp first — so the inspection
+                // is marked Completed and the frontend can show results immediately.
                 inspection.ChainOfCustodyJson = JsonSerializer.Serialize(custodyLog,
                     new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             }
@@ -295,7 +300,32 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
             inspection.ErrorMessage = ex.Message;
         }
 
+        // Save FIRST — marks inspection as Completed so the frontend sees results.
+        // The timestamp is obtained AFTER the save (non-blocking for the user).
         await _db.SaveChangesAsync(CancellationToken.None);
+
+        // Obtain RFC 3161 timestamp in the background (1-5s external call to freetsa.org).
+        // This updates the inspection after the user already sees the result.
+        if (inspection.Status == InspectionStatus.Completed && inspection.EvidenceHash != null)
+        {
+            try
+            {
+                var custodyLog2 = !string.IsNullOrEmpty(inspection.ChainOfCustodyJson)
+                    ? JsonSerializer.Deserialize<List<EvidenceCustodyEvent>>(inspection.ChainOfCustodyJson,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) ?? []
+                    : [];
+
+                await ObtainTimestamp(inspection, custodyLog2, CancellationToken.None);
+
+                inspection.ChainOfCustodyJson = JsonSerializer.Serialize(custodyLog2,
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                await _db.SaveChangesAsync(CancellationToken.None);
+            }
+            catch (Exception tsEx)
+            {
+                _logger.LogWarning(tsEx, "Post-completion timestamp failed for {Id}", inspection.Id);
+            }
+        }
     }
 
     private async Task<string?> UploadHeatmap(string? base64Data, string fileName, CancellationToken ct)
