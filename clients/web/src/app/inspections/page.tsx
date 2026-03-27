@@ -5,6 +5,7 @@ import { getInspections, type Inspection, formatCurrency, formatDate, severityCo
 import { AuthGuard } from "@/components/AuthGuard";
 import { InspectionCard } from "@/components/InspectionCard";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 
@@ -20,6 +21,8 @@ export default function InspectionsPage() {
 }
 
 function InspectionsContent() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin";
   const hasCachedData = _cachedInspections !== null && (Date.now() - _cacheTimestamp) < CACHE_TTL_MS * 10;
   const [inspections, setInspections] = useState<Inspection[]>(_cachedInspections ?? []);
   const [loading, setLoading] = useState(!hasCachedData);
@@ -66,7 +69,7 @@ function InspectionsContent() {
     { value: "", label: "Sve" },
     { value: "Completed", label: "Završeno" },
     { value: "Analyzing", label: "U obradi" },
-    { value: "Failed", label: "Neuspjelo" },
+    ...(isAdmin ? [{ value: "Failed", label: "Neuspjelo" }] : []),
   ];
 
   return (
@@ -150,7 +153,7 @@ function InspectionsContent() {
           </table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {paginatedItems.map((inspection, i) => (
             <div key={inspection.id} className="fade-up" style={{ animationDelay: `${i * 50}ms` }}>
               <InspectionCard inspection={inspection} />
