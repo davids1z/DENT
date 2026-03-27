@@ -6,7 +6,6 @@ export function ThemeToggle() {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    // Sync state with what the blocking script already set
     setDark(document.documentElement.classList.contains("dark"));
   }, []);
 
@@ -25,7 +24,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="fixed bottom-20 left-4 z-50 w-10 h-10 rounded-full bg-card border border-border shadow-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-card-hover transition-all md:bottom-6 md:left-6"
+      className="w-8 h-8 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-card transition-colors"
       title={dark ? "Svijetla tema" : "Tamna tema"}
     >
       {dark ? (

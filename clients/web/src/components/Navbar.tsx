@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
+import { ThemeToggle } from "./ThemeToggle";
 
 const links = [
   { href: "/", label: "Početna" },
@@ -47,7 +48,9 @@ export function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-1">
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <div className="hidden md:contents">
           {links.map((link) => {
             const active = isActive(link.href);
             return (
@@ -130,6 +133,7 @@ export function Navbar() {
               Prijava
             </Link>
           )}
+          </div>
         </div>
       </div>
     </nav>
