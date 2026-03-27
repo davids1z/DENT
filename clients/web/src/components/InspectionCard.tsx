@@ -22,7 +22,7 @@ export function InspectionCard({ inspection: i }: InspectionCardProps) {
     <Link href={`/inspections/${i.id}`}>
       <div className="bg-card border border-border rounded-xl overflow-hidden hover:border-gray-300 transition-colors">
         <div className="relative h-48 overflow-hidden bg-gray-50">
-          <img src={i.imageUrl} alt={i.originalFileName} loading="eager" className="w-full h-full object-cover"
+          <img src={i.thumbnailUrl || i.imageUrl} alt={i.originalFileName} loading="lazy" decoding="async" className="w-full h-full object-cover"
             onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='1.5'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' /%3E%3Cpath d='m3 16 5-5 2 2 4-4 7 7' /%3E%3C/svg%3E"; }} />
           <div className="absolute top-3 right-3">
             <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium",

@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 using DENT.Application.Interfaces;
 using DENT.Application.Services;
 using DENT.Domain.Entities;
@@ -43,12 +45,30 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         var imageHashes = new List<object>();
         var custodyLog = new List<EvidenceCustodyEvent>();
 
-        // Upload all images to storage
+        // Upload all images to storage + generate thumbnails
         string primaryImageUrl;
+        string? thumbnailUrl = null;
         using (var stream = new MemoryStream(firstImage.Data))
         {
             var key = await _storage.UploadAsync(stream, firstImage.FileName, firstImage.ContentType, ct);
             primaryImageUrl = _storage.GetPublicUrl(key);
+        }
+
+        // Generate thumbnail (400px wide, JPEG quality 75)
+        try
+        {
+            var thumbBytes = GenerateThumbnail(firstImage.Data, 400, 75);
+            if (thumbBytes != null)
+            {
+                using var thumbStream = new MemoryStream(thumbBytes);
+                var thumbKey = await _storage.UploadAsync(
+                    thumbStream, $"thumb_{firstImage.FileName}.jpg", "image/jpeg", ct);
+                thumbnailUrl = _storage.GetPublicUrl(thumbKey);
+            }
+        }
+        catch (Exception tex)
+        {
+            _logger.LogDebug(tex, "Thumbnail generation failed for {FileName}", firstImage.FileName);
         }
 
         // Hash primary image
@@ -67,6 +87,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         {
             Id = Guid.NewGuid(),
             ImageUrl = primaryImageUrl,
+            ThumbnailUrl = thumbnailUrl,
             OriginalFileName = firstImage.FileName,
             Status = InspectionStatus.Analyzing,
             CreatedAt = DateTime.UtcNow,
@@ -840,6 +861,31 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
     private static string ComputeSha256(string text)
     {
         return ComputeSha256(Encoding.UTF8.GetBytes(text));
+    }
+
+    /// <summary>
+    /// Generate a JPEG thumbnail from image bytes.
+    /// Returns null if the input is not a supported image format.
+    /// </summary>
+    private static byte[]? GenerateThumbnail(byte[] imageData, int maxWidth, int quality)
+    {
+        try
+        {
+            using var image = SixLabors.ImageSharp.Image.Load(imageData);
+            if (image.Width <= maxWidth) return null; // Already small enough
+
+            var ratio = (double)maxWidth / image.Width;
+            var newHeight = (int)(image.Height * ratio);
+            image.Mutate(x => x.Resize(maxWidth, newHeight));
+
+            using var ms = new MemoryStream();
+            image.SaveAsJpeg(ms, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = quality });
+            return ms.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
