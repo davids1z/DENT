@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
@@ -9,7 +10,10 @@ import { getToken } from "@/lib/api";
 export function MobileNav() {
   const pathname = usePathname();
   const { user, isLoading } = useAuth();
-  const hasToken = typeof window !== "undefined" && !!getToken();
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => { setHasToken(!!getToken()); }, [user]);
+
   const showLoggedIn = user || (isLoading && hasToken);
 
   const links = showLoggedIn

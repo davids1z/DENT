@@ -16,8 +16,11 @@ export function Navbar() {
   const pathname = usePathname();
   const { user, isLoading, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => { setHasToken(!!getToken()); }, [user]);
+
   // Show logged-in layout if token exists (even before auth resolves) to prevent flash
-  const hasToken = typeof window !== "undefined" && !!getToken();
   const showLoggedIn = user || (isLoading && hasToken);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
