@@ -53,7 +53,9 @@ jobs:
               cd "$DEPLOY_DIR"
               git fetch origin main
               # Fix ownership on files that Docker may have created as root
-              sudo chown -R $(whoami) . 2>/dev/null || true
+              sudo chown -R "$(whoami):$(id -gn)" services/ml-service/models/ 2>/dev/null || true
+              sudo chown -R "$(whoami):$(id -gn)" config/ 2>/dev/null || true
+              git checkout -- . 2>/dev/null || true
               git reset --hard origin/main
             fi
 
