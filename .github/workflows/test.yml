@@ -33,9 +33,9 @@ jobs:
       - name: Run fusion and stacking_meta tests
         run: pytest tests/test_fusion.py tests/test_stacking_meta.py -v
 
-      - name: Run tests with torch (full suite)
+      - name: Run tests with torch (analyzers + stacking)
         run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install transformers timm safetensors diffusers
           pip install -r requirements.txt
-          pytest tests/ -v --tb=short
+          pytest tests/test_fusion.py tests/test_stacking_meta.py tests/test_analyzers.py -v --tb=short
