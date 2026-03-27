@@ -69,7 +69,8 @@ class EfficientNetAiDetectionAnalyzer(BaseAnalyzer):
 
         try:
             from ..config import settings
-        except Exception:
+        except Exception as e:
+            logger.debug("Settings import fallback: %s", e)
             from types import SimpleNamespace
             settings = SimpleNamespace(forensics_model_cache_dir="/app/models")
 

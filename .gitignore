@@ -33,3 +33,13 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Calibration data (large, local only)
+services/ml-service/data/*.jsonl
+
+# Temporary scripts with credentials
+services/ml-service/scripts/vastai_setup.sh
+services/ml-service/scripts/ablation_study.py
+
+# Claude internal
+.claude/plans/

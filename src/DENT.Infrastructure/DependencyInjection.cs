@@ -1,5 +1,6 @@
 using Amazon.S3;
 using DENT.Application.Interfaces;
+using DENT.Application.Services;
 using DENT.Infrastructure.Data;
 using DENT.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,11 @@ public static class DependencyInjection
 
         services.AddScoped<IStorageService, StorageService>();
         services.AddScoped<IAuthService, AuthService>();
+
+        // Application services
+        services.AddScoped<IEvidenceService, EvidenceService>();
+        services.AddScoped<IImageProcessingService, ImageProcessingService>();
+        services.AddScoped<IForensicOrchestrationService, ForensicOrchestrationService>();
 
         // ML Service HTTP Client
         services.AddHttpClient<IMlAnalysisService, MlAnalysisService>();

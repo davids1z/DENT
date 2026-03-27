@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, File, Query, UploadFile
+from fastapi import APIRouter, File, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from ..config import settings
@@ -35,9 +35,6 @@ def get_pipeline() -> ForensicPipeline:
             optical_enabled=settings.forensics_optical_enabled,
             semantic_enabled=settings.forensics_semantic_enabled,
             semantic_face_enabled=settings.forensics_semantic_face_enabled,
-            semantic_vlm_enabled=settings.forensics_semantic_vlm_enabled,
-            semantic_vlm_model=settings.forensics_semantic_vlm_model,
-            openrouter_api_key=settings.openrouter_api_key,
             document_enabled=settings.forensics_document_enabled,
             document_signature_verification=settings.forensics_document_signature_verification,
             aigen_enabled=settings.forensics_aigen_enabled,
@@ -64,7 +61,7 @@ def get_pipeline() -> ForensicPipeline:
 # Modules skipped in "quick" scan mode to reduce analysis to ~40s
 _QUICK_SKIP = {
     "mesorch_detection",         # ~100s on CPU
-    "semantic_forensics",        # ~20s (Gemini API call)
+    "semantic_forensics",        # ~20s (face + statistical)
     "deep_modification_detection",  # ~40s (TruFor)
     "vae_reconstruction",        # ~15s (VAE decode)
 }
@@ -72,6 +69,7 @@ _QUICK_SKIP = {
 
 @router.post("/forensics", response_model=ForensicReport)
 async def analyze_forensics(
+    request: Request,
     file: UploadFile = File(...),
     skip_modules: str | None = Query(
         None, description="Comma-separated module names to skip"
@@ -81,6 +79,8 @@ async def analyze_forensics(
     ),
 ):
     """Run forensic fraud detection analysis on an uploaded file."""
+    request_id = getattr(request.state, "request_id", None)
+
     if not settings.forensics_enabled:
         return ForensicReport(
             overall_risk_score=0.0,
@@ -105,10 +105,11 @@ async def analyze_forensics(
     skip = list(skip) if skip else None
 
     pipeline = get_pipeline()
-    report = await pipeline.analyze(contents, filename, skip)
+    report = await pipeline.analyze(contents, filename, skip, request_id=request_id)
 
     logger.info(
-        "Forensic analysis complete: %s risk=%.2f level=%s time=%dms",
+        "[%s] Forensic analysis complete: %s risk=%.2f level=%s time=%dms",
+        request_id,
         filename,
         report.overall_risk_score,
         report.overall_risk_level,

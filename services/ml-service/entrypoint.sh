@@ -165,6 +165,12 @@ if [ -f "/app/models_stage/clip_ai/probe_weights.npz" ] && [ ! -f "/app/models/c
     cp /app/models_stage/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
 fi
 
+if [ -f "/app/models_stage/dinov2/dinov2_probe_weights.npz" ] && [ ! -f "/app/models/dinov2/dinov2_probe_weights.npz" ]; then
+    echo "[entrypoint] Copying DINOv2 probe weights to volume"
+    mkdir -p /app/models/dinov2
+    cp /app/models_stage/dinov2/dinov2_probe_weights.npz /app/models/dinov2/dinov2_probe_weights.npz
+fi
+
 # EfficientNet-B4 AI detector (~75 MB, public HuggingFace repo)
 efficientnet_path="/app/models/efficientnet_ai/pytorch_model.pth"
 if [ ! -f "$efficientnet_path" ]; then
@@ -177,6 +183,26 @@ hf_hub_download('Dafilab/ai-image-detector', 'pytorch_model.pth',
 " || echo "[entrypoint] WARNING: EfficientNet download failed"
 else
     echo "[entrypoint] EfficientNet-B4 already cached"
+fi
+
+# SPAI TorchScript model (~560 MB, CPU-traced, from S3)
+spai_path="/app/models/spai/spai_full.pt"
+if [ ! -f "$spai_path" ]; then
+    echo "[entrypoint] Downloading SPAI TorchScript model (~560 MB)..."
+    mkdir -p "$(dirname "$spai_path")"
+    python3 -c "
+import sys, os
+try:
+    import boto3
+    s3 = boto3.client('s3', region_name='eu-central-1')
+    s3.download_file('dent-calibration-data', 'models/spai_full_cpu.pt', '$spai_path')
+    size = os.path.getsize('$spai_path')
+    print(f'[entrypoint] SPAI model downloaded ({size/1e6:.0f} MB)')
+except Exception as e:
+    print(f'[entrypoint] WARNING: SPAI download failed: {e}', file=sys.stderr)
+" || true
+else
+    echo "[entrypoint] SPAI model already cached"
 fi
 
 # SAFE AI detector (~6 MB, GitHub)
@@ -199,5 +225,8 @@ else
     echo "[entrypoint] SAFE checkpoint already cached"
 fi
 
-echo "[entrypoint] Starting uvicorn..."
-exec "$@"
+echo "[entrypoint] Fixing model ownership..."
+chown -R appuser:appuser /app/models 2>/dev/null || true
+
+echo "[entrypoint] Starting server as appuser (workers=${DENT_UVICORN_WORKERS:-2})..."
+exec gosu appuser "$@"

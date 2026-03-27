@@ -1,7 +1,7 @@
 """
-DINOv2-based AI Image Detection Module
+DINOv2-larged AI Image Detection Module
 
-Uses frozen DINOv2-base (facebook/dinov2-base) embeddings with a trained
+Uses frozen DINOv2-large (facebook/dinov2-large) embeddings with a trained
 linear probe to distinguish real from AI-generated images.
 
 Key insight: DINOv2 was pre-trained with self-supervised learning on 142M
@@ -10,7 +10,7 @@ patterns. A simple linear probe on these features achieves 97.2% accuracy
 on Flux-generated images (arXiv 2602.07814, Feb 2026).
 
 Detection approach:
-1. Extract 768-dim CLS embedding from frozen DINOv2-base vision encoder.
+1. Extract 1024-dim CLS embedding from frozen DINOv2-large vision encoder.
 2. L2-normalize the embedding.
 3. Apply a trained logistic regression probe: sigmoid(w . x + b).
 4. Threshold the probability to emit findings.
@@ -48,11 +48,11 @@ if _TORCH_AVAILABLE:
     except ImportError:
         pass
 
-_DINOV2_MODEL_NAME = "facebook/dinov2-base"
+_DINOV2_MODEL_NAME = "facebook/dinov2-large"
 
 
 class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
-    """DINOv2-base linear probe for AI image detection."""
+    """DINOv2-large linear probe for AI image detection."""
 
     MODULE_NAME = "dinov2_ai_detection"
     MODULE_LABEL = "DINOv2 AI detekcija"
@@ -61,7 +61,7 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
         self._models_loaded = False
         self._processor = None
         self._model = None
-        self._probe = None  # {"weights": ndarray(768,), "bias": float}
+        self._probe = None  # {"weights": ndarray(1024,), "bias": float}
 
     # ------------------------------------------------------------------
     # Model loading
@@ -253,12 +253,12 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
                     code="DINOV2_AI_DETECTED",
                     title="DINOv2 detekcija AI-generiranog sadrzaja",
                     description=(
-                        f"DINOv2-base model detektirao je da embedding ove slike "
+                        f"DINOv2-large model detektirao je da embedding ove slike "
                         f"snazno indicira AI-generirani sadrzaj (rezultat: {score:.0%})."
                     ),
                     risk_score=min(0.90, max(0.65, score * 0.90)),
                     confidence=min(0.90, 0.60 + score * 0.25),
-                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_base_probe"},
+                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_large_probe"},
                 )
             )
         elif score > 0.45:
@@ -272,7 +272,7 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
                     ),
                     risk_score=max(0.40, score * 0.75),
                     confidence=min(0.80, 0.45 + score * 0.30),
-                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_base_probe"},
+                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_large_probe"},
                 )
             )
         elif score > 0.25:
@@ -286,6 +286,6 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
                     ),
                     risk_score=score * 0.50,
                     confidence=0.40 + score * 0.15,
-                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_base_probe"},
+                    evidence={"dinov2_score": round(score, 4), "method": "dinov2_large_probe"},
                 )
             )

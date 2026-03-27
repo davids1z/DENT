@@ -10,10 +10,26 @@ router = APIRouter()
 
 @router.get("/health")
 async def health():
+    from .forensics import _pipeline
+
+    # Report concurrency status for monitoring
+    pipeline_info = {}
+    if _pipeline is not None:
+        sem = _pipeline._analysis_semaphore
+        # Semaphore._value gives remaining slots (not a public API, but safe for monitoring)
+        max_concurrent = int(os.environ.get("DENT_MAX_CONCURRENT_ANALYSES", "3"))
+        active = max_concurrent - sem._value
+        pipeline_info = {
+            "active_analyses": active,
+            "max_concurrent": max_concurrent,
+            "thread_pool_size": _pipeline._executor._max_workers,
+        }
+
     return {
         "status": "healthy",
         "service": "DENT ML Service",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "concurrency": pipeline_info,
     }
 
 

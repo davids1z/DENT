@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: dent
       POSTGRES_USER: dent
-      POSTGRES_PASSWORD: dent_secret_2024
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dent_secret_2024}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -19,8 +19,8 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - minio_data:/data
     ports:
@@ -39,7 +39,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin};
       mc mb local/dent-images --ignore-existing;
       mc anonymous set public local/dent-images;
       exit 0;
@@ -48,8 +48,9 @@ services:
   ml-service:
     build: ./services/ml-service
     environment:
-      DENT_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      DENT_MODEL: google/gemini-2.5-pro-preview
+      DENT_UVICORN_WORKERS: "1"
+      DENT_THREAD_POOL_SIZE: "4"
+      DENT_MAX_CONCURRENT_ANALYSES: "2"
       DENT_FORENSICS_ENABLED: "true"
       DENT_FORENSICS_ELA_QUALITY: "95"
       DENT_FORENSICS_ELA_SCALE: "20"
@@ -59,16 +60,8 @@ services:
       DENT_FORENSICS_OPTICAL_ENABLED: "true"
       DENT_FORENSICS_SEMANTIC_ENABLED: "true"
       DENT_FORENSICS_SEMANTIC_FACE_ENABLED: "true"
-      DENT_FORENSICS_SEMANTIC_VLM_ENABLED: "true"
-      DENT_FORENSICS_SEMANTIC_VLM_MODEL: "google/gemini-2.5-pro-preview"
       DENT_FORENSICS_DOCUMENT_ENABLED: "true"
       DENT_FORENSICS_DOCUMENT_SIGNATURE_VERIFICATION: "true"
-      DENT_AGENT_ENABLED: "true"
-      DENT_AGENT_MODEL: ""
-      DENT_AGENT_STP_COST_THRESHOLD: "500"
-      DENT_AGENT_ESCALATION_COST_THRESHOLD: "3000"
-      DENT_AGENT_STP_MAX_FORENSIC_RISK: "0.25"
-      DENT_AGENT_ESCALATION_FORENSIC_RISK: "0.75"
       DENT_EVIDENCE_ENABLED: "true"
       DENT_EVIDENCE_TSA_URL: "https://freetsa.org/tsr"
     volumes:
@@ -83,14 +76,14 @@ services:
       dockerfile: DENT.API/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__DefaultConnection: "Host=postgres;Database=dent;Username=dent;Password=dent_secret_2024"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=dent;Username=dent;Password=${DB_PASSWORD:-dent_secret_2024}"
       MlService__BaseUrl: "http://ml-service:8000"
       Storage__ServiceUrl: "http://minio:9000"
-      Storage__AccessKey: minioadmin
-      Storage__SecretKey: minioadmin
+      Storage__AccessKey: ${MINIO_ACCESS_KEY:-minioadmin}
+      Storage__SecretKey: ${MINIO_SECRET_KEY:-minioadmin}
       Storage__BucketName: dent-images
       Storage__PublicUrl: "https://dent.xyler.ai/storage/dent-images"
-      Jwt__Secret: "${JWT_SECRET:-DENT-production-jwt-secret-change-me-min32chars!!}"
+      Jwt__Secret: "${JWT_SECRET:-DENT-dev-only-jwt-secret-change-in-production!!}"
       Jwt__Issuer: "DENT"
       Jwt__Audience: "DENT"
       Jwt__ExpiryHours: "24"

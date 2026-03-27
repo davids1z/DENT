@@ -99,8 +99,8 @@ def _check_zip_office(file_bytes: bytes, filename: str) -> str:
                     return "docx"
                 if any(n.startswith("xl/") for n in names):
                     return "xlsx"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Zip-based file type detection: %s", e)
 
     # Fall back to extension
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""

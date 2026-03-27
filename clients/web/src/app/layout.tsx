@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/Footer";
 import { AuthProvider } from "@/lib/auth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -39,7 +40,9 @@ export default function RootLayout({
         <AuthProvider>
           <Navbar />
           <main className="min-h-[calc(100vh-64px)] pb-20 md:pb-0">
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </main>
           <div className="hidden md:block">
             <Footer />

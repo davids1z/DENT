@@ -287,8 +287,8 @@ class MetadataAnalyzer(BaseAnalyzer):
             # Clean up temp file on error
             try:
                 os.unlink(tmp_path)  # type: ignore[possibly-undefined]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Temp file cleanup after exiftool error: %s", e)
             return self._extract_with_exifread(image_bytes)
 
     def _extract_with_exifread(
@@ -921,8 +921,8 @@ class MetadataAnalyzer(BaseAnalyzer):
                 logger.debug("ExifTool thumbnail extraction failed: %s", e)
                 try:
                     os.unlink(tmp_path)  # type: ignore[possibly-undefined]
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Temp file cleanup after thumbnail error: %s", e)
                 return None
         else:
             # exifread stores thumbnail bytes directly
@@ -1117,5 +1117,5 @@ class MetadataAnalyzer(BaseAnalyzer):
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Temp file cleanup after C2PA check: %s", e)

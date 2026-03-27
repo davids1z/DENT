@@ -2,8 +2,6 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    openrouter_api_key: str = ""
-    model: str = "google/gemini-2.5-pro-preview"
     max_image_size_mb: int = 20
     log_level: str = "INFO"
 
@@ -24,11 +22,9 @@ class Settings(BaseSettings):
     # Optical forensics (Moire / screen recapture detection)
     forensics_optical_enabled: bool = True
 
-    # Semantic forensics (AI detection, face liveness, VLM analysis)
+    # Semantic forensics (AI detection, face liveness)
     forensics_semantic_enabled: bool = True
     forensics_semantic_face_enabled: bool = True
-    forensics_semantic_vlm_enabled: bool = True
-    forensics_semantic_vlm_model: str = "google/gemini-2.5-pro-preview"
 
     # Spectral forensics (F2D-Net frequency-domain AI detection)
     forensics_spectral_enabled: bool = True
@@ -47,9 +43,9 @@ class Settings(BaseSettings):
     # SAFE AI detection (KDD 2025, pixel correlation, 1.44M params, <15ms CPU)
     forensics_safe_ai_enabled: bool = True
 
-    # DINOv2 AI detection (linear probe on frozen DINOv2-base, 97.2% on Flux)
+    # DINOv2 AI detection (linear probe on frozen DINOv2-large, 1024-dim)
     forensics_dinov2_ai_enabled: bool = True
-    forensics_dinov2_ai_model: str = "facebook/dinov2-base"
+    forensics_dinov2_ai_model: str = "facebook/dinov2-large"
 
     # SPAI spectral AI detection (CVPR 2025, FFT + ViT, compression-invariant)
     forensics_spai_enabled: bool = False
@@ -99,13 +95,13 @@ class Settings(BaseSettings):
     forensics_stacking_meta_enabled: bool = False
     forensics_stacking_meta_weights: str = ""
 
-    # Agent settings (Phase 7)
-    agent_enabled: bool = True
-    agent_model: str = ""
-    agent_stp_cost_threshold: float = 500.0
-    agent_escalation_cost_threshold: float = 3000.0
-    agent_stp_max_forensic_risk: float = 0.25
-    agent_escalation_forensic_risk: float = 0.75
+    # Per-module timeout (seconds)
+    forensics_module_timeout_seconds: int = 120
+
+    # Concurrency / scaling settings
+    thread_pool_size: int = 8  # ThreadPoolExecutor workers for parallel module execution
+    max_concurrent_analyses: int = 3  # Max pipeline analyses running simultaneously
+    uvicorn_workers: int = 1  # Number of uvicorn/gunicorn worker processes
 
     # Evidence / timestamp settings (Phase 8)
     evidence_enabled: bool = True

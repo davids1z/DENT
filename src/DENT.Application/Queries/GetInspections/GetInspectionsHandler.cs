@@ -1,5 +1,5 @@
-using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Interfaces;
+using DENT.Application.Mapping;
 using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
 using MediatR;
@@ -35,6 +35,6 @@ public class GetInspectionsHandler : IRequestHandler<GetInspectionsQuery, List<I
             .Take(request.PageSize)
             .ToListAsync(ct);
 
-        return inspections.Select(CreateInspectionHandler.MapToDto).ToList();
+        return inspections.Select(InspectionMapper.MapToDto).ToList();
     }
 }

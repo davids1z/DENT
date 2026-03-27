@@ -103,8 +103,8 @@ class CnnForensicsAnalyzer(BaseAnalyzer):
         try:
             import numpy as _np
             torch.serialization.add_safe_globals([_np.core.multiarray.scalar, _np.dtype, _np.ndarray])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Numpy safe globals registration: %s", e)
 
         if "catnet" in enabled_methods:
             try:

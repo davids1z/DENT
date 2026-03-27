@@ -55,6 +55,29 @@ jobs:
               git reset --hard origin/main
             fi
 
+            # Pre-deploy: backup database
+            echo "Backing up database before deploy..."
+            mkdir -p "$DEPLOY_DIR/backups"
+            docker compose -f docker-compose.server.yml exec -T postgres \
+              pg_dump -U dent --no-owner dent \
+              | gzip > "$DEPLOY_DIR/backups/pre-deploy-$(date +%Y%m%d_%H%M%S).sql.gz" || \
+              echo "WARNING: Database backup failed (DB may not be running yet)"
+
+            # Build and deploy
             docker compose -f docker-compose.server.yml build --parallel
             docker compose -f docker-compose.server.yml up -d --force-recreate
             docker image prune -f
+
+            # Post-deploy: verify API health
+            echo "Waiting 20s for services to start..."
+            sleep 20
+            if curl -sf http://127.0.0.1:3200/api/health > /dev/null; then
+              echo "Deploy verified — API healthy"
+            else
+              echo "WARNING: API health check failed after deploy"
+              docker compose -f docker-compose.server.yml logs --tail=30 api
+              exit 1
+            fi
+
+            # Cleanup old backups (keep 14 days)
+            find "$DEPLOY_DIR/backups" -name "*.sql.gz" -mtime +14 -delete 2>/dev/null || true

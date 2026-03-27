@@ -7,29 +7,25 @@ namespace DENT.Application.Services;
 
 public static class DecisionEngine
 {
-    public static (string Outcome, string Reason, string TraceJson) Evaluate(Inspection inspection)
+    public static (DecisionOutcome Outcome, string Reason, string TraceJson) Evaluate(Inspection inspection)
     {
         var traces = new List<DecisionTraceEntryDto>();
         var hasCriticalDamage = inspection.Damages.Any(d => d.Severity == DamageSeverity.Critical);
         var hasSevereFinding = inspection.Damages.Any(d => d.Severity == DamageSeverity.Severe);
-        var hasSafetyCriticalDamage = inspection.Damages.Any(d => d.SafetyRating == "Critical");
+        var hasSafetyCriticalDamage = inspection.Damages.Any(d => d.SafetyRating == SafetyRating.Critical);
         var findingCount = inspection.Damages.Count;
 
-        // Parse forensic module scores for fine-grained rules
         var primaryForensic = inspection.ForensicResults.OrderBy(f => f.SortOrder).FirstOrDefault();
         var modules = ParseModuleScores(primaryForensic?.ModuleResultsJson);
         var aiGenScore = modules.GetValueOrDefault("ai_generation_detection", 0);
         var spectralScore = modules.GetValueOrDefault("spectral_forensics", 0);
         var cnnScore = modules.GetValueOrDefault("deep_modification_detection", 0);
 
-        // Forensic-based fallback: AI detector 75%+ is a critical finding
         var hasCriticalFinding = hasCriticalDamage || aiGenScore >= 0.75;
-        // Forged content: from damage SafetyRating OR strong forensic + AI signal
         var fraudRiskScore = inspection.FraudRiskScore ?? 0;
         var hasSafetyCritical = hasSafetyCriticalDamage
             || (fraudRiskScore >= 0.60 && aiGenScore >= 0.60);
 
-        // Rule 1: Critical forensic risk (fusion score) — aligned with Python 0.85
         var hasCriticalFraud = fraudRiskScore >= 0.85;
         var hasHighFraud = fraudRiskScore >= 0.40;
         var hasMediumFraud = fraudRiskScore >= 0.15;
@@ -39,11 +35,10 @@ public static class DecisionEngine
             RuleDescription = "Forenzicka analiza indicira visoku vjerojatnost manipulacije ili krivotvorenja",
             Triggered = hasCriticalFraud,
             ThresholdValue = ">= 75% rizik",
-            ActualValue = $"{fraudRiskScore:P0} rizik ({inspection.FraudRiskLevel ?? "N/A"})",
+            ActualValue = $"{fraudRiskScore:P0} rizik ({inspection.FraudRiskLevel?.ToString() ?? "N/A"})",
             EvaluationOrder = 1
         });
 
-        // Rule 2: Critical finding from AI analysis
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Kriticni nalaz AI analize",
@@ -54,7 +49,6 @@ public static class DecisionEngine
             EvaluationOrder = 2
         });
 
-        // Rule 3: Safety critical (forged content)
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Krivotvoreni sadrzaj",
@@ -65,7 +59,6 @@ public static class DecisionEngine
             EvaluationOrder = 3
         });
 
-        // Rule 4: High forensic risk
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Povisen forenzicki rizik",
@@ -76,7 +69,6 @@ public static class DecisionEngine
             EvaluationOrder = 4
         });
 
-        // Rule 5: Severe findings from AI analysis
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Ozbiljni nalazi AI analize",
@@ -87,7 +79,6 @@ public static class DecisionEngine
             EvaluationOrder = 5
         });
 
-        // Rule 6: Multiple findings (only relevant when risk is elevated)
         var findingsWithRisk = findingCount > 3 && hasMediumFraud;
         traces.Add(new DecisionTraceEntryDto
         {
@@ -99,7 +90,6 @@ public static class DecisionEngine
             EvaluationOrder = 6
         });
 
-        // Rule 7: Medium forensic risk
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Umjeren forenzicki rizik",
@@ -110,7 +100,6 @@ public static class DecisionEngine
             EvaluationOrder = 7
         });
 
-        // Rule 8: AI generation detector strong signal
         var aiGenTriggered = aiGenScore >= 0.60;
         traces.Add(new DecisionTraceEntryDto
         {
@@ -122,7 +111,6 @@ public static class DecisionEngine
             EvaluationOrder = 8
         });
 
-        // Rule 9: Spectral + AI cross-validation
         var crossValidated = aiGenScore >= 0.50 && spectralScore >= 0.40;
         traces.Add(new DecisionTraceEntryDto
         {
@@ -134,8 +122,7 @@ public static class DecisionEngine
             EvaluationOrder = 9
         });
 
-        // Rule 10: Capture source is upload with elevated risk
-        var isUpload = inspection.CaptureSource == "upload";
+        var isUpload = inspection.CaptureSource == CaptureSource.Upload;
         var uploadWithRisk = isUpload && hasMediumFraud;
         traces.Add(new DecisionTraceEntryDto
         {
@@ -143,18 +130,17 @@ public static class DecisionEngine
             RuleDescription = "Datoteka uploadana (ne slikana kamerom) uz povisenu forenzicku sumnju",
             Triggered = uploadWithRisk,
             ThresholdValue = "Upload + >= 25% rizik",
-            ActualValue = $"Izvor: {inspection.CaptureSource ?? "N/A"}, Rizik: {fraudRiskScore:P0}",
+            ActualValue = $"Izvor: {inspection.CaptureSource?.ToString() ?? "N/A"}, Rizik: {fraudRiskScore:P0}",
             EvaluationOrder = 10
         });
 
-        // Determine outcome — DETERMINISTIC from fusion scores + module signals
-        string outcome;
+        DecisionOutcome outcome;
         string reason;
 
         if (hasCriticalFraud || hasCriticalFinding || hasSafetyCritical
             || aiGenTriggered || crossValidated)
         {
-            outcome = "Escalate";
+            outcome = DecisionOutcome.Escalate;
             var reasons = new List<string>();
             if (hasCriticalFraud) reasons.Add($"kriticna sumnja na manipulaciju ({fraudRiskScore:P0})");
             if (hasCriticalFinding) reasons.Add("kriticni nalazi AI analize");
@@ -163,12 +149,10 @@ public static class DecisionEngine
             if (crossValidated) reasons.Add($"cross-validacija AI ({aiGenScore:P0}) + spektral ({spectralScore:P0})");
             reason = $"Sumnja na krivotvorinu: {string.Join(", ", reasons)}";
         }
-        // findingCount only triggers review when risk is elevated (>= 15%).
-        // Low-risk images with many findings = false positives from noisy modules.
         else if (hasHighFraud || hasSevereFinding || findingsWithRisk
             || uploadWithRisk || cnnScore >= 0.50)
         {
-            outcome = "HumanReview";
+            outcome = DecisionOutcome.HumanReview;
             var reasons = new List<string>();
             if (hasHighFraud) reasons.Add($"povisen forenzicki rizik ({fraudRiskScore:P0})");
             if (hasSevereFinding) reasons.Add("ozbiljni nalazi AI analize");
@@ -179,12 +163,12 @@ public static class DecisionEngine
         }
         else if (hasMediumFraud)
         {
-            outcome = "HumanReview";
+            outcome = DecisionOutcome.HumanReview;
             reason = $"Potreban pregled: umjeren forenzicki rizik ({fraudRiskScore:P0})";
         }
         else
         {
-            outcome = "AutoApprove";
+            outcome = DecisionOutcome.AutoApprove;
             reason = $"Autenticno: nizak forenzicki rizik ({fraudRiskScore:P0}), {findingCount} nalaza";
         }
 
@@ -196,10 +180,6 @@ public static class DecisionEngine
         return (outcome, reason, traceJson);
     }
 
-    /// <summary>
-    /// Parse individual module risk scores from the forensic results JSON.
-    /// Returns a dictionary of module_name → risk_score.
-    /// </summary>
     private static Dictionary<string, double> ParseModuleScores(string? moduleResultsJson)
     {
         var scores = new Dictionary<string, double>();
@@ -225,7 +205,6 @@ public static class DecisionEngine
         }
         catch
         {
-            // If JSON parsing fails, return empty — fusion score still works
         }
 
         return scores;

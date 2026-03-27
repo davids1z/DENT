@@ -1,6 +1,7 @@
 using DENT.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace DENT.API.Controllers;
@@ -8,6 +9,7 @@ namespace DENT.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "Admin")]
+[EnableRateLimiting("api")]
 public class AdminController : ControllerBase
 {
     private readonly IDentDbContext _db;

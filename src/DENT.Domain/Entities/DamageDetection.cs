@@ -24,10 +24,10 @@ public class DamageDetection
     // Forensic fields
     public string? BoundingBox { get; set; } // JSON: {"x":0.3,"y":0.4,"w":0.15,"h":0.1}
     public string? DamageCause { get; set; }
-    public string? SafetyRating { get; set; } // Safe, Warning, Critical
+    public SafetyRating? SafetyRating { get; set; }
     public string? MaterialType { get; set; }
     public string? RepairOperations { get; set; }
-    public string? RepairCategory { get; set; } // Replace, Repair, Polish
+    public RepairCategory? RepairCategory { get; set; }
 
     // Structured repair line items (JSON array)
     public string? RepairLineItemsJson { get; set; }

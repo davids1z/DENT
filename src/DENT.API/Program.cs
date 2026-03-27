@@ -1,9 +1,14 @@
 using System.Text;
+using System.Threading.RateLimiting;
+using DENT.API.Middleware;
+using DENT.API.Services;
 using DENT.Application.Interfaces;
+using DENT.Application.Services;
 using DENT.Domain.Entities;
 using DENT.Infrastructure;
 using DENT.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -20,8 +25,24 @@ builder.Services.AddMediatR(cfg =>
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// Global exception handler
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
+// Background analysis queue (fair round-robin per user) + hosted service
+builder.Services.AddSingleton<IAnalysisQueue, FairAnalysisQueue>();
+builder.Services.AddHostedService<BackgroundAnalysisService>();
+
 // JWT Authentication
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "DENT-default-secret-change-in-production-min32chars!";
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret))
+{
+    if (builder.Environment.IsProduction())
+        throw new InvalidOperationException(
+            "FATAL: Jwt:Secret is not configured. Set the JWT_SECRET environment variable.");
+    jwtSecret = "DENT-development-only-secret-do-not-use-in-production!";
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -36,7 +57,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1),
         };
-        // Support access_token query parameter for file download links
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -50,7 +70,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-// CORS - allow frontend
+// Rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+            }));
+
+    options.AddPolicy("api", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 2,
+            }));
+});
+
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -70,9 +116,16 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<DentDbContext>();
     await db.Database.MigrateAsync();
 
-    // Seed admin user if not exists
     var adminEmail = app.Configuration["Admin:Email"] ?? "admin@dent.hr";
-    var adminPassword = app.Configuration["Admin:Password"] ?? "Admin123!";
+    var adminPassword = app.Configuration["Admin:Password"];
+    if (string.IsNullOrWhiteSpace(adminPassword))
+    {
+        if (app.Environment.IsProduction())
+            throw new InvalidOperationException(
+                "FATAL: Admin:Password is not configured. Set the ADMIN_PASSWORD environment variable.");
+        adminPassword = "Admin123!";
+    }
+
     if (!await db.Users.AnyAsync(u => u.Email == adminEmail))
     {
         db.Users.Add(new User
@@ -88,7 +141,6 @@ using (var scope = app.Services.CreateScope())
         await db.SaveChangesAsync();
     }
 
-    // Assign orphaned inspections (UserId=NULL) to admin
     var admin = await db.Users.FirstOrDefaultAsync(u => u.Email == adminEmail);
     if (admin is not null)
     {
@@ -106,12 +158,26 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.UseExceptionHandler();
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Health check
-app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", service = "DENT API", timestamp = DateTime.UtcNow }));
+app.MapGet("/api/health", (IAnalysisQueue queue) =>
+{
+    return Results.Ok(new
+    {
+        status = "healthy",
+        service = "DENT API",
+        timestamp = DateTime.UtcNow,
+        queue = new
+        {
+            pending = queue.Count,
+            activeUsers = queue.ActiveUserCount,
+        }
+    });
+});
 
 app.Run();

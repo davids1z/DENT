@@ -1,12 +1,15 @@
 using System.Security.Claims;
 using DENT.Application.Interfaces;
+using DENT.Application.Validation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DENT.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _auth;
@@ -19,8 +22,9 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password) || string.IsNullOrWhiteSpace(request.FullName))
             return BadRequest(new { error = "Sva polja su obavezna." });
 
-        if (request.Password.Length < 6)
-            return BadRequest(new { error = "Lozinka mora imati najmanje 6 znakova." });
+        var (isValid, error) = PasswordValidator.Validate(request.Password);
+        if (!isValid)
+            return BadRequest(new { error });
 
         try
         {

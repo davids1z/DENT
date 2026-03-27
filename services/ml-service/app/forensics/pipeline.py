@@ -46,9 +46,6 @@ class ForensicPipeline:
         optical_enabled: bool = True,
         semantic_enabled: bool = True,
         semantic_face_enabled: bool = True,
-        semantic_vlm_enabled: bool = True,
-        semantic_vlm_model: str = "google/gemini-2.5-pro-preview",
-        openrouter_api_key: str = "",
         document_enabled: bool = True,
         document_signature_verification: bool = True,
         aigen_enabled: bool = True,
@@ -72,7 +69,16 @@ class ForensicPipeline:
         self._embedded_img_enabled = embedded_image_forensics_enabled
         # Thread pool for CPU-bound modules — PyTorch releases GIL during
         # tensor ops, so threads give real parallelism on multi-core CPUs.
-        self._executor = ThreadPoolExecutor(max_workers=4)
+        # Size matches the number of active modules so all run truly in parallel.
+        import os
+        pool_size = int(os.environ.get("DENT_THREAD_POOL_SIZE", "8"))
+        self._executor = ThreadPoolExecutor(max_workers=pool_size)
+
+        # Semaphore limiting concurrent pipeline analyses. Prevents memory spikes
+        # when multiple requests arrive simultaneously (each analysis needs ~1GB
+        # of temporary buffers for image tensors across all modules).
+        max_concurrent = int(os.environ.get("DENT_MAX_CONCURRENT_ANALYSES", "3"))
+        self._analysis_semaphore = asyncio.Semaphore(max_concurrent)
         self._metadata = MetadataAnalyzer()
         self._modification = ModificationAnalyzer(
             ela_quality=ela_quality, ela_scale=ela_scale
@@ -89,9 +95,6 @@ class ForensicPipeline:
         self._semantic: SemanticForensicsAnalyzer | None = (
             SemanticForensicsAnalyzer(
                 face_enabled=semantic_face_enabled,
-                vlm_enabled=semantic_vlm_enabled,
-                vlm_model=semantic_vlm_model,
-                openrouter_api_key=openrouter_api_key,
             )
             if semantic_enabled
             else None
@@ -225,7 +228,8 @@ class ForensicPipeline:
                             continue
 
                         images.append((len(img_bytes), img_bytes))
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("PDF image extraction (xref): %s", e)
                         continue
 
             doc.close()
@@ -421,13 +425,30 @@ class ForensicPipeline:
         filename: str,
         skip_modules: list[str] | None = None,
         progress_callback: ProgressCallback = None,
+        request_id: str | None = None,
     ) -> ForensicReport:
+        # Acquire semaphore to limit concurrent analyses and prevent
+        # memory exhaustion when multiple requests arrive at once.
+        async with self._analysis_semaphore:
+            return await self._analyze_impl(
+                file_bytes, filename, skip_modules, progress_callback, request_id
+            )
+
+    async def _analyze_impl(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        skip_modules: list[str] | None = None,
+        progress_callback: ProgressCallback = None,
+        request_id: str | None = None,
+    ) -> ForensicReport:
+        rid = request_id or "no-rid"
         skip = set(skip_modules or [])
         modules: list[ModuleResult] = []
 
         # ── Universal file triage (magic bytes) ──────────────────
         file_category, detected_mime = triage_file(file_bytes, filename)
-        logger.info("File triage: %s → category=%s mime=%s", filename, file_category, detected_mime)
+        logger.info("[%s] File triage: %s → category=%s mime=%s", rid, filename, file_category, detected_mime)
 
         # Count total modules to run (for progress tracking)
         total_steps = self._count_active_modules(skip, file_category)
@@ -576,15 +597,24 @@ class ForensicPipeline:
 
             if all_analyzers:
                 loop = asyncio.get_event_loop()
+                from ..config import settings as _cfg
+                module_timeout = _cfg.forensics_module_timeout_seconds
 
                 async def _run_module(name: str, analyzer) -> tuple[str, ModuleResult | Exception]:
                     try:
-                        result = await loop.run_in_executor(
-                            self._executor,
-                            lambda: asyncio.run(analyzer.analyze_image(file_bytes, filename)),
+                        result = await asyncio.wait_for(
+                            loop.run_in_executor(
+                                self._executor,
+                                lambda a=analyzer: asyncio.run(a.analyze_image(file_bytes, filename)),
+                            ),
+                            timeout=module_timeout,
                         )
                         return name, result
+                    except asyncio.TimeoutError:
+                        logger.error("[%s] Module %s timed out after %ds", rid, name, module_timeout)
+                        return name, TimeoutError(f"Module {name} timed out after {module_timeout}s")
                     except Exception as e:
+                        logger.warning("[%s] Module %s failed: %s", rid, name, e)
                         return name, e
 
                 tasks = [_run_module(name, analyzer) for name, analyzer in all_analyzers]
@@ -592,7 +622,7 @@ class ForensicPipeline:
 
                 for mod_name, result in results:
                     if isinstance(result, Exception):
-                        logger.error("Module %s failed: %s", mod_name, result)
+                        logger.error("[%s] Module %s failed: %s", rid, mod_name, result)
                         modules.append(ModuleResult(
                             module_name=mod_name,
                             module_label=mod_name,

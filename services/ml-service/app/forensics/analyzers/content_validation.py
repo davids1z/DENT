@@ -521,7 +521,8 @@ class ContentValidationAnalyzer(BaseAnalyzer):
             for qr in qr_results:
                 try:
                     qr_data = qr.data.decode("utf-8", errors="ignore")
-                except Exception:
+                except Exception as e:
+                    logger.debug("QR data decode error: %s", e)
                     continue
 
                 # Look for UUID pattern in QR data
@@ -712,7 +713,8 @@ class ContentValidationAnalyzer(BaseAnalyzer):
             meta = doc.metadata or {}
             creation_date_str = meta.get("creationDate", "")
             doc.close()
-        except Exception:
+        except Exception as e:
+            logger.debug("PDF metadata date extraction: %s", e)
             return
 
         creation_date = _parse_pdf_date(creation_date_str)

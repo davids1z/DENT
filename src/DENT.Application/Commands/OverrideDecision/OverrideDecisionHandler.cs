@@ -1,6 +1,7 @@
-using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Interfaces;
+using DENT.Application.Mapping;
 using DENT.Domain.Entities;
+using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public class OverrideDecisionHandler : IRequestHandler<OverrideDecisionCommand, 
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)
+            .Include(i => i.ForensicResults)
             .AsQueryable();
 
         if (!request.IsAdmin && request.UserId.HasValue)
@@ -31,18 +33,19 @@ public class OverrideDecisionHandler : IRequestHandler<OverrideDecisionCommand, 
         {
             Id = Guid.NewGuid(),
             InspectionId = inspection.Id,
-            OriginalOutcome = inspection.DecisionOutcome ?? "Unknown",
+            OriginalOutcome = inspection.DecisionOutcome?.ToString() ?? "Unknown",
             NewOutcome = request.NewOutcome,
             Reason = request.Reason,
             OperatorName = request.OperatorName,
             CreatedAt = DateTime.UtcNow,
         };
 
-        inspection.DecisionOutcome = request.NewOutcome;
+        inspection.DecisionOutcome = Enum.TryParse<DecisionOutcome>(request.NewOutcome, true, out var outcome)
+            ? outcome : DecisionOutcome.HumanReview;
         inspection.DecisionOverrides.Add(overrideEntry);
 
         await _db.SaveChangesAsync(ct);
 
-        return CreateInspectionHandler.MapToDto(inspection);
+        return InspectionMapper.MapToDto(inspection);
     }
 }

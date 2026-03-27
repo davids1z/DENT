@@ -102,7 +102,8 @@ def fuse_scores(
     try:
         from ..config import settings as _settings
         meta_enabled = _settings.forensics_stacking_meta_enabled
-    except Exception:
+    except Exception as e:
+        logger.debug("Stacking meta config load: %s", e)
         meta_enabled = False
 
     verdict_probs: dict[str, float] | None = None
@@ -200,33 +201,7 @@ def fuse_scores(
     if has_ai_tool or has_ai_filename:
         core_score = max(core_score, 0.90)  # Definitive AI metadata signal
 
-    # ── Step 3: Gemini VLM as SUPPLEMENTARY signal (additive, not dominant)
-    # VLMs are great for describing anomalies but unreliable for binary
-    # AI classification. Gemini can nudge the score slightly but NEVER
-    # override pixel detectors. Max adjustment: ±0.10
-    sem = _get_module(active, "semantic_forensics")
-    gemini_adjustment = 0.0
-
-    if sem is not None and sem.findings:
-        for f in sem.findings:
-            if f.code == "SEM_VLM_SYNTHETIC_DETECTED":
-                # Gemini agrees it's AI — small boost (max +0.10)
-                gemini_adjustment = min(0.10, sem.risk_score * 0.15)
-                break
-            if f.code == "SEM_VLM_SYNTHETIC_SUSPECTED":
-                gemini_adjustment = min(0.05, sem.risk_score * 0.10)
-                break
-            if f.code == "SEM_VLM_AUTHENTIC":
-                # Gemini thinks it's real — small reduction (max -0.05)
-                # This CANNOT flip a high pixel score to "safe"
-                gemini_adjustment = -0.05
-                break
-
-    # ── Step 4: Combine — pixel-first with Gemini adjustment ─────────
-    if has_ai_tool or has_ai_filename:
-        ai_combined = core_score  # Metadata definitive, skip Gemini
-    else:
-        ai_combined = core_score + gemini_adjustment
+    ai_combined = core_score
 
     # ── Step 3: Tampering score (separate from AI generation) ─────────
     # Each tampering detector needs a minimum threshold before contributing.

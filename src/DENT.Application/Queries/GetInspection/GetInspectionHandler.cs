@@ -1,5 +1,5 @@
-using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Interfaces;
+using DENT.Application.Mapping;
 using DENT.Shared.DTOs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +28,6 @@ public class GetInspectionHandler : IRequestHandler<GetInspectionQuery, Inspecti
         var inspection = await query.FirstOrDefaultAsync(i => i.Id == request.Id, ct);
         if (inspection is null) return null;
 
-        return CreateInspectionHandler.MapToDto(inspection);
+        return InspectionMapper.MapToDto(inspection);
     }
 }

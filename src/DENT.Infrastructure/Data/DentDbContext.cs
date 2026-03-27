@@ -41,7 +41,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.VehicleMake).HasMaxLength(100);
             entity.Property(e => e.VehicleModel).HasMaxLength(100);
             entity.Property(e => e.VehicleColor).HasMaxLength(50);
-            entity.Property(e => e.UrgencyLevel).HasMaxLength(50);
+            entity.Property(e => e.UrgencyLevel).HasConversion<string?>().HasMaxLength(50);
             entity.Property(e => e.StructuralIntegrity).HasMaxLength(2000);
 
             // User-provided vehicle context
@@ -50,7 +50,7 @@ public class DentDbContext : DbContext, IDentDbContext
 
             // Capture metadata (Phase 6)
             entity.Property(e => e.CaptureDeviceInfo).HasMaxLength(2000);
-            entity.Property(e => e.CaptureSource).HasMaxLength(20);
+            entity.Property(e => e.CaptureSource).HasConversion<string?>().HasMaxLength(20);
 
             // Structured cost totals
             entity.Property(e => e.LaborTotal).HasColumnType("decimal(10,2)");
@@ -59,7 +59,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.GrossTotal).HasColumnType("decimal(10,2)");
 
             // Decision engine
-            entity.Property(e => e.DecisionOutcome).HasMaxLength(50);
+            entity.Property(e => e.DecisionOutcome).HasConversion<string?>().HasMaxLength(50);
             entity.Property(e => e.DecisionReason).HasMaxLength(2000);
             entity.Property(e => e.DecisionTraceJson).HasMaxLength(5000);
 
@@ -68,7 +68,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.AgentWeatherAssessment).HasMaxLength(2000);
 
             // Fraud detection
-            entity.Property(e => e.FraudRiskLevel).HasMaxLength(50);
+            entity.Property(e => e.FraudRiskLevel).HasConversion<string?>().HasMaxLength(50);
 
             // Evidence integrity (Phase 8)
             entity.Property(e => e.EvidenceHash).HasMaxLength(128);
@@ -118,10 +118,10 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.PartsNeeded).HasMaxLength(1000);
             entity.Property(e => e.BoundingBox).HasMaxLength(200);
             entity.Property(e => e.DamageCause).HasMaxLength(500);
-            entity.Property(e => e.SafetyRating).HasMaxLength(50);
+            entity.Property(e => e.SafetyRating).HasConversion<string?>().HasMaxLength(50);
             entity.Property(e => e.MaterialType).HasMaxLength(100);
             entity.Property(e => e.RepairOperations).HasMaxLength(2000);
-            entity.Property(e => e.RepairCategory).HasMaxLength(50);
+            entity.Property(e => e.RepairCategory).HasConversion<string?>().HasMaxLength(50);
             entity.Property(e => e.RepairLineItemsJson).HasMaxLength(10000);
             entity.HasOne(e => e.Inspection)
                 .WithMany(i => i.Damages)

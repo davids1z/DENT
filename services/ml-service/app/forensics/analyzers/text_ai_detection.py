@@ -423,7 +423,8 @@ class TextAiDetectionAnalyzer(BaseAnalyzer):
                     # Cap at reasonable range
                     ppl = min(ppl, 1000.0)
                     perplexities.append(ppl)
-            except Exception:
+            except Exception as e:
+                logger.debug("Perplexity computation for chunk: %s", e)
                 continue
 
         return perplexities

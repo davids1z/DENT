@@ -28,7 +28,7 @@ public class Inspection
     public double? CaptureLongitude { get; set; }
     public double? CaptureGpsAccuracy { get; set; }
     public string? CaptureDeviceInfo { get; set; }
-    public string? CaptureSource { get; set; }
+    public CaptureSource? CaptureSource { get; set; }
 
     // Vehicle info (detected by AI)
     public string? VehicleMake { get; set; }
@@ -42,7 +42,7 @@ public class Inspection
     public decimal? TotalEstimatedCostMax { get; set; }
     public string Currency { get; set; } = "EUR";
     public bool? IsDriveable { get; set; }
-    public string? UrgencyLevel { get; set; }
+    public UrgencyLevel? UrgencyLevel { get; set; }
     public string? StructuralIntegrity { get; set; }
     public string? ErrorMessage { get; set; }
 
@@ -53,7 +53,7 @@ public class Inspection
     public decimal? GrossTotal { get; set; }
 
     // Decision engine
-    public string? DecisionOutcome { get; set; } // AutoApprove, HumanReview, Escalate
+    public DecisionOutcome? DecisionOutcome { get; set; }
     public string? DecisionReason { get; set; }
     public string? DecisionTraceJson { get; set; } // JSON array of rule evaluations
 
@@ -67,7 +67,7 @@ public class Inspection
 
     // Fraud detection
     public double? FraudRiskScore { get; set; }
-    public string? FraudRiskLevel { get; set; }
+    public FraudRiskLevel? FraudRiskLevel { get; set; }
 
     // Evidence integrity (Phase 8)
     public string? EvidenceHash { get; set; }

@@ -3,12 +3,14 @@ using DENT.Application.Queries.GetDashboardStats;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DENT.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[EnableRateLimiting("api")]
 public class DashboardController : ControllerBase
 {
     private readonly IMediator _mediator;

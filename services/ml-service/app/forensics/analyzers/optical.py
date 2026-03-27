@@ -489,7 +489,8 @@ class OpticalForensicsAnalyzer(BaseAnalyzer):
                 threshold=50, minLineLength=max(30, min(sh, sw) // 8),
                 maxLineGap=10
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("HoughLinesP detection failed: %s", e)
             return {"inconsistency_score": 0.0, "line_count": 0, "cluster_count": 0}
 
         if lines is None or len(lines) < 4:

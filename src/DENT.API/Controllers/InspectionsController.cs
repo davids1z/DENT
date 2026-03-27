@@ -9,12 +9,14 @@ using DENT.Application.Queries.GetInspections;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DENT.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[EnableRateLimiting("api")]
 public class InspectionsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -25,7 +27,8 @@ public class InspectionsController : ControllerBase
     private bool IsAdmin() => User.IsInRole("Admin");
 
     [HttpPost]
-    [RequestSizeLimit(100_000_000)] // 100MB for multi-image
+    [RequestSizeLimit(100_000_000)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 100_000_000)]
     public async Task<IActionResult> Create(
         [FromForm] List<IFormFile> images,
         [FromForm] string? vehicleMake,
@@ -51,6 +54,8 @@ public class InspectionsController : ControllerBase
         {
             if (image.Length == 0)
                 return BadRequest(new { error = "Empty image file" });
+            if (image.Length > 20_000_000)
+                return BadRequest(new { error = $"File {image.FileName} exceeds 20MB limit" });
             if (!allowedTypes.Contains(image.ContentType.ToLower()))
                 return BadRequest(new { error = $"Invalid file type: {image.ContentType}. Supported: JPEG, PNG, WebP, HEIC, PDF, DOCX, XLSX" });
         }

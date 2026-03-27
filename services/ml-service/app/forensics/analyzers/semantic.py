@@ -1,13 +1,10 @@
-"""Semantic forensics: AI-generated image detection, face liveness, VLM analysis."""
+"""Semantic forensics: AI-generated image detection and face liveness."""
 
-import base64
 import io
-import json
 import logging
 import time
 
 import cv2
-import httpx
 import numpy as np
 from PIL import Image
 from scipy.fft import dctn
@@ -26,14 +23,8 @@ class SemanticForensicsAnalyzer(BaseAnalyzer):
     def __init__(
         self,
         face_enabled: bool = True,
-        vlm_enabled: bool = True,
-        vlm_model: str = "google/gemini-2.5-pro-preview",
-        openrouter_api_key: str = "",
     ) -> None:
         self._face_enabled = face_enabled
-        self._vlm_enabled = vlm_enabled
-        self._vlm_model = vlm_model
-        self._api_key = openrouter_api_key
         self._face_cascade: cv2.CascadeClassifier | None = None
 
     def _get_face_cascade(self) -> cv2.CascadeClassifier:
@@ -332,316 +323,8 @@ class SemanticForensicsAnalyzer(BaseAnalyzer):
 
         return findings
 
-    # ------------------------------------------------------------------
-    # 1c. VLM Forensic Analysis
-    # ------------------------------------------------------------------
-
-    async def _vlm_forensic_analysis(self, image_bytes: bytes, filename: str) -> list[AnalyzerFinding]:
-        """Use VLM for explainable forensic analysis."""
-        if not self._vlm_enabled or not self._api_key:
-            if not self._api_key and self._vlm_enabled:
-                logger.warning("VLM forensics enabled but no API key configured, skipping")
-            return []
-
-        # Determine media type
-        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
-        media_type = {
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "png": "image/png",
-            "webp": "image/webp",
-        }.get(ext, "image/jpeg")
-
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        prompt = """Ti si forenzicki strucnjak za otkrivanje AI-generiranih slika. Koristis AnomReason okvir — strukturiranu analizu anomalija.
-
-=== KRITICNO UPOZORENJE ===
-Moderni AI generatori (DALL-E 3, Midjourney v6, SDXL, Flux) stvaraju FOTOREALISTICNE slike sa SAVRSENIM pikselima. NE OSLANJAJ SE na vizualni dojam — trazi FIZIKALNE i LOGICKE greske.
-
-=== AnomReason OKVIR: 4-koracna analiza ===
-Za SVAKI objekt/regiju na slici provedi:
-1. IMENOVANJE: Sto je objekt? (npr. "prednji branik", "znak STOP", "sjena vozila")
-2. FENOMEN: Sto nije u redu? (npr. "branik se stapa s kotacem", "tekst na znaku je necitljiv")
-3. FIZICKO OBJASNJENJE: Zasto je to fizicki nemoguce? (npr. "u stvarnom sudaru metal se guzva, ne stapa")
-4. OZBILJNOST: Low/Medium/High — koliko je greska ocita?
-
-=== STO KONKRETNO TRAZITI ===
-
-A) FIZIKA OSVJETLJENJA (najvazniji signal):
-   - Identificiraj SVE izvore svjetla na slici (ulicne svjetiljke, sunce, refleksije)
-   - Povuci virtualne linije od predmeta do njihovih sjena
-   - Ako se smjerovi sjena NE SIJEKU u istom izvoru svjetla → AI generirana slika
-   - Provjeri: refleksije na metalu/staklu — odgovaraju li poziciji izvora svjetla?
-
-B) GEOMETRIJA I PERSPEKTIVA:
-   - Provjeri tocke nedogleda (vanishing points) — svi paralelni rubovi moraju konvergirati
-   - AI cesto stvara blago zakrivljene linije koje bi trebale biti ravne
-   - Proporcije objekata — jesu li konzistentne s udaljenosti?
-
-C) SEMANTICKE ANOMALIJE (AnomReason):
-   - Tekst i natpisi: Mogu li se STVARNO procitati? Imaju li smisla?
-   - Prsti, ruke, zubi: Pravilni broj? Pravilni zglobovi?
-   - Materijali: Ponasa li se metal/staklo/tekucina realno?
-   - Krhotine/ostecenja: Slijede li fiziku loma? Ili su "dekorativne"?
-   - Pozadina: Postoje li neodredeni/ponavljajuci uzorci?
-
-D) GROUNDING PROVJERA:
-   - Za SVAKI objekt koji opisujes, MORAS dati TOCNE bounding_box koordinate (0.0-1.0)
-   - Ako tvrdi da postoji "znak STOP" — navedi TOCNO GDJE na slici (x, y, w, h)
-   - Ako ne mozes locirati objekt s koordinatama, NE SPOMINJI ga
-
-=== OBAVEZAN JSON FORMAT ===
-{
-  "is_suspicious": true/false,
-  "confidence": 0.0-1.0,
-  "risk_level": "Low/Medium/High/Critical",
-  "anomalies": [
-    {
-      "object": "naziv objekta",
-      "bounding_box": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.25},
-      "phenomenon": "sto nije u redu",
-      "physics_explanation": "zasto je to fizicki nemoguce",
-      "severity": "Low/Medium/High"
-    }
-  ],
-  "shadow_analysis": {
-    "light_sources_identified": ["opis izvora 1", "opis izvora 2"],
-    "shadow_directions_consistent": true/false,
-    "explanation": "objasnjenje konzistentnosti sjena"
-  },
-  "text_verification": {
-    "texts_found": [
-      {"text": "sadrzaj", "readable": true/false, "makes_sense": true/false, "bounding_box": {"x":0,"y":0,"w":0,"h":0}}
-    ]
-  },
-  "explanation": "Kratko objasnjenje na hrvatskom (2-3 recenice)"
-}
-
-=== KRITICNA PRAVILA ===
-- NIKAD ne pretpostavljaj autenticnost — DOKAZUJ je
-- Ako nemas fizikalni dokaz autenticnosti, postavi is_suspicious=true
-- Budi konkretan: "metal na braniku se stapa s asfaltom na koordinatama (0.7, 0.8)"
-- SVAKI objekt koji opisujes MORA imati bounding_box koordinate
-- Ako tekst na slici nije citljiv ili nema smisla → to je AI indikator"""
-
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://dent.xyler.ai",
-                        "X-Title": "DENT - Forensic VLM Analysis",
-                    },
-                    json={
-                        "model": self._vlm_model,
-                        "max_tokens": 2000,
-                        "temperature": 0.1,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:{media_type};base64,{image_b64}"
-                                        },
-                                    },
-                                    {"type": "text", "text": prompt},
-                                ],
-                            }
-                        ],
-                    },
-                )
-
-            response.raise_for_status()
-            result = response.json()
-            response_text = result["choices"][0]["message"]["content"]
-
-            # Parse JSON from response
-            text = response_text.strip()
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0].strip()
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0].strip()
-
-            vlm_result = json.loads(text)
-
-        except httpx.HTTPStatusError as e:
-            logger.warning("VLM API error: %s - %s", e.response.status_code, e.response.text[:200])
-            return []
-        except (json.JSONDecodeError, KeyError, IndexError) as e:
-            logger.warning("Failed to parse VLM response: %s", e)
-            return []
-        except Exception as e:
-            logger.warning("VLM analysis failed: %s", e)
-            return []
-
-        findings = []
-        is_suspicious = vlm_result.get("is_suspicious", False)
-        confidence = float(vlm_result.get("confidence", 0.5))
-        confidence = max(0.0, min(1.0, confidence))
-        explanation = vlm_result.get("explanation", "")
-
-        # Parse AnomReason anomalies
-        anomalies = vlm_result.get("anomalies", [])
-        # Backwards compat: support old "findings" key too
-        if not anomalies:
-            anomalies = vlm_result.get("findings", [])
-
-        # Parse shadow analysis
-        shadow = vlm_result.get("shadow_analysis", {})
-        shadow_consistent = shadow.get("shadow_directions_consistent", True)
-
-        # Parse text verification
-        text_ver = vlm_result.get("text_verification", {})
-        texts_found = text_ver.get("texts_found", [])
-        unreadable_texts = [t for t in texts_found
-                           if not t.get("readable", True) or not t.get("makes_sense", True)]
-
-        # Count high-severity anomalies
-        high_anomalies = [a for a in anomalies if a.get("severity") == "High"]
-        med_anomalies = [a for a in anomalies if a.get("severity") == "Medium"]
-
-        # Build anomaly descriptions for evidence
-        anomaly_descs = []
-        for a in anomalies[:8]:
-            desc = f"[{a.get('object', '?')}] {a.get('phenomenon', '')} — {a.get('physics_explanation', '')}"
-            anomaly_descs.append(desc)
-
-        evidence = {
-            "vlm_model": self._vlm_model,
-            "vlm_is_suspicious": is_suspicious,
-            "vlm_confidence": round(confidence, 3),
-            "vlm_risk_level": vlm_result.get("risk_level", "Low"),
-            "vlm_explanation": explanation,
-            "anomaly_count": len(anomalies),
-            "high_severity_anomalies": len(high_anomalies),
-            "anomalies": anomaly_descs[:5],
-            "shadow_consistent": shadow_consistent,
-            "shadow_explanation": shadow.get("explanation", ""),
-            "unreadable_texts": len(unreadable_texts),
-        }
-
-        # ── Score based on structured anomalies (not just is_suspicious) ──
-        # Each high anomaly adds 0.15, medium adds 0.08
-        anomaly_score = (len(high_anomalies) * 0.15 + len(med_anomalies) * 0.08)
-        # Shadow inconsistency adds 0.15
-        if not shadow_consistent:
-            anomaly_score += 0.15
-        # Unreadable texts add 0.10 each
-        anomaly_score += len(unreadable_texts) * 0.10
-        # Cap at 1.0
-        anomaly_score = min(1.0, anomaly_score)
-
-        # Use MAX of VLM confidence and anomaly score
-        effective_score = max(confidence if is_suspicious else 0.0, anomaly_score)
-
-        if effective_score > 0.60:
-            desc_parts = []
-            if high_anomalies:
-                desc_parts.append(
-                    f"Pronadjeno {len(high_anomalies)} ozbiljnih fizikalnih anomalija: "
-                    + "; ".join(
-                        f"{a.get('object', '?')}: {a.get('phenomenon', '')}"
-                        for a in high_anomalies[:3]
-                    )
-                )
-            if not shadow_consistent:
-                desc_parts.append(
-                    f"Smjerovi sjena su nekonzistentni: {shadow.get('explanation', 'vise izvora svjetla')}"
-                )
-            if unreadable_texts:
-                desc_parts.append(
-                    f"Pronadjen(o) {len(unreadable_texts)} necitljivih/besmislenih tekstova na slici"
-                )
-            if not desc_parts:
-                desc_parts.append(explanation or "VLM analiza detektirala sumnjive karakteristike.")
-
-            findings.append(
-                AnalyzerFinding(
-                    code="SEM_VLM_SYNTHETIC_DETECTED",
-                    title="VLM AnomReason: Sinteticki sadrzaj detektiran",
-                    description=" ".join(desc_parts),
-                    risk_score=round(min(0.90, effective_score * 0.85), 3),
-                    confidence=min(0.92, effective_score),
-                    evidence=evidence,
-                )
-            )
-        elif effective_score > 0.30:
-            findings.append(
-                AnalyzerFinding(
-                    code="SEM_VLM_SYNTHETIC_SUSPECTED",
-                    title="VLM AnomReason: Sumnjive anomalije",
-                    description=(
-                        explanation
-                        or f"Pronadjeno {len(anomalies)} anomalija: "
-                        + "; ".join(a.get("phenomenon", "") for a in anomalies[:3])
-                    ),
-                    risk_score=round(max(0.35, effective_score * 0.70), 3),
-                    confidence=effective_score,
-                    evidence=evidence,
-                )
-            )
-        elif not is_suspicious and anomaly_score < 0.10:
-            # VLM found nothing AND no structured anomalies → cautious authentic
-            findings.append(
-                AnalyzerFinding(
-                    code="SEM_VLM_AUTHENTIC",
-                    title="VLM: Nema detektiranih anomalija",
-                    description=(
-                        (explanation or "VLM AnomReason analiza nije pronasla fizikalne anomalije.")
-                        + " NAPOMENA: VLM nije specijalizirani detektor AI sadrzaja — "
-                        "moderni generatori mogu prevariti opce modele."
-                    ),
-                    risk_score=0.0,
-                    confidence=max(0.0, confidence * 0.4),  # Low confidence for authentic
-                    evidence=evidence,
-                )
-            )
-
-        # ── Separate shadow finding if inconsistent ──
-        if not shadow_consistent:
-            findings.append(
-                AnalyzerFinding(
-                    code="SEM_SHADOW_INCONSISTENT",
-                    title="Nekonzistentni smjerovi sjena",
-                    description=(
-                        f"Analiza sjena otkrila je nekonzistentne smjerove: "
-                        f"{shadow.get('explanation', 'sjene ukazuju na vise izvora svjetla koji nisu realni')}. "
-                        f"Identificirani izvori: {', '.join(shadow.get('light_sources_identified', [])[:3])}. "
-                        "AI generatori redovito griješe u renderiranju konzistentnih sjena jer ne modeliraju 3D prostor."
-                    ),
-                    risk_score=0.55,
-                    confidence=0.70,
-                    evidence={"shadow_analysis": shadow},
-                )
-            )
-
-        # ── Separate text anomaly findings ──
-        if unreadable_texts:
-            text_descs = []
-            for t in unreadable_texts[:3]:
-                txt = t.get("text", "?")
-                text_descs.append(f'"{txt}" — {"necitljiv" if not t.get("readable") else "besmislen"}')
-            findings.append(
-                AnalyzerFinding(
-                    code="SEM_TEXT_ANOMALY",
-                    title="Anomalije u tekstu na slici",
-                    description=(
-                        f"Pronadjeno {len(unreadable_texts)} tekstualnih anomalija: "
-                        + "; ".join(text_descs) + ". "
-                        "AI generatori ne mogu reproducirati citljive i smislene natpise."
-                    ),
-                    risk_score=min(0.70, 0.30 + len(unreadable_texts) * 0.15),
-                    confidence=0.80,
-                    evidence={"texts": unreadable_texts[:5]},
-                )
-            )
-
-        return findings
+    # VLM forensic analysis removed — all detection via statistical + face modules
+    # (was ~300 lines of OpenRouter API calls for Gemini VLM)
 
     # ------------------------------------------------------------------
     # Main analysis
@@ -699,10 +382,6 @@ D) GROUNDING PROVJERA:
             # 1b. Face liveness
             face_findings = self._face_liveness_analysis(img_array, gray)
             findings.extend(face_findings)
-
-            # 1c. VLM forensic analysis
-            vlm_findings = await self._vlm_forensic_analysis(image_bytes, filename)
-            findings.extend(vlm_findings)
 
         except Exception as e:
             logger.error("Semantic analysis failed: %s", e, exc_info=True)

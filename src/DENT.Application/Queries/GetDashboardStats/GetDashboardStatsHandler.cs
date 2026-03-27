@@ -1,5 +1,5 @@
-using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Interfaces;
+using DENT.Application.Mapping;
 using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
 using MediatR;
@@ -30,7 +30,6 @@ public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, 
         var avgCostMin = completedWithCosts.Count > 0 ? completedWithCosts.Average(i => i.TotalEstimatedCostMin!.Value) : 0;
         var avgCostMax = completedWithCosts.Count > 0 ? completedWithCosts.Average(i => i.TotalEstimatedCostMax ?? i.TotalEstimatedCostMin!.Value) : 0;
 
-        // For damage/decision stats, filter by user's inspections
         var inspectionIds = request.UserId.HasValue
             ? await inspections.Select(i => i.Id).ToListAsync(ct)
             : null;
@@ -58,14 +57,15 @@ public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, 
 
         var decisionOutcomes = await inspections
             .Where(i => i.DecisionOutcome != null)
-            .GroupBy(i => i.DecisionOutcome!)
-            .Select(g => new { Outcome = g.Key, Count = g.Count() })
+            .GroupBy(i => i.DecisionOutcome!.Value)
+            .Select(g => new { Outcome = g.Key.ToString(), Count = g.Count() })
             .ToDictionaryAsync(x => x.Outcome, x => x.Count, ct);
 
         var recentInspections = await inspections
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)
+            .Include(i => i.ForensicResults)
             .AsNoTracking()
             .OrderByDescending(i => i.CreatedAt)
             .Take(5)
@@ -82,7 +82,7 @@ public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, 
             SeverityDistribution = severities,
             CarPartDistribution = carParts,
             DecisionOutcomeDistribution = decisionOutcomes,
-            RecentInspections = recentInspections.Select(CreateInspectionHandler.MapToDto).ToList()
+            RecentInspections = recentInspections.Select(InspectionMapper.MapToDto).ToList()
         };
     }
 }

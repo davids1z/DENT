@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     tesseract-ocr \
     tesseract-ocr-hrv \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -38,16 +39,26 @@ RUN pip install --no-cache-dir timm>=1.0.0 safetensors>=0.4.0
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create non-root user for running the application
+RUN useradd -m -s /bin/bash appuser && \
+    mkdir -p /app/models && \
+    chown -R appuser:appuser /app
+
 # Stage probe weights so entrypoint.sh can copy them into the volume
-RUN mkdir -p /app/models/clip_ai /app/models_stage/clip_ai
+RUN mkdir -p /app/models/clip_ai /app/models_stage/clip_ai \
+            /app/models/dinov2 /app/models_stage/dinov2
 COPY models/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
 COPY models/clip_ai/probe_weights.npz /app/models_stage/clip_ai/probe_weights.npz
+COPY models/dinov2/dinov2_probe_weights.npz /app/models/dinov2/dinov2_probe_weights.npz
+COPY models/dinov2/dinov2_probe_weights.npz /app/models_stage/dinov2/dinov2_probe_weights.npz
 
 COPY app/ app/
 COPY scripts/ scripts/
+COPY gunicorn.conf.py /app/gunicorn.conf.py
 COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh && chown -R appuser:appuser /app
 
 EXPOSE 8000
+# Entrypoint runs as root for model downloads, then drops to appuser via gosu
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["gunicorn", "app.main:app", "-c", "gunicorn.conf.py"]
