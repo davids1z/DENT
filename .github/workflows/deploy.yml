@@ -52,10 +52,9 @@ jobs:
             else
               cd "$DEPLOY_DIR"
               git fetch origin main
-              # Remove root-owned files that git can't overwrite
-              # (Docker volume mounts create these as root)
-              find services/ml-service/models -not -writable -delete 2>/dev/null || true
-              find config -not -writable -delete 2>/dev/null || true
+              # Docker containers create root-owned files that git can't overwrite.
+              # Force-remove them so git reset can recreate from the repo.
+              docker run --rm -v "$DEPLOY_DIR:/work" alpine sh -c "rm -rf /work/services/ml-service/models/stacking_meta /work/services/ml-service/models/dinov2 /work/config" 2>/dev/null || true
               git reset --hard origin/main
             fi
 
