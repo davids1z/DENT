@@ -10,6 +10,7 @@ import { DecisionTrace } from "@/components/DecisionTrace";
 import { ImageGallery } from "@/components/ImageGallery";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ForensicProgress, useForensicProgress } from "@/components/ForensicProgress";
+import Link from "next/link";
 
 export default function InspectPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -175,9 +176,9 @@ export default function InspectPage() {
               Nova analiza
             </button>
             {uploadedFiles.length > 1 && (
-              <a href="/inspections" className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors inline-flex items-center gap-2">
+              <Link href="/inspections" className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors inline-flex items-center gap-2">
                 Pogledaj sve analize ({uploadedFiles.length})
-              </a>
+              </Link>
             )}
             <button onClick={() => window.print()} className="px-6 py-2.5 bg-card border border-border rounded-xl font-medium text-sm hover:bg-card-hover transition-colors">
               Isprintaj izvjestaj

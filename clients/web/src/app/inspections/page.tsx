@@ -10,21 +10,35 @@ import Link from "next/link";
 
 const PAGE_SIZE = 15;
 
+// Simple in-memory cache so back navigation is instant
+let _cachedInspections: Inspection[] | null = null;
+let _cacheTimestamp = 0;
+const CACHE_TTL_MS = 30_000; // 30s stale-while-revalidate
+
 export default function InspectionsPage() {
-  const [inspections, setInspections] = useState<Inspection[]>([]);
-  const [loading, setLoading] = useState(true);
+  const hasCachedData = _cachedInspections !== null && (Date.now() - _cacheTimestamp) < CACHE_TTL_MS * 10;
+  const [inspections, setInspections] = useState<Inspection[]>(_cachedInspections ?? []);
+  const [loading, setLoading] = useState(!hasCachedData);
   const [filter, setFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "table">("grid");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    setLoading(true);
-    setPage(1);
-    getInspections(1, 200, filter || undefined)
-      .then(setInspections)
-      .catch(() => setInspections([]))
-      .finally(() => setLoading(false));
+    // Show cached data immediately, fetch fresh in background
+    const isFresh = _cachedInspections && (Date.now() - _cacheTimestamp) < CACHE_TTL_MS;
+    if (!isFresh) {
+      if (!_cachedInspections) setLoading(true);
+      setPage(1);
+      getInspections(1, 200, filter || undefined)
+        .then((data) => {
+          setInspections(data);
+          _cachedInspections = data;
+          _cacheTimestamp = Date.now();
+        })
+        .catch(() => setInspections([]))
+        .finally(() => setLoading(false));
+    }
   }, [filter]);
 
   const filtered = useMemo(() => {
