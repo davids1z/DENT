@@ -28,7 +28,7 @@ export function ElaHeatmapOverlay({
           className={cn(
             "px-3 py-1 text-xs font-medium rounded-full border transition-colors",
             showHeatmap
-              ? "bg-orange-50 border-orange-200 text-orange-700"
+              ? "bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400"
               : "bg-card border-border text-muted hover:bg-card-hover"
           )}
         >

@@ -48,13 +48,13 @@ export function DecisionTrace({ traces }: DecisionTraceProps) {
                 className={cn(
                   "flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm",
                   trace.triggered
-                    ? "bg-red-50 border border-red-100"
+                    ? "bg-red-500/10 border border-red-500/15"
                     : "bg-card"
                 )}
               >
                 <div className={cn(
                   "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5",
-                  trace.triggered ? "bg-red-100" : "bg-green-100"
+                  trace.triggered ? "bg-red-500/15" : "bg-green-500/15"
                 )}>
                   {trace.triggered ? (
                     <svg className="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -68,12 +68,12 @@ export function DecisionTrace({ traces }: DecisionTraceProps) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={cn("font-medium", trace.triggered ? "text-red-700" : "text-muted")}>
+                    <span className={cn("font-medium", trace.triggered ? "text-red-600 dark:text-red-400" : "text-muted")}>
                       {trace.ruleName}
                     </span>
                     <span className={cn(
                       "text-xs px-2 py-0.5 rounded-full",
-                      trace.triggered ? "bg-red-100 text-red-600" : "text-muted"
+                      trace.triggered ? "bg-red-500/15 text-red-600 dark:text-red-400" : "text-muted"
                     )}>
                       {trace.actualValue}
                     </span>

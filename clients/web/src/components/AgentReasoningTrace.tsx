@@ -28,10 +28,10 @@ export function AgentReasoningTrace({
         : "text-amber-600";
   const outcomeBg =
     decision.outcome === "AutoApprove"
-      ? "bg-green-50 border-green-200"
+      ? "bg-green-500/10 border-green-500/20"
       : decision.outcome === "Escalate"
-        ? "bg-red-50 border-red-200"
-        : "bg-amber-50 border-amber-200";
+        ? "bg-red-500/10 border-red-500/20"
+        : "bg-amber-500/10 border-amber-500/20";
   const outcomeLabel =
     decision.outcome === "AutoApprove"
       ? "Automatski odobreno"
@@ -47,7 +47,7 @@ export function AgentReasoningTrace({
         className="w-full flex items-center justify-between p-4 hover:bg-card-hover transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
             <svg
               className="w-4 h-4 text-violet-600"
               fill="none"
@@ -101,7 +101,7 @@ export function AgentReasoningTrace({
         <div className="border-t border-border p-4 space-y-4">
           {/* Fallback warning */}
           {fallbackUsed && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-sm text-amber-600 dark:text-amber-400">
               AI agent nije mogao donijeti odluku. Korišten je zamjenski sustav
               pravila.
             </div>
@@ -112,7 +112,7 @@ export function AgentReasoningTrace({
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm">{decision.summaryHr}</p>
               {decision.stpEligible && (
-                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
+                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400 text-[10px] font-semibold">
                   STP
                 </span>
               )}
@@ -129,9 +129,9 @@ export function AgentReasoningTrace({
                 className={cn(
                   "rounded-lg border p-3 text-sm",
                   decision.weatherVerification.corroboratesClaim === false
-                    ? "bg-red-50 border-red-200"
+                    ? "bg-red-500/10 border-red-500/20"
                     : decision.weatherVerification.corroboratesClaim === true
-                      ? "bg-green-50 border-green-200"
+                      ? "bg-green-500/10 border-green-500/20"
                       : "bg-card border-border"
                 )}
               >
@@ -159,12 +159,12 @@ export function AgentReasoningTrace({
                 </div>
                 {decision.weatherVerification.corroboratesClaim === false &&
                   decision.weatherVerification.discrepancyNote && (
-                    <p className="text-xs text-red-700">
+                    <p className="text-xs text-red-600 dark:text-red-400">
                       {decision.weatherVerification.discrepancyNote}
                     </p>
                   )}
                 {decision.weatherVerification.corroboratesClaim === true && (
-                  <p className="text-xs text-green-700">
+                  <p className="text-xs text-green-600 dark:text-green-400">
                     Vremenski uvjeti potkrjepljuju prijavljenu tvrdnju.
                   </p>
                 )}
@@ -184,11 +184,11 @@ export function AgentReasoningTrace({
                     key={step.step}
                     className="flex gap-3 text-sm"
                   >
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-xs font-semibold">
+                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-400 flex items-center justify-center text-xs font-semibold">
                       {step.step}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-medium text-xs text-violet-700 mb-0.5">
+                      <div className="font-medium text-xs text-violet-700 dark:text-violet-400 mb-0.5">
                         {step.category}
                       </div>
                       <div className="text-xs text-foreground">
@@ -221,7 +221,7 @@ export function AgentReasoningTrace({
                 {decision.fraudIndicators.map((indicator, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 text-xs text-red-700 bg-red-50 rounded-lg px-3 py-1.5"
+                    className="flex items-start gap-2 text-xs text-red-600 dark:text-red-400 bg-red-500/10 rounded-lg px-3 py-1.5"
                   >
                     <svg
                       className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
@@ -253,7 +253,7 @@ export function AgentReasoningTrace({
                 {decision.stpBlockers.map((blocker, i) => (
                   <li
                     key={i}
-                    className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-1.5"
+                    className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-3 py-1.5"
                   >
                     {blocker}
                   </li>
@@ -272,7 +272,7 @@ export function AgentReasoningTrace({
                 {decision.recommendedActions.map((action, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-1.5"
+                    className="flex items-start gap-2 text-xs text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-lg px-3 py-1.5"
                   >
                     <svg
                       className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"

@@ -229,8 +229,8 @@ export function CameraCapture({
   // Error state — camera is mandatory, no upload fallback
   if (cameraError) {
     return (
-      <div className="border-2 border-dashed border-amber-300 bg-amber-50/50 rounded-xl p-8 text-center space-y-4">
-        <div className="w-14 h-14 rounded-xl bg-amber-100 flex items-center justify-center mx-auto">
+      <div className="border-2 border-dashed border-amber-500/30 bg-amber-500/10 rounded-xl p-8 text-center space-y-4">
+        <div className="w-14 h-14 rounded-xl bg-amber-500/15 flex items-center justify-center mx-auto">
           <svg
             className="w-7 h-7 text-amber-600"
             fill="none"
@@ -253,7 +253,7 @@ export function CameraCapture({
         </div>
         <div>
           <p className="text-sm text-foreground font-semibold mb-1">Kamera nije dostupna</p>
-          <p className="text-sm text-amber-800">{cameraError}</p>
+          <p className="text-sm text-amber-600 dark:text-amber-400">{cameraError}</p>
         </div>
         <p className="text-xs text-muted max-w-sm mx-auto">
           Za maksimalnu forenzicku pouzdanost koristite uredaj s kamerom.

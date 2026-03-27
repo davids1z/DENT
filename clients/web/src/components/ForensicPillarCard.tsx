@@ -68,7 +68,7 @@ function PillarIcon({ icon }: { icon: string }) {
 function StatusBadge({ status }: { status: "pass" | "warning" | "fail" }) {
   if (status === "pass") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/20">
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
         </svg>
@@ -78,7 +78,7 @@ function StatusBadge({ status }: { status: "pass" | "warning" | "fail" }) {
   }
   if (status === "warning") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
         </svg>
@@ -87,7 +87,7 @@ function StatusBadge({ status }: { status: "pass" | "warning" | "fail" }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20">
       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
       </svg>
@@ -107,9 +107,9 @@ export function ForensicPillarCard({ data, originalImageUrl }: ForensicPillarCar
   const status = getPillarStatus(data.aggregateRiskScore);
 
   const borderColor =
-    status === "fail" ? "border-red-200" : status === "warning" ? "border-amber-200" : "border-border";
+    status === "fail" ? "border-red-500/20" : status === "warning" ? "border-amber-500/20" : "border-border";
   const headerBg =
-    status === "fail" ? "bg-red-50/50" : status === "warning" ? "bg-amber-50/30" : "bg-card/50";
+    status === "fail" ? "bg-red-500/10" : status === "warning" ? "bg-amber-500/10" : "bg-card/50";
 
   return (
     <div className={cn("rounded-xl border overflow-hidden bg-card", borderColor)}>
@@ -206,7 +206,7 @@ function ModuleRow({ module: mod }: { module: PillarData["modules"][number] }) {
         <span className="font-medium text-xs truncate">{forensicModuleLabel(mod.moduleName)}</span>
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
           {mod.error && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded">Greska</span>
+            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/15 text-red-600 dark:text-red-400 rounded">Greska</span>
           )}
           <div className="w-12 h-1.5 bg-border rounded-full overflow-hidden">
             <div

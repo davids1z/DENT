@@ -166,7 +166,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
           {fileProgresses.slice(0, 3).map((fp, idx) => (
             <div key={idx} className={cn(
               "rounded-lg border p-3 transition-colors",
-              fp.status === "complete" ? "border-emerald-200 bg-emerald-50/30" :
+              fp.status === "complete" ? "border-emerald-500/20 bg-emerald-500/10" :
               fp.status === "active" ? "border-accent/30 bg-accent/5" :
               "border-border bg-card/50 opacity-60"
             )}>
@@ -184,14 +184,14 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
                 </div>
                 <span className={cn(
                   "text-xs font-medium truncate",
-                  fp.status === "complete" ? "text-emerald-700" :
+                  fp.status === "complete" ? "text-emerald-600 dark:text-emerald-400" :
                   fp.status === "active" ? "text-accent" : "text-muted"
                 )}>
                   {fp.fileName}
                 </span>
                 <span className={cn(
                   "text-[10px] px-1.5 py-0.5 rounded-full ml-auto flex-shrink-0",
-                  fp.fileType === "document" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+                  fp.fileType === "document" ? "bg-blue-500/15 text-blue-600 dark:text-blue-400" : "bg-purple-500/15 text-purple-600 dark:text-purple-400"
                 )}>
                   {fp.fileType === "document" ? "DOC" : "IMG"}
                 </span>
@@ -302,7 +302,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
             key={step.id}
             className={cn(
               "flex items-center gap-2.5 py-1.5 px-2 rounded-lg text-xs transition-colors",
-              step.status === "complete" && "text-emerald-700 bg-emerald-50/50",
+              step.status === "complete" && "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
               step.status === "active" && "text-accent font-medium bg-accent/5",
               step.status === "pending" && "text-muted"
             )}

@@ -84,9 +84,9 @@ function statusDotColor(status: "pass" | "warning" | "fail"): string {
 }
 
 function statusLabel(status: "pass" | "warning" | "fail"): { text: string; cls: string } {
-  if (status === "fail") return { text: "Kriticno", cls: "text-red-600 bg-red-50 border-red-200" };
-  if (status === "warning") return { text: "Sumnjivo", cls: "text-amber-600 bg-amber-50 border-amber-200" };
-  return { text: "Prolazi", cls: "text-green-600 bg-green-50 border-green-200" };
+  if (status === "fail") return { text: "Kriticno", cls: "text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/20" };
+  if (status === "warning") return { text: "Sumnjivo", cls: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" };
+  return { text: "Prolazi", cls: "text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/20" };
 }
 
 // ── Module Row ───────────────────────────────────────────────────
@@ -109,7 +109,7 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
           {forensicModuleLabel(mod.moduleName)}
         </span>
         {mod.error && (
-          <span className="text-[10px] px-1.5 py-0.5 bg-red-50 text-red-500 rounded border border-red-200">Greška</span>
+          <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-500 rounded border border-red-500/20">Greška</span>
         )}
         <div className="w-16 h-1.5 bg-card-hover rounded-full overflow-hidden flex-shrink-0">
           <div

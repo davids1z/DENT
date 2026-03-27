@@ -22,27 +22,27 @@ describe("DecisionBadge", () => {
     const { container } = render(<DecisionBadge outcome="AutoApprove" />);
     const badge = container.firstElementChild as HTMLElement;
 
-    expect(badge.className).toContain("bg-green-50");
-    expect(badge.className).toContain("border-green-200");
-    expect(badge.className).toContain("text-green-700");
+    expect(badge.className).toContain("bg-green-500/10");
+    expect(badge.className).toContain("border-green-500/20");
+    expect(badge.className).toContain("text-green-600");
   });
 
   it("applies correct color classes for HumanReview", () => {
     const { container } = render(<DecisionBadge outcome="HumanReview" />);
     const badge = container.firstElementChild as HTMLElement;
 
-    expect(badge.className).toContain("bg-amber-50");
-    expect(badge.className).toContain("border-amber-200");
-    expect(badge.className).toContain("text-amber-700");
+    expect(badge.className).toContain("bg-amber-500/10");
+    expect(badge.className).toContain("border-amber-500/20");
+    expect(badge.className).toContain("text-amber-600");
   });
 
   it("applies correct color classes for Escalate", () => {
     const { container } = render(<DecisionBadge outcome="Escalate" />);
     const badge = container.firstElementChild as HTMLElement;
 
-    expect(badge.className).toContain("bg-red-50");
-    expect(badge.className).toContain("border-red-200");
-    expect(badge.className).toContain("text-red-700");
+    expect(badge.className).toContain("bg-red-500/10");
+    expect(badge.className).toContain("border-red-500/20");
+    expect(badge.className).toContain("text-red-600");
   });
 
   it("renders reason when provided", () => {

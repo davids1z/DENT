@@ -23,10 +23,10 @@ function trustColor(trust: number): string {
 
 function trustBg(riskLevel: string): string {
   switch (riskLevel) {
-    case "Low": return "bg-green-50 border-green-200";
-    case "Medium": return "bg-amber-50 border-amber-200";
-    case "High": return "bg-orange-50 border-orange-200";
-    case "Critical": return "bg-red-50 border-red-200";
+    case "Low": return "bg-green-500/10 border-green-500/20";
+    case "Medium": return "bg-amber-500/10 border-amber-500/20";
+    case "High": return "bg-orange-500/10 border-orange-500/20";
+    case "Critical": return "bg-red-500/10 border-red-500/20";
     default: return "bg-card border-border";
   }
 }
@@ -94,7 +94,7 @@ export function TrustScoreHero({
 
           <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start">
             {c2paStatus === "valid" && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/20">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -102,7 +102,7 @@ export function TrustScoreHero({
               </span>
             )}
             {c2paStatus === "ai_generated" && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20">
                 C2PA: AI generirano
               </span>
             )}

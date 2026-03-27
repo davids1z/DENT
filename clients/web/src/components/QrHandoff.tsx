@@ -18,7 +18,7 @@ export function QrHandoff() {
 
   return (
     <div className="rounded-xl border border-border bg-card p-6 text-center space-y-4">
-      <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto">
+      <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mx-auto">
         <svg
           className="w-6 h-6 text-blue-600"
           fill="none"

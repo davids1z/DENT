@@ -10,9 +10,9 @@ interface DecisionBadgeProps {
 }
 
 const badgeStyles: Record<string, string> = {
-  AutoApprove: "bg-green-50 border-green-200 text-green-700",
-  HumanReview: "bg-amber-50 border-amber-200 text-amber-700",
-  Escalate: "bg-red-50 border-red-200 text-red-700",
+  AutoApprove: "bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400",
+  HumanReview: "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400",
+  Escalate: "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400",
 };
 
 const iconColor: Record<string, string> = {

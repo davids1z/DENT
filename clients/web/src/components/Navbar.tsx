@@ -42,7 +42,7 @@ export function Navbar() {
           <span className="font-heading font-bold text-lg tracking-tight">
             DENT
           </span>
-          <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-700 rounded border border-amber-200 uppercase tracking-wider">
+          <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded border border-amber-500/20 uppercase tracking-wider">
             Beta
           </span>
         </Link>
@@ -113,7 +113,7 @@ export function Navbar() {
                       )}
                       <button
                         onClick={() => { setMenuOpen(false); logout(); }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                        className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
                       >
                         Odjava
                       </button>

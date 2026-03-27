@@ -46,10 +46,10 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
             {riskLevel && (
               <span className={cn(
                 "px-2.5 py-1 rounded-full text-xs font-medium border",
-                riskLevel === "Critical" ? "bg-red-50 text-red-700 border-red-200" :
-                riskLevel === "High" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                riskLevel === "Medium" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                "bg-green-50 text-green-700 border-green-200"
+                riskLevel === "Critical" ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" :
+                riskLevel === "High" ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" :
+                riskLevel === "Medium" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" :
+                "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20"
               )}>
                 {riskLevel === "Low" ? "Niska" : riskLevel === "Medium" ? "Srednja" : riskLevel === "High" ? "Visoka" : "Kriticna"} hitnost
               </span>
@@ -143,12 +143,12 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
               {modules
                 .filter(m => !m.error)
                 .map((m, idx) => (
-                  <div key={m.moduleName || idx} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-green-50/50 border border-green-100">
+                  <div key={m.moduleName || idx} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-green-500/10 border border-green-500/15">
                     <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                     </svg>
-                    <span className="text-sm text-green-800 flex-1">{m.moduleLabel || m.moduleName}</span>
-                    <span className="text-xs text-green-600 font-mono">{Math.round(m.riskScore * 100)}%</span>
+                    <span className="text-sm text-green-600 dark:text-green-400 flex-1">{m.moduleLabel || m.moduleName}</span>
+                    <span className="text-xs text-green-600 dark:text-green-400 font-mono">{Math.round(m.riskScore * 100)}%</span>
                   </div>
                 ))}
             </div>

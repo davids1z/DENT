@@ -25,7 +25,7 @@ export function FftSpectrumOverlay({ fftSpectrumUrl }: FftSpectrumOverlayProps) 
           className={cn(
             "px-3 py-1 text-xs font-medium rounded-full border transition-colors",
             showSpectrum
-              ? "bg-violet-50 border-violet-200 text-violet-700"
+              ? "bg-violet-500/10 border-violet-500/20 text-violet-600 dark:text-violet-400"
               : "bg-card border-border text-muted hover:bg-card-hover"
           )}
         >

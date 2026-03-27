@@ -108,9 +108,9 @@ function ModuleCard({
       className={cn(
         "rounded-lg border text-sm",
         mod.error
-          ? "border-red-200 bg-red-50/50"
+          ? "border-red-500/20 bg-red-500/10"
           : hasFindings
-            ? "border-amber-200 bg-amber-50/30"
+            ? "border-amber-500/20 bg-amber-500/10"
             : "border-border bg-card/50"
       )}
     >
@@ -123,7 +123,7 @@ function ModuleCard({
             {forensicModuleLabel(mod.moduleName)}
           </span>
           {mod.error && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded">
+            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/15 text-red-600 dark:text-red-400 rounded">
               Greska
             </span>
           )}

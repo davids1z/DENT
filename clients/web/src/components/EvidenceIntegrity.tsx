@@ -37,8 +37,8 @@ export function EvidenceIntegrity({ inspection }: Props) {
         <span className={cn(
           "px-3 py-1 rounded-full text-xs font-medium",
           sealed
-            ? "bg-green-100 text-green-700 border border-green-300"
-            : "bg-amber-100 text-amber-700 border border-amber-300"
+            ? "bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30"
+            : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
         )}>
           {sealed ? "Zapečaćeno" : "Bez pečata"}
         </span>
@@ -54,12 +54,12 @@ export function EvidenceIntegrity({ inspection }: Props) {
 
       {/* RFC 3161 Timestamp */}
       {sealed && inspection.timestampedAt && (
-        <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3">
+        <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-3">
           <div className="flex items-center gap-2 mb-1">
             <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
-            <span className="text-sm font-medium text-green-700 dark:text-green-400">RFC 3161 kvalificirani vremenski pečat</span>
+            <span className="text-sm font-medium text-green-600 dark:text-green-400">RFC 3161 kvalificirani vremenski pečat</span>
           </div>
           <div className="text-xs text-green-600 dark:text-green-500 space-y-0.5">
             <div>Vrijeme: {formatDate(inspection.timestampedAt)}</div>

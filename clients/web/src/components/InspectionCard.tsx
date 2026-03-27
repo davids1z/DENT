@@ -26,7 +26,7 @@ export function InspectionCard({ inspection: i }: InspectionCardProps) {
             onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='1.5'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' /%3E%3Cpath d='m3 16 5-5 2 2 4-4 7 7' /%3E%3C/svg%3E"; }} />
           <div className="absolute top-3 right-3">
             <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium",
-              i.status === "Completed" ? "bg-green-100 text-green-700" : i.status === "Failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+              i.status === "Completed" ? "bg-green-500/15 text-green-600 dark:text-green-400" : i.status === "Failed" ? "bg-red-500/15 text-red-600 dark:text-red-400" : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
             )}>
               {i.status === "Completed" ? "Završeno" : i.status === "Failed" ? "Greška" : "U obradi"}
             </span>

@@ -30,7 +30,7 @@ export function SpectralHeatmapOverlay({
           className={cn(
             "px-3 py-1 text-xs font-medium rounded-full border transition-colors",
             showHeatmap
-              ? "bg-red-50 border-red-200 text-red-700"
+              ? "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400"
               : "bg-card border-border text-muted hover:bg-card-hover"
           )}
         >
