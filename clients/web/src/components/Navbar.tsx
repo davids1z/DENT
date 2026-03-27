@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
-import { getToken } from "@/lib/api";
 
 const links = [
   { href: "/", label: "Početna" },
@@ -14,13 +13,10 @@ const links = [
 
 export function Navbar() {
   const pathname = usePathname();
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, hasToken, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [hasToken, setHasToken] = useState(false);
 
-  useEffect(() => { setHasToken(!!getToken()); }, [user]);
-
-  // Show logged-in layout if token exists (even before auth resolves) to prevent flash
+  // Show logged-in layout if user loaded OR token hint exists (prevents flash)
   const showLoggedIn = user || (isLoading && hasToken);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);

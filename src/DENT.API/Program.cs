@@ -110,7 +110,7 @@ if (!builder.Environment.IsDevelopment())
                 partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 10,
+                    PermitLimit = 30,
                     Window = TimeSpan.FromMinutes(5),
                     QueueLimit = 0,
                 }));

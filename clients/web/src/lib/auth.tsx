@@ -6,6 +6,8 @@ import { type AuthUser, loginApi, registerApi, getMeApi, clearTokens, getToken }
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
+  /** True if a token exists in localStorage (set by blocking script, available before hydration) */
+  hasToken: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
   logout: () => void;
@@ -14,6 +16,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
+  hasToken: false,
   login: async () => {},
   register: async () => {},
   logout: () => {},
@@ -22,8 +25,13 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasToken, setHasToken] = useState(false);
 
   useEffect(() => {
+    // Read the hint set by the blocking script in layout.tsx <head>
+    const hint = document.documentElement.dataset.auth === "1";
+    setHasToken(hint);
+
     const token = getToken();
     if (!token) {
       setIsLoading(false);
@@ -33,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => {
         clearTokens();
+        document.documentElement.removeAttribute("data-auth");
       })
       .finally(() => setIsLoading(false));
   }, []);
@@ -40,21 +49,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const result = await loginApi(email, password);
     setUser(result.user);
+    setHasToken(true);
+    document.documentElement.dataset.auth = "1";
   }, []);
 
   const register = useCallback(async (email: string, password: string, fullName: string) => {
     const result = await registerApi(email, password, fullName);
     setUser(result.user);
+    setHasToken(true);
+    document.documentElement.dataset.auth = "1";
   }, []);
 
   const logout = useCallback(() => {
     clearTokens();
     setUser(null);
+    setHasToken(false);
+    document.documentElement.removeAttribute("data-auth");
     window.location.href = "/";
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, hasToken, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
