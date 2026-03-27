@@ -123,14 +123,7 @@ h3 { font-weight: 600; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gauge-fill-animation {
-    transition: none;
-  }
-}
-
-/* ========== GAUGE ========== */
-.gauge-fill-animation {
-  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  * { transition-duration: 0s !important; animation-duration: 0s !important; }
 }
 
 /* ========== SECTION DIVIDER ========== */

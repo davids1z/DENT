@@ -103,25 +103,25 @@ function getVerdictBadge(riskPercent: number) {
   };
 }
 
-// ── Risk Gauge (full circle donut) ───────────────────────────────
+// ── Risk Gauge ──────────────────────────────────────────────────
 
-function getRiskColor(value: number): string {
-  if (value <= 20) return "#10b981";
-  if (value <= 40) return "#06b6d4";
-  if (value <= 60) return "#f59e0b";
-  if (value <= 80) return "#f97316";
-  return "#ef4444";
+function getRiskColor(value: number): { main: string; glow: string } {
+  if (value <= 15) return { main: "#10b981", glow: "#10b98130" };
+  if (value <= 35) return { main: "#06b6d4", glow: "#06b6d430" };
+  if (value <= 55) return { main: "#f59e0b", glow: "#f59e0b30" };
+  if (value <= 75) return { main: "#f97316", glow: "#f9731630" };
+  return { main: "#ef4444", glow: "#ef444440" };
 }
 
 function getRiskLabel(value: number): string {
-  if (value <= 20) return "Nizak rizik";
-  if (value <= 40) return "Umjeren";
-  if (value <= 60) return "Povišen";
-  if (value <= 80) return "Visok rizik";
+  if (value <= 15) return "Nizak";
+  if (value <= 35) return "Umjeren";
+  if (value <= 55) return "Povišen";
+  if (value <= 75) return "Visok";
   return "Kritičan";
 }
 
-function useCountUp(target: number, enabled: boolean, duration = 800) {
+function useCountUp(target: number, enabled: boolean, duration = 1500) {
   const [current, setCurrent] = useState(0);
   useEffect(() => {
     if (!enabled) { setCurrent(0); return; }
@@ -130,8 +130,7 @@ function useCountUp(target: number, enabled: boolean, duration = 800) {
     function tick(now: number) {
       const elapsed = now - start;
       const progress = Math.min(elapsed / duration, 1);
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
+      const eased = 1 - Math.pow(1 - progress, 4);
       setCurrent(eased * target);
       if (progress < 1) raf = requestAnimationFrame(tick);
     }
@@ -142,58 +141,66 @@ function useCountUp(target: number, enabled: boolean, duration = 800) {
 }
 
 function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
-  const size = 200;
-  const strokeWidth = 10;
-  const r = (size - strokeWidth) / 2;
+  const size = 192;
+  const stroke = 6;
+  const trackStroke = 6;
+  const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
   const fillOffset = animated ? circumference * (1 - value / 100) : circumference;
-  const color = getRiskColor(value);
+  const { main, glow } = getRiskColor(value);
   const label = getRiskLabel(value);
   const displayValue = useCountUp(value, animated);
+  const whole = Math.floor(displayValue);
+  const decimal = (displayValue % 1).toFixed(1).slice(1); // ".X"
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        {/* Background ring */}
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      {/* SVG rings */}
+      <svg width={size} height={size} className="-rotate-90" style={{ overflow: "visible" }}>
+        {/* Track */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
+          cx={size / 2} cy={size / 2} r={r}
           fill="none"
           stroke="currentColor"
-          strokeWidth={strokeWidth}
-          className="text-border"
+          strokeWidth={trackStroke}
+          className="text-border opacity-50"
         />
-        {/* Progress ring */}
+        {/* Progress */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
+          cx={size / 2} cy={size / 2} r={r}
           fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
+          stroke={main}
+          strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={fillOffset}
-          className="gauge-fill-animation"
-          style={{ filter: animated ? `drop-shadow(0 0 6px ${color}40)` : "none" }}
+          style={{
+            transition: animated ? "stroke-dashoffset 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)" : "none",
+            filter: animated ? `drop-shadow(0 0 8px ${glow})` : "none",
+          }}
         />
       </svg>
-      {/* Center content */}
+
+      {/* Center */}
       <div
         className="absolute inset-0 flex flex-col items-center justify-center"
-        style={{ opacity: animated ? 1 : 0, transition: "opacity 0.3s ease-out 0.2s" }}
+        style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease-out 0.3s" }}
       >
-        <span className="text-4xl font-black tabular-nums text-foreground leading-none">
-          {displayValue.toFixed(1)}
-        </span>
-        <span className="text-xs text-muted mt-0.5">%</span>
-        <span
-          className="text-[11px] font-semibold mt-2 px-2.5 py-0.5 rounded-full"
-          style={{ color, backgroundColor: `${color}15` }}
+        <div className="flex items-baseline gap-0">
+          <span className="text-[44px] font-heading font-extrabold tabular-nums text-foreground leading-none tracking-tight">
+            {whole}
+          </span>
+          <span className="text-xl font-heading font-extrabold tabular-nums text-foreground/50 leading-none">
+            {decimal}
+          </span>
+          <span className="text-lg font-bold text-foreground/30 ml-0.5">%</span>
+        </div>
+        <div
+          className="mt-2 text-[10px] font-bold uppercase tracking-[2px]"
+          style={{ color: main }}
         >
           {label}
-        </span>
+        </div>
       </div>
     </div>
   );

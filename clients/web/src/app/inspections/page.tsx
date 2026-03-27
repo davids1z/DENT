@@ -5,7 +5,6 @@ import { getInspections, type Inspection, formatCurrency, formatDate, severityCo
 import { AuthGuard } from "@/components/AuthGuard";
 import { InspectionCard } from "@/components/InspectionCard";
 import { SearchBar } from "@/components/ui/SearchBar";
-import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 
@@ -101,8 +100,8 @@ function InspectionsContent() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} variant="card" className="h-72" />)}
+        <div className="min-h-[40vh] flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">

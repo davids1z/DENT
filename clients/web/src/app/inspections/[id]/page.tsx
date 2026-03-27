@@ -14,7 +14,6 @@ import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
 import { ImageGallery } from "@/components/ImageGallery";
 import { GlassPanel } from "@/components/ui/GlassPanel";
-import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 
 export default function InspectionDetailPage() {
@@ -55,16 +54,8 @@ function InspectionDetailContent() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <Skeleton className="h-8 w-48 mb-4" />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton variant="card" className="h-96" />
-          <div className="space-y-4">
-            <Skeleton variant="card" className="h-32" />
-            <Skeleton variant="card" className="h-24" />
-            <Skeleton variant="card" className="h-48" />
-          </div>
-        </div>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
