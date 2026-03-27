@@ -6,6 +6,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/Footer";
 import { AuthProvider } from "@/lib/auth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -48,6 +49,7 @@ export default function RootLayout({
             <Footer />
           </div>
           <MobileNav />
+          <ThemeToggle />
         </AuthProvider>
       </body>
     </html>

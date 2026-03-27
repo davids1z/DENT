@@ -27,17 +27,17 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (!email.trim()) { setError("Unesite email adresu."); return; }
+    if (!password) { setError("Unesite lozinku."); return; }
+    if (tab === "register" && !fullName.trim()) { setError("Unesite ime i prezime."); return; }
+
     setLoading(true);
 
     try {
       if (tab === "login") {
         await login(email, password);
       } else {
-        if (!fullName.trim()) {
-          setError("Unesite ime i prezime.");
-          setLoading(false);
-          return;
-        }
         await register(email, password, fullName);
       }
       router.push("/inspections");
@@ -98,7 +98,6 @@ export default function LoginPage() {
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Ivan Horvat"
                 className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
-                required
               />
             </div>
           )}
@@ -106,12 +105,13 @@ export default function LoginPage() {
           <div>
             <label className="block text-sm font-medium mb-1.5">Email</label>
             <input
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="vas@email.com"
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
-              required
             />
           </div>
 
@@ -122,10 +122,8 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Najmanje 6 znakova"
+                placeholder="Najmanje 8 znakova"
                 className="w-full px-4 py-2.5 pr-11 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors"
-                required
-                minLength={6}
               />
               <button
                 type="button"
