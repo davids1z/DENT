@@ -6,10 +6,8 @@ export function ThemeToggle() {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem("dent_theme") === "dark") {
-      document.documentElement.classList.add("dark");
-      setDark(true);
-    }
+    // Sync state with what the blocking script already set
+    setDark(document.documentElement.classList.contains("dark"));
   }, []);
 
   const toggle = useCallback(() => {
