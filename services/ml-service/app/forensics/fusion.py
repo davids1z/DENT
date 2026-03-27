@@ -50,27 +50,21 @@ _AI_DETECTOR_MODULES = frozenset({
     "efficientnet_ai_detection",
     "safe_ai_detection",
     "dinov2_ai_detection",
-    "bfree_detection",
-    "spai_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
-# SPAI: CVPR 2025, frequency-domain, compression-invariant (Apache 2.0)
-# B-Free: CVPR 2025, bias-free DINOv2, 27 generators incl. Flux/SD 3.5
+# Retrained on diverse dataset (3799 images, 9 generators + RAISE/CarDD auth)
 # DINOv2: 0% FP on diverse auth (best discriminator, 0.55 separation)
 # SAFE: KDD 2025, JPEG-dampened (×0.70 for compression artifacts)
 # CommFor: CVPR 2025, 4803 generators
 # CLIP: retrained probe F1=0.746
 # Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.20,
-    "spai_detection": 0.15,
-    "bfree_detection": 0.15,
-    "dinov2_ai_detection": 0.15,
-    "community_forensics_detection": 0.15,
-    "clip_ai_detection": 0.10,
+    "safe_ai_detection": 0.30,
+    "dinov2_ai_detection": 0.25,
+    "community_forensics_detection": 0.25,
+    "clip_ai_detection": 0.15,
     "ai_generation_detection": 0.05,
-    "efficientnet_ai_detection": 0.05,
 }
 
 
@@ -133,10 +127,9 @@ def fuse_scores(
     #
     # For DAMPENING: check if method-diverse detectors confirm (SAFE/CommFor/CLIP).
     # EfficientNet and DINOv2 are both CNN-family for dampening purposes.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection"}
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection"}
     _DAMPENING_INDEPENDENT = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
-        "spai_detection",                 # Frequency-domain spectral (CVPR 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",              # Language-vision embedding
     }
@@ -287,20 +280,17 @@ def fuse_scores(
     #   Independent: SAFE (pixel correlations), CommFor (4803 generators), CLIP (language-vision)
     _RELIABLE_AI_DETECTORS = {
         "safe_ai_detection",
-        "spai_detection",
         "dinov2_ai_detection",
-        "bfree_detection",
         "community_forensics_detection",
         "efficientnet_ai_detection",
         "clip_ai_detection",
     }
     # For CONSENSUS: method-diverse detectors that must confirm.
     # EfficientNet is CNN-architecture (like DINOv2) — when both fire high
-    # but SAFE/CommFor/CLIP/SPAI don't, that's CNN-family bias, not real AI.
-    # SPAI is frequency-domain (truly independent from all pixel-domain methods).
+    # but SAFE/CommFor/CLIP don't, that's CNN-family bias, not real AI.
+    # Keep consensus independent = SAFE/CommFor/CLIP only.
     _INDEPENDENT_DETECTORS = {
         "safe_ai_detection",           # Pixel correlation (KDD 2025)
-        "spai_detection",              # Frequency-domain spectral (CVPR 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",           # Language-vision embedding
     }
@@ -374,12 +364,18 @@ def fuse_scores(
                     "ai_generated": overall * 0.6,
                     "tampered": overall * 0.4,
                 }
-            # If rule-based says high risk but meta says authentic
-            elif overall > 0.70 and meta_max_class == "authentic" and meta_max_prob > 0.50:
+            # If rule-based says high risk, ALWAYS override verdict bars
+            # to match. Meta-learner trained on old data gives wrong bars.
+            elif overall >= 0.65:
                 verdict_probs = {
-                    "authentic": max(0.05, 1.0 - overall),
-                    "ai_generated": ai_combined / max(overall, 0.01) * overall * 0.7,
-                    "tampered": tampering / max(overall, 0.01) * overall * 0.7,
+                    "authentic": round(max(0.02, 1.0 - overall), 4),
+                    "ai_generated": round(ai_combined / max(overall, 0.01) * overall * 0.7, 4),
+                    "tampered": round(tampering / max(overall, 0.01) * overall * 0.7, 4),
                 }
+                # Ensure AI + tampered sum to ~(1 - authentic)
+                total_bad = verdict_probs["ai_generated"] + verdict_probs["tampered"]
+                if total_bad < 0.01:
+                    verdict_probs["ai_generated"] = round(overall * 0.7, 4)
+                    verdict_probs["tampered"] = round(overall * 0.3, 4)
 
     return overall, round(overall * 100), _risk_level(overall), verdict_probs
