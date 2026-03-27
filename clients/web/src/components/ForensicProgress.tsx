@@ -155,9 +155,9 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
           )}
         </div>
 
-        {/* Per-file sections */}
+        {/* Per-file sections — show max 3, collapse rest */}
         <div className="space-y-3">
-          {fileProgresses.map((fp, idx) => (
+          {fileProgresses.slice(0, 3).map((fp, idx) => (
             <div key={idx} className={cn(
               "rounded-lg border p-3 transition-colors",
               fp.status === "complete" ? "border-emerald-200 bg-emerald-50/30" :
@@ -221,6 +221,14 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
               )}
             </div>
           ))}
+
+          {fileProgresses.length > 3 && (
+            <div className="rounded-lg border border-border bg-card/50 p-3 text-center">
+              <span className="text-xs text-muted">
+                +{fileProgresses.length - 3} {fileProgresses.length - 3 === 1 ? "datoteka" : "datoteka"} u obradi
+              </span>
+            </div>
+          )}
 
           {/* Shared steps (agent + evidence) */}
           {fileProgresses.every((f) => f.status === "complete") && !allComplete && (

@@ -74,16 +74,10 @@ export default function InspectPage() {
       await forensicProgress.complete();
       await new Promise((r) => setTimeout(r, 1000));
 
-      // Show the first completed inspection as result
+      // Show the first completed inspection result
       const firstCompleted = inspections.find((i) => i.status === "Completed") || inspections[0];
       setResult(firstCompleted);
       setActiveImageUrl(firstCompleted.imageUrl);
-
-      // If multiple files, redirect to inspections list so user sees all
-      if (files.length > 1) {
-        window.location.href = "/inspections";
-        return;
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Doslo je do greske");
     } finally {
@@ -180,6 +174,11 @@ export default function InspectPage() {
             <button onClick={handleReset} className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors">
               Nova analiza
             </button>
+            {uploadedFiles.length > 1 && (
+              <a href="/inspections" className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors inline-flex items-center gap-2">
+                Pogledaj sve analize ({uploadedFiles.length})
+              </a>
+            )}
             <button onClick={() => window.print()} className="px-6 py-2.5 bg-card border border-border rounded-xl font-medium text-sm hover:bg-card-hover transition-colors">
               Isprintaj izvjestaj
             </button>
