@@ -55,7 +55,7 @@ jobs:
               git reset --hard origin/main
             fi
 
-            docker compose -f docker-compose.server.yml build --parallel --no-cache
+            docker compose -f docker-compose.server.yml build --parallel
             docker compose -f docker-compose.server.yml down --remove-orphans || true
             docker container prune -f || true
             docker compose -f docker-compose.server.yml up -d
