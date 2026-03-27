@@ -15,12 +15,16 @@ public class OverrideDecisionHandler : IRequestHandler<OverrideDecisionCommand, 
 
     public async Task<InspectionDto?> Handle(OverrideDecisionCommand request, CancellationToken ct)
     {
-        var inspection = await _db.Inspections
+        var query = _db.Inspections
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)
-            .FirstOrDefaultAsync(i => i.Id == request.InspectionId, ct);
+            .AsQueryable();
 
+        if (!request.IsAdmin && request.UserId.HasValue)
+            query = query.Where(i => i.UserId == request.UserId.Value);
+
+        var inspection = await query.FirstOrDefaultAsync(i => i.Id == request.InspectionId, ct);
         if (inspection is null) return null;
 
         var overrideEntry = new DecisionOverride

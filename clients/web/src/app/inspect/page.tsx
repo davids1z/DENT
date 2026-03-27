@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { uploadInspections, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
+import { AuthGuard } from "@/components/AuthGuard";
 import { ImageUpload } from "@/components/ImageUpload";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
@@ -13,6 +14,10 @@ import { ForensicProgress, useForensicProgress } from "@/components/ForensicProg
 import Link from "next/link";
 
 export default function InspectPage() {
+  return <AuthGuard><InspectContent /></AuthGuard>;
+}
+
+function InspectContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [result, setResult] = useState<Inspection | null>(null);

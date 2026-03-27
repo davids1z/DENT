@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { getInspections, type Inspection, formatCurrency, formatDate, severityColor, severityLabel } from "@/lib/api";
+import { AuthGuard } from "@/components/AuthGuard";
 import { InspectionCard } from "@/components/InspectionCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -16,6 +17,10 @@ let _cacheTimestamp = 0;
 const CACHE_TTL_MS = 30_000; // 30s stale-while-revalidate
 
 export default function InspectionsPage() {
+  return <AuthGuard><InspectionsContent /></AuthGuard>;
+}
+
+function InspectionsContent() {
   const hasCachedData = _cachedInspections !== null && (Date.now() - _cacheTimestamp) < CACHE_TTL_MS * 10;
   const [inspections, setInspections] = useState<Inspection[]>(_cachedInspections ?? []);
   const [loading, setLoading] = useState(!hasCachedData);

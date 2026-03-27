@@ -6,6 +6,7 @@ namespace DENT.Application.Commands.CreateInspection;
 public record CreateInspectionCommand : IRequest<InspectionDto>
 {
     public required List<ImageInput> Images { get; init; }
+    public Guid? UserId { get; init; }
     public string? VehicleMake { get; init; }
     public string? VehicleModel { get; init; }
     public int? VehicleYear { get; init; }

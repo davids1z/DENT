@@ -5,6 +5,11 @@ namespace DENT.Domain.Entities;
 public class Inspection
 {
     public Guid Id { get; set; }
+
+    // Owner (multi-tenancy)
+    public Guid? UserId { get; set; }
+    public User? User { get; set; }
+
     public string ImageUrl { get; set; } = string.Empty;
     public string OriginalFileName { get; set; } = string.Empty;
     public string? ThumbnailUrl { get; set; }

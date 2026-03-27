@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getInspection, deleteInspection, formatDate, type Inspection } from "@/lib/api";
+import { AuthGuard } from "@/components/AuthGuard";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionTrace } from "@/components/DecisionTrace";
@@ -17,6 +18,10 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 
 export default function InspectionDetailPage() {
+  return <AuthGuard><InspectionDetailContent /></AuthGuard>;
+}
+
+function InspectionDetailContent() {
   const params = useParams();
   const router = useRouter();
   const [inspection, setInspection] = useState<Inspection | null>(null);

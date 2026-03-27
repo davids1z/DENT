@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getDashboardStats, type DashboardStats as Stats } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { DashboardStats } from "@/components/DashboardStats";
 import { InspectionCard } from "@/components/InspectionCard";
 
@@ -82,15 +83,21 @@ const steps = [
 ];
 
 export default function Dashboard() {
+  const { user, isLoading: authLoading } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setLoaded(true);
+      return;
+    }
     getDashboardStats()
       .then(setStats)
       .catch(() => {})
       .finally(() => setLoaded(true));
-  }, []);
+  }, [user, authLoading]);
 
   return (
     <div>
@@ -115,16 +122,16 @@ export default function Dashboard() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
-                href="/inspect"
+                href={user ? "/inspect" : "/login"}
                 className="w-full sm:w-auto px-8 py-3.5 bg-accent text-white rounded-xl font-semibold text-base hover:bg-accent-hover transition-colors"
               >
-                Pokreni analizu
+                {user ? "Pokreni analizu" : "Prijavi se i analiziraj"}
               </Link>
               <Link
-                href="/inspections"
+                href={user ? "/inspections" : "/login"}
                 className="w-full sm:w-auto px-8 py-3.5 bg-card border border-border text-foreground rounded-xl font-semibold text-base hover:bg-card-hover transition-colors"
               >
-                Pregledaj analize
+                {user ? "Pregledaj analize" : "Pregledaj svoje analize"}
               </Link>
             </div>
           </div>
@@ -301,13 +308,13 @@ export default function Dashboard() {
               izvještaj s kriptografskim dokazima za manje od 2 minute.
             </p>
             <Link
-              href="/inspect"
+              href={user ? "/inspect" : "/login"}
               className="inline-flex items-center gap-2 px-8 py-3.5 bg-accent text-white rounded-xl font-semibold text-base hover:bg-accent-hover transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
-              Pokreni novu analizu
+              {user ? "Pokreni novu analizu" : "Prijavi se i analiziraj"}
             </Link>
           </div>
         </div>

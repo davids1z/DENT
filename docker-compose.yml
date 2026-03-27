@@ -90,6 +90,12 @@ services:
       Storage__SecretKey: minioadmin
       Storage__BucketName: dent-images
       Storage__PublicUrl: "https://dent.xyler.ai/storage/dent-images"
+      Jwt__Secret: "${JWT_SECRET:-DENT-production-jwt-secret-change-me-min32chars!!}"
+      Jwt__Issuer: "DENT"
+      Jwt__Audience: "DENT"
+      Jwt__ExpiryHours: "24"
+      Admin__Email: "${ADMIN_EMAIL:-admin@dent.hr}"
+      Admin__Password: "${ADMIN_PASSWORD:-Admin123!}"
       Cors__Origins__0: "https://dent.xyler.ai"
     ports:
       - "8080:8080"

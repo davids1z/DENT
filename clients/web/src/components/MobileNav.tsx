@@ -3,33 +3,47 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-
-const links = [
-  { href: "/", label: "Početna" },
-  { href: "/inspect", label: "Upload", primary: true },
-  { href: "/inspections", label: "Analize" },
-];
+import { useAuth } from "@/lib/auth";
 
 export function MobileNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  const links = user
+    ? [
+        { href: "/", label: "Početna" },
+        { href: "/inspect", label: "Upload", primary: true },
+        { href: "/inspections", label: "Analize" },
+      ]
+    : [
+        { href: "/", label: "Početna" },
+        { href: "/login", label: "Prijava", primary: true },
+        { href: "/login", label: "Analize" },
+      ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t border-border" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex items-center justify-around px-2 py-2">
-        {links.map((link) => {
+        {links.map((link, i) => {
           const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
 
-          if (link.primary) {
+          if ('primary' in link && link.primary) {
             return (
               <Link
-                key={link.href}
+                key={i}
                 href={link.href}
                 className="flex flex-col items-center gap-0.5 -mt-4"
               >
                 <div className="w-11 h-11 rounded-full bg-accent flex items-center justify-center shadow-sm">
-                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
+                  {user ? (
+                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                    </svg>
+                  )}
                 </div>
                 <span className="text-[10px] font-medium text-accent">{link.label}</span>
               </Link>
@@ -38,7 +52,7 @@ export function MobileNav() {
 
           return (
             <Link
-              key={link.href}
+              key={i}
               href={link.href}
               className="flex flex-col items-center gap-0.5 py-1 px-3"
             >

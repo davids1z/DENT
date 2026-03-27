@@ -15,41 +15,54 @@ public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, 
 
     public async Task<DashboardStatsDto> Handle(GetDashboardStatsQuery request, CancellationToken ct)
     {
-        var totalInspections = await _db.Inspections.CountAsync(ct);
-        var completedInspections = await _db.Inspections.CountAsync(i => i.Status == InspectionStatus.Completed, ct);
-        var pendingInspections = await _db.Inspections.CountAsync(i => i.Status == InspectionStatus.Pending || i.Status == InspectionStatus.Analyzing, ct);
+        var inspections = _db.Inspections.AsQueryable();
+        if (request.UserId.HasValue)
+            inspections = inspections.Where(i => i.UserId == request.UserId.Value);
 
-        var completedWithCosts = await _db.Inspections
+        var totalInspections = await inspections.CountAsync(ct);
+        var completedInspections = await inspections.CountAsync(i => i.Status == InspectionStatus.Completed, ct);
+        var pendingInspections = await inspections.CountAsync(i => i.Status == InspectionStatus.Pending || i.Status == InspectionStatus.Analyzing, ct);
+
+        var completedWithCosts = await inspections
             .Where(i => i.Status == InspectionStatus.Completed && i.TotalEstimatedCostMin.HasValue)
             .ToListAsync(ct);
 
         var avgCostMin = completedWithCosts.Count > 0 ? completedWithCosts.Average(i => i.TotalEstimatedCostMin!.Value) : 0;
         var avgCostMax = completedWithCosts.Count > 0 ? completedWithCosts.Average(i => i.TotalEstimatedCostMax ?? i.TotalEstimatedCostMin!.Value) : 0;
 
-        var damageTypes = await _db.DamageDetections
+        // For damage/decision stats, filter by user's inspections
+        var inspectionIds = request.UserId.HasValue
+            ? await inspections.Select(i => i.Id).ToListAsync(ct)
+            : null;
+
+        var damagesQuery = _db.DamageDetections.AsQueryable();
+        if (inspectionIds is not null)
+            damagesQuery = damagesQuery.Where(d => inspectionIds.Contains(d.InspectionId));
+
+        var damageTypes = await damagesQuery
             .GroupBy(d => d.DamageType)
             .Select(g => new { Type = g.Key.ToString(), Count = g.Count() })
             .ToDictionaryAsync(x => x.Type, x => x.Count, ct);
 
-        var severities = await _db.DamageDetections
+        var severities = await damagesQuery
             .GroupBy(d => d.Severity)
             .Select(g => new { Severity = g.Key.ToString(), Count = g.Count() })
             .ToDictionaryAsync(x => x.Severity, x => x.Count, ct);
 
-        var carParts = await _db.DamageDetections
+        var carParts = await damagesQuery
             .GroupBy(d => d.CarPart)
             .Select(g => new { Part = g.Key.ToString(), Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .Take(10)
             .ToDictionaryAsync(x => x.Part, x => x.Count, ct);
 
-        var decisionOutcomes = await _db.Inspections
+        var decisionOutcomes = await inspections
             .Where(i => i.DecisionOutcome != null)
             .GroupBy(i => i.DecisionOutcome!)
             .Select(g => new { Outcome = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Outcome, x => x.Count, ct);
 
-        var recentInspections = await _db.Inspections
+        var recentInspections = await inspections
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)

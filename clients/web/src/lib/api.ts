@@ -1,5 +1,151 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
+// ── Auth helpers ──
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  refreshToken: string;
+  user: AuthUser;
+}
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("dent_token");
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("dent_refresh_token");
+}
+
+export function setTokens(token: string, refreshToken: string) {
+  localStorage.setItem("dent_token", token);
+  localStorage.setItem("dent_refresh_token", refreshToken);
+}
+
+export function clearTokens() {
+  localStorage.removeItem("dent_token");
+  localStorage.removeItem("dent_refresh_token");
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  const headers = { ...authHeaders(), ...init?.headers };
+  let res = await fetch(url, { ...init, headers });
+
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      const retryHeaders = { ...authHeaders(), ...init?.headers };
+      res = await fetch(url, { ...init, headers: retryHeaders });
+    }
+  }
+
+  return res;
+}
+
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) {
+      clearTokens();
+      return false;
+    }
+    const data: AuthResponse = await res.json();
+    setTokens(data.token, data.refreshToken);
+    return true;
+  } catch {
+    clearTokens();
+    return false;
+  }
+}
+
+export async function loginApi(email: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Prijava nije uspjela." }));
+    throw new Error(err.error || `Login failed: ${res.status}`);
+  }
+  const data: AuthResponse = await res.json();
+  setTokens(data.token, data.refreshToken);
+  return data;
+}
+
+export async function registerApi(email: string, password: string, fullName: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, fullName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Registracija nije uspjela." }));
+    throw new Error(err.error || `Register failed: ${res.status}`);
+  }
+  const data: AuthResponse = await res.json();
+  setTokens(data.token, data.refreshToken);
+  return data;
+}
+
+export async function getMeApi(): Promise<AuthUser> {
+  const res = await authFetch(`${API_BASE}/auth/me`);
+  if (!res.ok) throw new Error("Not authenticated");
+  return res.json();
+}
+
+// ── Admin API ──
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  isActive: boolean;
+  inspectionCount: number;
+}
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const res = await authFetch(`${API_BASE}/admin/users`);
+  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
+  return res.json();
+}
+
+export async function deactivateUser(id: string): Promise<void> {
+  const res = await authFetch(`${API_BASE}/admin/users/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to deactivate user");
+}
+
+export async function activateUser(id: string): Promise<void> {
+  const res = await authFetch(`${API_BASE}/admin/users/${id}/activate`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to activate user");
+}
+
+// ── Types ──
+
 export interface BoundingBox {
   x: number;
   y: number;
@@ -325,6 +471,7 @@ export async function uploadInspection(
         method: "POST",
         body: formData,
         signal: controller.signal,
+        headers: authHeaders(),
       });
 
       if (!res.ok) {
@@ -366,6 +513,7 @@ export async function uploadInspections(
         method: "POST",
         body: formData,
         signal: controller.signal,
+        headers: authHeaders(),
       });
 
       if (!res.ok) {
@@ -445,7 +593,7 @@ export async function overrideDecision(
   reason: string,
   operatorName: string
 ): Promise<Inspection> {
-  const res = await fetch(`${API_BASE}/inspections/${inspectionId}/override`, {
+  const res = await authFetch(`${API_BASE}/inspections/${inspectionId}/override`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ newOutcome, reason, operatorName }),
@@ -467,24 +615,24 @@ export async function getInspections(
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (status) params.set("status", status);
 
-  const res = await fetch(`${API_BASE}/inspections?${params}`);
+  const res = await authFetch(`${API_BASE}/inspections?${params}`);
   if (!res.ok) throw new Error(`Failed to fetch inspections: ${res.status}`);
   return res.json();
 }
 
 export async function getInspection(id: string): Promise<Inspection> {
-  const res = await fetch(`${API_BASE}/inspections/${id}`);
+  const res = await authFetch(`${API_BASE}/inspections/${id}`);
   if (!res.ok) throw new Error(`Inspection not found: ${res.status}`);
   return res.json();
 }
 
 export async function deleteInspection(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/inspections/${id}`, { method: "DELETE" });
+  const res = await authFetch(`${API_BASE}/inspections/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`Failed to delete: ${res.status}`);
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const res = await fetch(`${API_BASE}/dashboard/stats`);
+  const res = await authFetch(`${API_BASE}/dashboard/stats`);
   if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`);
   return res.json();
 }
@@ -773,11 +921,15 @@ export function forensicModuleLabel(moduleName: string): string {
 
 // Evidence integrity helpers (Phase 8)
 export function getReportUrl(inspectionId: string): string {
-  return `${API_BASE}/inspections/${inspectionId}/report`;
+  const token = getToken();
+  const base = `${API_BASE}/inspections/${inspectionId}/report`;
+  return token ? `${base}?access_token=${encodeURIComponent(token)}` : base;
 }
 
 export function getCertificateUrl(inspectionId: string): string {
-  return `${API_BASE}/inspections/${inspectionId}/certificate`;
+  const token = getToken();
+  const base = `${API_BASE}/inspections/${inspectionId}/certificate`;
+  return token ? `${base}?access_token=${encodeURIComponent(token)}` : base;
 }
 
 export function custodyEventLabel(event: string): string {

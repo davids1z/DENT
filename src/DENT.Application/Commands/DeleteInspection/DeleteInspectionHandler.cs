@@ -17,7 +17,11 @@ public class DeleteInspectionHandler : IRequestHandler<DeleteInspectionCommand, 
 
     public async Task<bool> Handle(DeleteInspectionCommand request, CancellationToken ct)
     {
-        var inspection = await _db.Inspections.FirstOrDefaultAsync(i => i.Id == request.Id, ct);
+        var query = _db.Inspections.AsQueryable();
+        if (request.UserId.HasValue)
+            query = query.Where(i => i.UserId == request.UserId.Value);
+
+        var inspection = await query.FirstOrDefaultAsync(i => i.Id == request.Id, ct);
         if (inspection is null) return false;
 
         if (!string.IsNullOrEmpty(inspection.ImageUrl))

@@ -1,0 +1,62 @@
+using DENT.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace DENT.API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
+public class AdminController : ControllerBase
+{
+    private readonly IDentDbContext _db;
+
+    public AdminController(IDentDbContext db) => _db = db;
+
+    [HttpGet("users")]
+    public async Task<IActionResult> GetUsers(CancellationToken ct)
+    {
+        var users = await _db.Users
+            .AsNoTracking()
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => new
+            {
+                u.Id,
+                u.Email,
+                u.FullName,
+                u.Role,
+                u.CreatedAt,
+                u.LastLoginAt,
+                u.IsActive,
+                InspectionCount = u.Inspections.Count
+            })
+            .ToListAsync(ct);
+
+        return Ok(users);
+    }
+
+    [HttpDelete("users/{id:guid}")]
+    public async Task<IActionResult> DeactivateUser(Guid id, CancellationToken ct)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return NotFound();
+        if (user.Role == "Admin") return BadRequest(new { error = "Ne možete deaktivirati administratora." });
+
+        user.IsActive = false;
+        user.RefreshToken = null;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    [HttpPost("users/{id:guid}/activate")]
+    public async Task<IActionResult> ActivateUser(Guid id, CancellationToken ct)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return NotFound();
+
+        user.IsActive = true;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+}

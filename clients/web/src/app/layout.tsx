@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/Footer";
+import { AuthProvider } from "@/lib/auth";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -35,14 +36,16 @@ export default function RootLayout({
       <body
         className={`${plusJakarta.variable} ${spaceGrotesk.variable} antialiased bg-background text-foreground`}
       >
-        <Navbar />
-        <main className="min-h-[calc(100vh-64px)] pb-20 md:pb-0">
-          {children}
-        </main>
-        <div className="hidden md:block">
-          <Footer />
-        </div>
-        <MobileNav />
+        <AuthProvider>
+          <Navbar />
+          <main className="min-h-[calc(100vh-64px)] pb-20 md:pb-0">
+            {children}
+          </main>
+          <div className="hidden md:block">
+            <Footer />
+          </div>
+          <MobileNav />
+        </AuthProvider>
       </body>
     </html>
   );

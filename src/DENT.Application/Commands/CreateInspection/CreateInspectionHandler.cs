@@ -86,6 +86,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         var inspection = new Inspection
         {
             Id = Guid.NewGuid(),
+            UserId = request.UserId,
             ImageUrl = primaryImageUrl,
             ThumbnailUrl = thumbnailUrl,
             OriginalFileName = firstImage.FileName,

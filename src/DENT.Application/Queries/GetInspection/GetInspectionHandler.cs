@@ -14,14 +14,18 @@ public class GetInspectionHandler : IRequestHandler<GetInspectionQuery, Inspecti
 
     public async Task<InspectionDto?> Handle(GetInspectionQuery request, CancellationToken ct)
     {
-        var inspection = await _db.Inspections
+        var query = _db.Inspections
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)
             .Include(i => i.ForensicResults)
             .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.Id == request.Id, ct);
+            .AsQueryable();
 
+        if (request.UserId.HasValue)
+            query = query.Where(i => i.UserId == request.UserId.Value);
+
+        var inspection = await query.FirstOrDefaultAsync(i => i.Id == request.Id, ct);
         if (inspection is null) return null;
 
         return CreateInspectionHandler.MapToDto(inspection);

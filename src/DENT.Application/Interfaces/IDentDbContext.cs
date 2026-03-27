@@ -5,6 +5,7 @@ namespace DENT.Application.Interfaces;
 
 public interface IDentDbContext
 {
+    DbSet<User> Users { get; }
     DbSet<Inspection> Inspections { get; }
     DbSet<DamageDetection> DamageDetections { get; }
     DbSet<InspectionImage> InspectionImages { get; }

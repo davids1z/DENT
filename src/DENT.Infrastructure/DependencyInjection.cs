@@ -32,6 +32,7 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IStorageService, StorageService>();
+        services.AddScoped<IAuthService, AuthService>();
 
         // ML Service HTTP Client
         services.AddHttpClient<IMlAnalysisService, MlAnalysisService>();

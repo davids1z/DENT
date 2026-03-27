@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using DENT.Application.Commands.CreateInspection;
 using DENT.Application.Commands.DeleteInspection;
 using DENT.Application.Commands.OverrideDecision;
@@ -6,17 +7,22 @@ using DENT.Application.Queries.GetEvidenceReport;
 using DENT.Application.Queries.GetInspection;
 using DENT.Application.Queries.GetInspections;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DENT.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class InspectionsController : ControllerBase
 {
     private readonly IMediator _mediator;
 
     public InspectionsController(IMediator mediator) => _mediator = mediator;
+
+    private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    private bool IsAdmin() => User.IsInRole("Admin");
 
     [HttpPost]
     [RequestSizeLimit(100_000_000)] // 100MB for multi-image
@@ -65,6 +71,7 @@ public class InspectionsController : ControllerBase
         var result = await _mediator.Send(new CreateInspectionCommand
         {
             Images = imageInputs,
+            UserId = GetUserId(),
             VehicleMake = vehicleMake,
             VehicleModel = vehicleModel,
             VehicleYear = vehicleYear,
@@ -81,6 +88,8 @@ public class InspectionsController : ControllerBase
         var result = await _mediator.Send(new OverrideDecisionCommand
         {
             InspectionId = id,
+            UserId = GetUserId(),
+            IsAdmin = IsAdmin(),
             NewOutcome = body.NewOutcome,
             Reason = body.Reason,
             OperatorName = body.OperatorName,
@@ -97,7 +106,8 @@ public class InspectionsController : ControllerBase
         {
             Page = page,
             PageSize = pageSize,
-            Status = status
+            Status = status,
+            UserId = IsAdmin() ? null : GetUserId(),
         }, ct);
         return Ok(result);
     }
@@ -105,7 +115,10 @@ public class InspectionsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetInspectionQuery(id), ct);
+        var result = await _mediator.Send(new GetInspectionQuery(id)
+        {
+            UserId = IsAdmin() ? null : GetUserId(),
+        }, ct);
         if (result is null) return NotFound();
         return Ok(result);
     }
@@ -113,7 +126,10 @@ public class InspectionsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var deleted = await _mediator.Send(new DeleteInspectionCommand(id), ct);
+        var deleted = await _mediator.Send(new DeleteInspectionCommand(id)
+        {
+            UserId = IsAdmin() ? null : GetUserId(),
+        }, ct);
         if (!deleted) return NotFound();
         return NoContent();
     }

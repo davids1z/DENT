@@ -44,6 +44,18 @@ services:
 
   ml-service:
     build: ./services/ml-service
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     environment:
       # HuggingFace offline mode — skip online version checks, use local cache only.
       # Models are cached in the ml_models Docker volume mounted at /app/models.
@@ -51,6 +63,9 @@ services:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
       TORCH_HOME: "/app/models"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      MALLOC_TRIM_THRESHOLD_: "131072"
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_DEFAULT_REGION: eu-central-1
@@ -110,6 +125,12 @@ services:
       Storage__SecretKey: ${MINIO_SECRET_KEY:-minioadmin}
       Storage__BucketName: dent-images
       Storage__PublicUrl: "https://dent.xyler.ai/storage/dent-images"
+      Jwt__Secret: "${JWT_SECRET}"
+      Jwt__Issuer: "DENT"
+      Jwt__Audience: "DENT"
+      Jwt__ExpiryHours: "24"
+      Admin__Email: "${ADMIN_EMAIL:-admin@dent.hr}"
+      Admin__Password: "${ADMIN_PASSWORD}"
       Cors__Origins__0: "https://dent.xyler.ai"
       Cors__Origins__1: "http://dent.xyler.ai"
     depends_on:
@@ -118,7 +139,7 @@ services:
       minio-init:
         condition: service_completed_successfully
       ml-service:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   web:

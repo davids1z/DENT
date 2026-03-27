@@ -24,6 +24,9 @@ public class GetInspectionsHandler : IRequestHandler<GetInspectionsQuery, List<I
             .OrderByDescending(i => i.CreatedAt)
             .AsQueryable();
 
+        if (request.UserId.HasValue)
+            query = query.Where(i => i.UserId == request.UserId.Value);
+
         if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<InspectionStatus>(request.Status, true, out var status))
             query = query.Where(i => i.Status == status);
 

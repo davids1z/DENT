@@ -8,6 +8,7 @@ public class DentDbContext : DbContext, IDentDbContext
 {
     public DentDbContext(DbContextOptions<DentDbContext> options) : base(options) { }
 
+    public DbSet<User> Users => Set<User>();
     public DbSet<Inspection> Inspections => Set<Inspection>();
     public DbSet<DamageDetection> DamageDetections => Set<DamageDetection>();
     public DbSet<InspectionImage> InspectionImages => Set<InspectionImage>();
@@ -17,6 +18,17 @@ public class DentDbContext : DbContext, IDentDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.FullName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(50).HasDefaultValue("User");
+            entity.Property(e => e.RefreshToken).HasMaxLength(256);
+            entity.HasIndex(e => e.Email).IsUnique();
+        });
 
         modelBuilder.Entity<Inspection>(entity =>
         {
@@ -67,6 +79,11 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.TimestampToken).HasMaxLength(10000);
             entity.Property(e => e.TimestampAuthority).HasMaxLength(500);
 
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.Inspections)
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.Status);
         });
