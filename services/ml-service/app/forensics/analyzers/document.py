@@ -1226,13 +1226,38 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                 # Collect all dark/opaque rectangles
                 cover_rects: list[fitz.Rect] = []
 
+                page_width = page.rect.width
+
                 for d in drawings:
-                    # Look for filled rectangles (black, white, or any opaque fill)
-                    if d.get("fill") is not None and d.get("rect"):
-                        rect = fitz.Rect(d["rect"])
-                        # Only consider rectangles of reasonable size (not tiny)
-                        if rect.width > 5 and rect.height > 3:
-                            cover_rects.append(rect)
+                    if d.get("fill") is None or not d.get("rect"):
+                        continue
+                    fill = d["fill"]
+                    rect = fitz.Rect(d["rect"])
+
+                    # Skip tiny rectangles
+                    if rect.width < 10 or rect.height < 5:
+                        continue
+
+                    # --- Filter out common non-redaction patterns ---
+
+                    # 1. Skip white/near-white fills (table backgrounds)
+                    if isinstance(fill, (tuple, list)) and len(fill) >= 3:
+                        r, g, b = fill[0], fill[1], fill[2]
+                        brightness = 0.299 * r + 0.587 * g + 0.114 * b
+                        # Skip light fills (> 0.35 brightness = not dark enough to hide text)
+                        if brightness > 0.35:
+                            continue
+
+                    # 2. Skip full-width rectangles (headers, footers, section bars)
+                    if rect.width > page_width * 0.85:
+                        continue
+
+                    # 3. Skip very tall rectangles (full table columns / page backgrounds)
+                    if rect.height > 200:
+                        continue
+
+                    # Only truly dark/opaque rectangles pass through
+                    cover_rects.append(rect)
 
                 for annot in annots:
                     # Redact annotations and FreeText with fill color
@@ -1725,7 +1750,13 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
 
                 # 3. Normalize both texts for comparison
                 def _normalize(t: str) -> str:
-                    # Collapse whitespace, lowercase, strip non-alnum for comparison
+                    # Strip non-printable / replacement chars that cause
+                    # false mismatches with OCR output (Latin-2/WinAnsi
+                    # encoded PDFs produce replacement chars for č/š/ž)
+                    t = t.replace("\ufffd", "")  # U+FFFD replacement char
+                    # Remove isolated special chars that OCR won't reproduce
+                    t = re.sub(r"[^\w\s.,;:!?€$%&/()=+\-@#]", "", t)
+                    # Collapse whitespace, lowercase
                     t = re.sub(r"\s+", " ", t).strip().lower()
                     return t
 
@@ -1739,7 +1770,7 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                 matcher = difflib.SequenceMatcher(None, text_norm, ocr_norm)
                 similarity = matcher.ratio()
 
-                if similarity > 0.85:
+                if similarity > 0.80:
                     continue  # Texts match well enough
 
                 # 5. Find specific differences
@@ -1751,11 +1782,12 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                 only_in_layer = text_words - ocr_words
                 only_in_ocr = ocr_words - text_words
 
-                # Filter out very short words (noise from OCR)
-                only_in_layer = {w for w in only_in_layer if len(w) > 2}
-                only_in_ocr = {w for w in only_in_ocr if len(w) > 2}
+                # Filter out short words and OCR noise (garbled characters)
+                only_in_layer = {w for w in only_in_layer if len(w) > 3}
+                only_in_ocr = {w for w in only_in_ocr
+                               if len(w) > 3 and w.isalpha()}  # OCR junk is non-alpha
 
-                if len(only_in_layer) > 3 or len(only_in_ocr) > 3 or similarity < 0.70:
+                if len(only_in_layer) > 5 or len(only_in_ocr) > 5 or similarity < 0.50:
                     page_diffs.append({
                         "page": page_idx + 1,
                         "similarity": round(similarity, 3),
@@ -1776,7 +1808,7 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
         worst = min(page_diffs, key=lambda d: d["similarity"])
         avg_sim = sum(d["similarity"] for d in page_diffs) / len(page_diffs)
 
-        if worst["similarity"] < 0.50:
+        if worst["similarity"] < 0.30:
             # Major discrepancy — likely hidden text or content manipulation
             findings.append(
                 AnalyzerFinding(
@@ -1788,8 +1820,8 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                         f"Ovo ukazuje na skriveni tekst, crne pravokutnike koji maskiraju "
                         f"sadrzaj, ili manipulaciju tekstualnog sloja."
                     ),
-                    risk_score=0.80,
-                    confidence=0.80,
+                    risk_score=0.75,
+                    confidence=0.75,
                     evidence={
                         "page_diffs": page_diffs[:5],
                         "average_similarity": round(avg_sim, 3),
@@ -1797,7 +1829,7 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                     },
                 )
             )
-        elif worst["similarity"] < 0.70:
+        elif worst["similarity"] < 0.50:
             findings.append(
                 AnalyzerFinding(
                     code="DOC_VISUAL_OCR_MISMATCH",
@@ -1808,8 +1840,8 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                         f"(prosjecna podudarnost: {avg_sim:.0%}). "
                         f"Moguca manipulacija sadrzaja ili skriveni tekst."
                     ),
-                    risk_score=0.60,
-                    confidence=0.75,
+                    risk_score=0.55,
+                    confidence=0.70,
                     evidence={
                         "page_diffs": page_diffs[:5],
                         "average_similarity": round(avg_sim, 3),
@@ -1916,12 +1948,20 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                             outlier_mask = bl_deviations > threshold
                             n_bl_outliers = int(np.sum(outlier_mask))
 
-                            # Detect width anomalies (for monospaced-like chars e.g. digits)
+                            # Detect width anomalies — only meaningful for
+                            # monospaced or near-monospaced chars (digits, etc.)
+                            # Variable-width fonts (Helvetica, Arial, Times) naturally
+                            # have large width variance — skip width check for them.
                             w_arr = np.array(widths)
                             w_median = np.median(w_arr)
-                            w_threshold = max(0.3, w_median * 0.15)
-                            w_deviations = np.abs(w_arr - w_median)
-                            n_w_outliers = int(np.sum(w_deviations > w_threshold))
+                            w_cv = float(np.std(w_arr) / max(w_median, 0.1))
+                            # Coefficient of variation > 0.25 = variable-width font, skip
+                            if w_cv > 0.25:
+                                n_w_outliers = 0
+                            else:
+                                w_threshold = max(0.5, w_median * 0.20)
+                                w_deviations = np.abs(w_arr - w_median)
+                                n_w_outliers = int(np.sum(w_deviations > w_threshold))
 
                             # Detect kerning anomalies
                             n_k_outliers = 0
@@ -1936,8 +1976,10 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                             total_anomalies = n_bl_outliers + n_w_outliers + n_k_outliers
                             char_count = len(baselines)
 
-                            if total_anomalies >= 2 and total_anomalies <= char_count * 0.4:
-                                # Suspicious: a few chars deviate (not all — that'd be different font)
+                            # Require baseline OR kerning anomalies (not just width)
+                            # and multiple anomaly types to reduce false positives
+                            has_structural = n_bl_outliers >= 1 or n_k_outliers >= 1
+                            if has_structural and total_anomalies >= 3 and total_anomalies <= char_count * 0.35:
                                 text_sample = span.get("text", "")[:60]
                                 anomalous_spans.append({
                                     "page": page_idx + 1,
@@ -1959,7 +2001,7 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
             return
 
         # Group: many anomalous spans → likely systematic editing
-        if len(anomalous_spans) >= 5:
+        if len(anomalous_spans) >= 8:
             findings.append(
                 AnalyzerFinding(
                     code="DOC_CHAR_METRICS_SYSTEMATIC",
@@ -2984,9 +3026,13 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                                         for op in text_ops:
                                             try:
                                                 raw_text = op.decode("latin-1", errors="ignore")
+                                                # Skip strings with backslash escapes — these
+                                                # are encoding sequences (Latin-2, WinAnsiEncoding)
+                                                # for special chars like č/š/ž, NOT manipulation.
+                                                if "\\" in raw_text:
+                                                    continue
                                                 # Check if this raw text appears in extracted text
-                                                # (after allowing for encoding differences)
-                                                if (len(raw_text) >= 3
+                                                if (len(raw_text) >= 5
                                                         and raw_text.isprintable()
                                                         and raw_text not in text_extracted):
                                                     discrepancies.append({
@@ -3034,7 +3080,7 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                 )
             )
 
-        if content_mismatches:
+        if content_mismatches and len(content_mismatches) >= 3:
             findings.append(
                 AnalyzerFinding(
                     code="DOC_TOUNICODE_MISMATCH",
@@ -3045,8 +3091,8 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                         f"Moguca ToUnicode CMap manipulacija — tekst se vizualno prikazuje "
                         f"drugacije od onoga sto sustav za obradu cita."
                     ),
-                    risk_score=0.70,
-                    confidence=0.75,
+                    risk_score=0.55,
+                    confidence=0.65,
                     evidence=evidence,
                 )
             )
