@@ -65,13 +65,14 @@ jobs:
               git reset --hard origin/main
             fi
 
-            # Create secrets directory from environment
+            # Create Docker secrets files from server .env
             mkdir -p "$DEPLOY_DIR/secrets"
-            echo "${DB_PASSWORD}" > "$DEPLOY_DIR/secrets/db_password.txt"
+            set -a; source "$DEPLOY_DIR/.env" 2>/dev/null || true; set +a
+            echo "${DB_PASSWORD:-dent_secret_2024}" > "$DEPLOY_DIR/secrets/db_password.txt"
             echo "${JWT_SECRET}" > "$DEPLOY_DIR/secrets/jwt_secret.txt"
             echo "${ADMIN_PASSWORD}" > "$DEPLOY_DIR/secrets/admin_password.txt"
-            echo "${MINIO_ACCESS_KEY}" > "$DEPLOY_DIR/secrets/minio_access_key.txt"
-            echo "${MINIO_SECRET_KEY}" > "$DEPLOY_DIR/secrets/minio_secret_key.txt"
+            echo "${MINIO_ACCESS_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_access_key.txt"
+            echo "${MINIO_SECRET_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_secret_key.txt"
             chmod 600 "$DEPLOY_DIR/secrets/"*.txt
 
             # Pre-deploy: backup database
