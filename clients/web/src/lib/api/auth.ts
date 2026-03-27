@@ -7,6 +7,9 @@ export async function loginApi(email: string, password: string): Promise<AuthRes
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
+  if (res.status === 429) {
+    throw new Error("Previše pokušaja prijave. Pričekajte nekoliko minuta pa pokušajte ponovo.");
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Prijava nije uspjela." }));
     throw new Error(err.error || `Login failed: ${res.status}`);
@@ -22,6 +25,9 @@ export async function registerApi(email: string, password: string, fullName: str
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, fullName }),
   });
+  if (res.status === 429) {
+    throw new Error("Previše pokušaja registracije. Pričekajte nekoliko minuta pa pokušajte ponovo.");
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Registracija nije uspjela." }));
     throw new Error(err.error || `Register failed: ${res.status}`);

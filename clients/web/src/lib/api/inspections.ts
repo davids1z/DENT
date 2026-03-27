@@ -40,6 +40,9 @@ export async function uploadInspection(
       headers: authHeaders(),
     });
 
+    if (res.status === 429) {
+      throw new Error("Previše zahtjeva. Pričekajte minutu pa pokušajte ponovo.");
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Upload failed" }));
       throw new Error(err.error || `Upload failed: ${res.status}`);
