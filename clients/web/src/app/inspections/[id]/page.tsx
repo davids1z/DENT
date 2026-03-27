@@ -78,7 +78,7 @@ function InspectionDetailContent() {
     : false;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up">
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-8">
         <div>

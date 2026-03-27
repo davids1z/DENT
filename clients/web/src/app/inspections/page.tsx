@@ -70,7 +70,7 @@ function InspectionsContent() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-heading text-2xl font-bold mb-1">Analize</h1>
@@ -151,7 +151,11 @@ function InspectionsContent() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {paginatedItems.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)}
+          {paginatedItems.map((inspection, i) => (
+            <div key={inspection.id} className="fade-up" style={{ animationDelay: `${i * 50}ms` }}>
+              <InspectionCard inspection={inspection} />
+            </div>
+          ))}
         </div>
       )}
 

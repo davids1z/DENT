@@ -53,7 +53,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 fade-up">
       <div className="mb-8">
         <h1 className="font-heading text-2xl font-bold">Upravljanje korisnicima</h1>
         <p className="text-sm text-muted mt-1">Pregled i upravljanje korisničkim računima</p>
