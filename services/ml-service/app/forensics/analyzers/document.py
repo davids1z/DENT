@@ -1289,16 +1289,19 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                                         if not text:
                                             continue
 
-                                        # Skip VISIBLE text on colored background
-                                        # (white/light text on dark rect = normal design)
+                                        # Only count as "hidden" if text is truly
+                                        # invisible: same darkness as the covering
+                                        # rectangle (black text under black rect).
+                                        # Any non-black text (gray, white, colored)
+                                        # on a dark rect IS visible — it's design.
                                         text_color = span.get("color", 0)
                                         if isinstance(text_color, int):
                                             tr = (text_color >> 16) & 0xFF
                                             tg = (text_color >> 8) & 0xFF
                                             tb = text_color & 0xFF
                                             text_bright = (0.299*tr + 0.587*tg + 0.114*tb) / 255.0
-                                            # Light text on dark background = header/design
-                                            if text_bright > 0.55:
+                                            # Non-black text = visible on dark bg, skip
+                                            if text_bright > 0.10:
                                                 continue
 
                                         hidden_chars += len(text)
