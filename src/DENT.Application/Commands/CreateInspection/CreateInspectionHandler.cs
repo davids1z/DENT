@@ -272,6 +272,28 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                             spectralUrl = storage.GetPublicUrl(spectralKey);
                         }
 
+                        // Upload PDF page preview images to MinIO
+                        List<string>? pagePreviewUrls = null;
+                        if (forensicResult.PagePreviewsB64 is { Count: > 0 })
+                        {
+                            pagePreviewUrls = new List<string>();
+                            for (int pageNum = 0; pageNum < forensicResult.PagePreviewsB64.Count; pageNum++)
+                            {
+                                try
+                                {
+                                    var pageBytes = Convert.FromBase64String(forensicResult.PagePreviewsB64[pageNum]);
+                                    using var pageStream = new MemoryStream(pageBytes);
+                                    var pageKey = await storage.UploadAsync(
+                                        pageStream, $"page_{inspection.Id}_{sortOrder}_p{pageNum}.jpg", "image/jpeg", CancellationToken.None);
+                                    pagePreviewUrls.Add(storage.GetPublicUrl(pageKey));
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger.LogWarning(ex, "Failed to upload page preview {PageNum}", pageNum);
+                                }
+                            }
+                        }
+
                         var fr = new ForensicResult
                         {
                             Id = Guid.NewGuid(),
@@ -294,6 +316,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                             TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
                             VerdictProbabilitiesJson = forensicResult.VerdictProbabilities != null
                                 ? JsonSerializer.Serialize(forensicResult.VerdictProbabilities)
+                                : null,
+                            PagePreviewUrlsJson = pagePreviewUrls is { Count: > 0 }
+                                ? JsonSerializer.Serialize(pagePreviewUrls)
                                 : null,
                         };
                         db.ForensicResults.Add(fr);
@@ -771,7 +796,15 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             C2paStatus = fr.C2paStatus,
             C2paIssuer = fr.C2paIssuer,
             VerdictProbabilities = ParseVerdictProbabilities(fr.VerdictProbabilitiesJson),
+            PagePreviewUrls = ParsePagePreviewUrls(fr.PagePreviewUrlsJson),
         };
+    }
+
+    private static List<string>? ParsePagePreviewUrls(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<List<string>>(json); }
+        catch { return null; }
     }
 
     private static Dictionary<string, double>? ParseVerdictProbabilities(string? json)

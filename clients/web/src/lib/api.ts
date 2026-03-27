@@ -137,6 +137,8 @@ export interface ForensicResult {
   c2paIssuer: string | null;
   // 3-class meta-learner probabilities
   verdictProbabilities: Record<string, number> | null;
+  // PDF page preview image URLs
+  pagePreviewUrls?: string[] | null;
 }
 
 export interface ImageHash {

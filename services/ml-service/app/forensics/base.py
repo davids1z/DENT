@@ -50,6 +50,8 @@ class ForensicReport(BaseModel):
     c2pa_issuer: str | None = None
     # 3-class meta-learner probabilities
     verdict_probabilities: dict[str, float] | None = None
+    # PDF page previews (base64-encoded PNG images)
+    page_previews_b64: list[str] | None = None
 
 
 class BaseAnalyzer(ABC):

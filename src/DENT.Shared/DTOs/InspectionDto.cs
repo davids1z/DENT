@@ -162,6 +162,8 @@ public record ForensicResultDto
     public string? C2paIssuer { get; init; }
     // 3-class meta-learner probabilities
     public Dictionary<string, double>? VerdictProbabilities { get; init; }
+    // PDF page preview image URLs
+    public List<string>? PagePreviewUrls { get; init; }
 }
 
 public record ForensicModuleResultDto

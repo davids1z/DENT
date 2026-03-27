@@ -35,6 +35,9 @@ public class ForensicResult
     // 3-class meta-learner probabilities (JSON)
     public string? VerdictProbabilitiesJson { get; set; }
 
+    // PDF page preview image URLs (JSON array of strings)
+    public string? PagePreviewUrlsJson { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation

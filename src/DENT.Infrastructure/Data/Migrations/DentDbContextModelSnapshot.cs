@@ -211,6 +211,9 @@ namespace DENT.Infrastructure.Data.Migrations
                     b.Property<string>("VerdictProbabilitiesJson")
                         .HasColumnType("text");
 
+                    b.Property<string>("PagePreviewUrlsJson")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("InspectionId");

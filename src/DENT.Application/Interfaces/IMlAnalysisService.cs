@@ -119,6 +119,8 @@ public record MlForensicResult
     public string? C2paIssuer { get; init; }
     // 3-class meta-learner probabilities
     public Dictionary<string, double>? VerdictProbabilities { get; init; }
+    // PDF page preview images (base64-encoded JPEG)
+    public List<string>? PagePreviewsB64 { get; init; }
 }
 
 public record MlForensicModule

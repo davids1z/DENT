@@ -153,6 +153,33 @@ class ForensicPipeline:
         )
 
     # ------------------------------------------------------------------
+    # PDF Page Preview Rendering
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _render_pdf_pages(
+        doc_bytes: bytes, max_pages: int = 5, dpi: int = 150
+    ) -> list[str]:
+        """Render first N pages of a PDF as base64-encoded JPEG images."""
+        import base64
+        import fitz
+
+        doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        previews: list[str] = []
+        try:
+            for page_idx in range(min(len(doc), max_pages)):
+                page = doc[page_idx]
+                pix = page.get_pixmap(dpi=dpi)
+                # Use JPEG for smaller payload (~3-5x smaller than PNG)
+                img_bytes = pix.tobytes("jpeg")
+                previews.append(base64.b64encode(img_bytes).decode())
+        finally:
+            doc.close()
+
+        logger.info("Rendered %d PDF page previews (%d DPI)", len(previews), dpi)
+        return previews
+
+    # ------------------------------------------------------------------
     # PDF Embedded Image Extraction + Visual Forensics
     # ------------------------------------------------------------------
 
@@ -632,6 +659,14 @@ class ForensicPipeline:
                     source_confidence = round((ev.get("generator_confidence", 0)) * 100)
                     break
 
+        # ── PDF page previews (render first 5 pages as PNG) ──
+        page_previews: list[str] | None = None
+        if file_category == "pdf":
+            try:
+                page_previews = self._render_pdf_pages(file_bytes, max_pages=5, dpi=150)
+            except Exception as e:
+                logger.debug("PDF page preview rendering failed: %s", e)
+
         return ForensicReport(
             overall_risk_score=round(overall_score, 4),
             overall_risk_score100=overall_score_100,
@@ -646,4 +681,5 @@ class ForensicPipeline:
             c2pa_status=c2pa_status,
             c2pa_issuer=c2pa_issuer,
             verdict_probabilities=verdict_probs,
+            page_previews_b64=page_previews,
         )
