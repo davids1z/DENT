@@ -759,6 +759,7 @@ export function forensicModuleLabel(moduleName: string): string {
     community_forensics_detection: "Community Forensics detekcija",
     npr_ai_detection: "NPR detekcija artefakata",
     mesorch_detection: "Mesorch detekcija manipulacija",
+    bfree_detection: "B-Free AI detekcija (CVPR 2025)",
     vae_reconstruction: "VAE rekonstrukcija",
     text_ai_detection: "AI tekst detekcija",
     content_validation: "Validacija sadrzaja",

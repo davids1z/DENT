@@ -50,20 +50,22 @@ _AI_DETECTOR_MODULES = frozenset({
     "efficientnet_ai_detection",
     "safe_ai_detection",
     "dinov2_ai_detection",
+    "bfree_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
-# Retrained on diverse dataset (3799 images, 9 generators + RAISE/CarDD auth)
+# B-Free: CVPR 2025, bias-free DINOv2, 27 generators incl. Flux/SD 3.5
 # DINOv2: 0% FP on diverse auth (best discriminator, 0.55 separation)
 # SAFE: KDD 2025, JPEG-dampened (×0.70 for compression artifacts)
 # CommFor: CVPR 2025, 4803 generators
 # CLIP: retrained probe F1=0.746
 # Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.30,
-    "dinov2_ai_detection": 0.25,
-    "community_forensics_detection": 0.25,
-    "clip_ai_detection": 0.15,
+    "safe_ai_detection": 0.25,
+    "bfree_detection": 0.20,
+    "dinov2_ai_detection": 0.20,
+    "community_forensics_detection": 0.20,
+    "clip_ai_detection": 0.10,
     "ai_generation_detection": 0.05,
 }
 
@@ -127,7 +129,7 @@ def fuse_scores(
     #
     # For DAMPENING: check if method-diverse detectors confirm (SAFE/CommFor/CLIP).
     # EfficientNet and DINOv2 are both CNN-family for dampening purposes.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection"}
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection"}
     _DAMPENING_INDEPENDENT = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)

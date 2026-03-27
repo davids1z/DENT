@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     forensics_dinov2_ai_enabled: bool = True
     forensics_dinov2_ai_model: str = "facebook/dinov2-base"
 
+    # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators)
+    forensics_bfree_enabled: bool = False
+    forensics_bfree_model_dir: str = "/app/models/bfree"
+
     # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
     # Disabled: 0.023 separation (noise), gives 1.00 on authentic JPEGs
     forensics_npr_enabled: bool = False
