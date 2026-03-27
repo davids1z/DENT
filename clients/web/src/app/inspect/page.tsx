@@ -29,14 +29,22 @@ export default function InspectPage() {
     const fileResults = result.fileForensicResults;
     if (!fileResults || fileResults.length === 0) return result.forensicResult;
 
-    // Match by fileUrl
     const currentUrl = activeImageUrl || result.imageUrl;
-    const match = fileResults.find((fr) => fr.fileUrl === currentUrl);
-    if (match) return match;
+
+    // Match by fileUrl (exact)
+    const matchByUrl = fileResults.find((fr) => fr.fileUrl && fr.fileUrl === currentUrl);
+    if (matchByUrl) return matchByUrl;
 
     // Fallback: if viewing primary image, use sort=0
     if (currentUrl === result.imageUrl) {
       return fileResults.find((fr) => fr.sortOrder === 0) || result.forensicResult;
+    }
+
+    // Fallback: match additional image by fileName
+    const additionalImg = result.additionalImages.find((img) => img.imageUrl === currentUrl);
+    if (additionalImg) {
+      const matchByName = fileResults.find((fr) => fr.fileName === additionalImg.originalFileName);
+      if (matchByName) return matchByName;
     }
 
     return result.forensicResult;

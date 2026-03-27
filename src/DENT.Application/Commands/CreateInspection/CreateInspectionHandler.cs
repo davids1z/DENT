@@ -7,6 +7,7 @@ using DENT.Domain.Entities;
 using DENT.Domain.Enums;
 using DENT.Shared.DTOs;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -177,7 +178,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         var storage = scope.ServiceProvider.GetRequiredService<IStorageService>();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<CreateInspectionHandler>>();
 
-        var inspection = await db.Inspections.FindAsync(data.InspectionId);
+        var inspection = await db.Inspections
+            .Include(i => i.AdditionalImages)
+            .FirstOrDefaultAsync(i => i.Id == data.InspectionId);
         if (inspection == null)
         {
             logger.LogError("Background analysis: inspection {Id} not found", data.InspectionId);
