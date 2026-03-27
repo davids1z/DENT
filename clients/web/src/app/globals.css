@@ -1,9 +1,5 @@
 @import "tailwindcss";
 
-/* Hide auth-dependent UI until blocking script runs (prevents SSR flash) */
-.auth-ready { visibility: visible !important; }
-[data-auth-pending] .nav-auth { visibility: hidden; }
-
 :root {
   --background: #ffffff;
   --foreground: #0f172a;

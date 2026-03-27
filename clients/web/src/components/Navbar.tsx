@@ -66,7 +66,6 @@ export function Navbar() {
             );
           })}
 
-          <div className="nav-auth flex items-center gap-1">
           {showLoggedIn ? (
             <>
               <Link
@@ -131,7 +130,6 @@ export function Navbar() {
               Prijava
             </Link>
           )}
-          </div>
         </div>
       </div>
     </nav>
