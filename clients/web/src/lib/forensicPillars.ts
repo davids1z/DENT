@@ -14,55 +14,39 @@ export interface ForensicPillar {
 
 export const FORENSIC_PILLARS: ForensicPillar[] = [
   {
-    id: "crypto_meta",
-    label: "Kriptografija i metapodaci",
-    icon: "lock",
-    moduleNames: ["metadata_analysis"],
-    description: "C2PA potpis, EXIF metapodaci, hash konzistentnost",
-  },
-  {
-    id: "sensor",
-    label: "Senzorska forenzika",
-    icon: "cpu",
-    moduleNames: ["prnu_detection"],
-    description: "PRNU senzorski otisak kamere",
-  },
-  {
     id: "ai_detection",
     label: "AI detekcija",
     icon: "sparkles",
-    moduleNames: ["ai_generation_detection", "clip_ai_detection", "vae_reconstruction"],
-    description: "CNN, CLIP i VAE detekcija AI-generiranih slika",
+    moduleNames: [
+      "safe_ai_detection",           // SAFE (KDD 2025) — pixel correlation
+      "dinov2_ai_detection",         // DINOv2 probe
+      "community_forensics_detection", // CommFor (CVPR 2025)
+      "efficientnet_ai_detection",   // EfficientNet-B4 pre-trained
+      "clip_ai_detection",           // CLIP ViT-L/14 probe
+    ],
+    description: "5 nezavisnih AI detektora: SAFE, DINOv2, CommFor, EfficientNet, CLIP",
   },
   {
     id: "modification",
-    label: "Detekcija modifikacija",
+    label: "Detekcija manipulacija",
     icon: "pencil",
-    moduleNames: ["modification_detection", "deep_modification_detection"],
+    moduleNames: ["modification_detection", "mesorch_detection"],
     heatmapField: "elaHeatmapUrl",
-    description: "ELA, copy-move, JPEG artefakti, CNN manipulacije",
+    description: "ELA, copy-move, Mesorch (AAAI 2025) detekcija manipulacija",
   },
   {
-    id: "spectral",
-    label: "Spektralna analiza",
-    icon: "signal",
-    moduleNames: ["spectral_forensics", "optical_forensics"],
-    heatmapField: "spectralHeatmapUrl",
-    description: "FFT spektar, fazna koherencija, frekvencijske anomalije",
-  },
-  {
-    id: "semantic",
-    label: "Semanticka analiza",
-    icon: "brain",
-    moduleNames: ["semantic_forensics"],
-    description: "VLM provjera sjena, teksta i perspektive",
+    id: "crypto_meta",
+    label: "Metapodaci i potpisi",
+    icon: "lock",
+    moduleNames: ["metadata_analysis", "prnu_detection"],
+    description: "EXIF analiza, C2PA potpis, PRNU senzorski otisak",
   },
   {
     id: "documents",
     label: "Forenzika dokumenata",
     icon: "file",
     moduleNames: ["document_forensics", "office_forensics", "text_ai_detection", "content_validation"],
-    description: "PDF, Office, AI tekst, OIB/IBAN validacija",
+    description: "PDF struktura, AI tekst, OIB/IBAN validacija",
   },
 ];
 
@@ -151,20 +135,21 @@ export function getVerdictSentence(
 }
 
 const MODULE_TO_CATEGORY: Record<string, string> = {
-  ai_generation_detection: "AI generiranje",
+  safe_ai_detection: "AI generiranje",
+  dinov2_ai_detection: "AI generiranje",
+  community_forensics_detection: "AI generiranje",
+  efficientnet_ai_detection: "AI generiranje",
   clip_ai_detection: "AI generiranje",
-  vae_reconstruction: "AI generiranje",
+  ai_generation_detection: "AI generiranje",
   modification_detection: "Digitalna manipulacija",
+  mesorch_detection: "Digitalna manipulacija",
   deep_modification_detection: "Digitalna manipulacija",
-  spectral_forensics: "Spektralna anomalija",
-  optical_forensics: "Nekonzistentno osvjetljenje",
-  prnu_detection: "Sumnjiva tekstura",
-  semantic_forensics: "Perspektivna anomalija",
+  prnu_detection: "Senzorska anomalija",
   metadata_analysis: "Metadata anomalija",
-  document_forensics: "Digitalna manipulacija",
-  office_forensics: "Digitalna manipulacija",
-  text_ai_detection: "AI generiranje",
-  content_validation: "Digitalna manipulacija",
+  document_forensics: "Dokument anomalija",
+  office_forensics: "Dokument anomalija",
+  text_ai_detection: "AI generirani tekst",
+  content_validation: "Nevalidni identifikatori",
 };
 
 export function deriveFindingCategory(
