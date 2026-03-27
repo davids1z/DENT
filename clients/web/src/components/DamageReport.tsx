@@ -22,6 +22,17 @@ interface DamageReportProps {
 
 export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, forensicResult }: DamageReportProps) {
   const i = inspection;
+  const fr = forensicResult || i.forensicResult;
+  const riskScore = fr?.overallRiskScore ?? i.fraudRiskScore ?? 0;
+  const riskLevel = fr?.overallRiskLevel ?? i.fraudRiskLevel ?? "Low";
+  const isHighRisk = riskScore >= 0.40;
+  const isMediumRisk = riskScore >= 0.15;
+
+  // Forensic module results from the active file's ForensicResult
+  const modules = fr?.modules ?? [];
+
+  // Show the active file's name if we have per-file forensic data
+  const displayFileName = fr?.fileName || i.originalFileName;
 
   return (
     <div className="space-y-4">
@@ -29,15 +40,18 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
         <div className="flex items-start justify-between mb-1">
           <div>
             <h3 className="text-lg font-semibold">Rezultat analize</h3>
-            <span className="text-sm text-muted">{i.originalFileName}</span>
+            <span className="text-sm text-muted">{displayFileName}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-            {i.urgencyLevel && (
+            {riskLevel && (
               <span className={cn(
                 "px-2.5 py-1 rounded-full text-xs font-medium border",
-                severityBg(i.urgencyLevel), severityColor(i.urgencyLevel)
+                riskLevel === "Critical" ? "bg-red-50 text-red-700 border-red-200" :
+                riskLevel === "High" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                riskLevel === "Medium" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                "bg-green-50 text-green-700 border-green-200"
               )}>
-                {i.urgencyLevel === "Low" ? "Niska" : i.urgencyLevel === "Medium" ? "Srednja" : i.urgencyLevel === "High" ? "Visoka" : "Kriticna"} hitnost
+                {riskLevel === "Low" ? "Niska" : riskLevel === "Medium" ? "Srednja" : riskLevel === "High" ? "Visoka" : "Kriticna"} hitnost
               </span>
             )}
           </div>
@@ -60,7 +74,55 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
         </div>
       )}
 
-      {i.damages.length === 0 && i.status === "Completed" && (
+      {/* When damages are empty but forensic risk is high → show forensic modules */}
+      {i.damages.length === 0 && i.status === "Completed" && (isHighRisk || isMediumRisk) && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
+            Forenzicki moduli ({modules.filter(m => m.riskScore > 0.10).length})
+          </h3>
+          {modules
+            .filter(m => m.riskScore > 0.10 && !m.error)
+            .sort((a, b) => b.riskScore - a.riskScore)
+            .map((m, idx) => {
+              const risk = m.riskScore;
+              const color = risk >= 0.65 ? "#ef4444" : risk >= 0.40 ? "#f97316" : risk >= 0.20 ? "#f59e0b" : "#22c55e";
+              const levelText = risk >= 0.65 ? "Kritican" : risk >= 0.40 ? "Visok" : risk >= 0.20 ? "Umjeren" : "Nizak";
+              return (
+                <div key={m.moduleName || idx} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                  <div className="h-1 w-full" style={{ backgroundColor: color }} />
+                  <div className="p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: color, color: "white" }}>
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold text-sm block">{m.moduleLabel || m.moduleName}</span>
+                        {m.findings?.length > 0 && (
+                          <span className="text-xs text-slate-400 block truncate">
+                            {m.findings[0]?.title || m.findings[0]?.code || ""}
+                          </span>
+                        )}
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium border flex-shrink-0" style={{ backgroundColor: `${color}10`, color, borderColor: `${color}40` }}>
+                        {levelText}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-3">
+                      <span className="text-[10px] text-slate-400 flex-shrink-0">Rizik</span>
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${risk * 100}%`, backgroundColor: color }} />
+                      </div>
+                      <span className="text-xs text-slate-500 font-mono">{Math.round(risk * 100)}%</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {/* Only show "Nema nalaza" when BOTH damages are empty AND forensic risk is low */}
+      {i.damages.length === 0 && i.status === "Completed" && !isHighRisk && !isMediumRisk && (
         <GlassPanel className="text-center">
           <div className="flex items-center justify-center gap-2 text-green-600 mb-2">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
