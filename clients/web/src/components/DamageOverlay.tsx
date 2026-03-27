@@ -8,6 +8,7 @@ import {
   severityLabel,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { ImageLightbox } from "@/components/ImageLightbox";
 
 interface DamageOverlayProps {
   imageUrl: string;
@@ -45,6 +46,7 @@ export function DamageOverlay({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const isDocument = isDocumentUrl(imageUrl, fileName);
   const hasPagePreviews = pagePreviewUrls && pagePreviewUrls.length > 0;
 
@@ -70,8 +72,9 @@ export function DamageOverlay({
       const activePageUrl = pagePreviewUrls[activePageIndex] || pagePreviewUrls[0];
       return (
         <div className="bg-card border border-border rounded-xl overflow-hidden" ref={containerRef}>
+          {lightboxSrc && <ImageLightbox src={lightboxSrc} alt={docName} onClose={() => setLightboxSrc(null)} />}
           {/* Main page image */}
-          <div className="bg-gray-50">
+          <div className="bg-gray-50 cursor-pointer" onClick={() => setLightboxSrc(activePageUrl)}>
             <img
               src={activePageUrl}
               alt={`Stranica ${activePageIndex + 1}`}
@@ -154,13 +157,12 @@ export function DamageOverlay({
   // ── Image display (original behavior) ──
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden" ref={containerRef}>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="Analizirani sadrzaj" onClose={() => setLightboxSrc(null)} />}
       <div className="relative">
-        <a
-          href={imageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => {
-            if (hasBoundingBoxes && showOverlay) e.preventDefault();
+        <div
+          className="cursor-pointer"
+          onClick={() => {
+            if (!hasBoundingBoxes || !showOverlay) setLightboxSrc(imageUrl);
           }}
         >
           <img
@@ -169,7 +171,7 @@ export function DamageOverlay({
             className="w-full h-auto object-contain bg-gray-50"
             onLoad={() => setImageLoaded(true)}
           />
-        </a>
+        </div>
 
         {hasBoundingBoxes && showOverlay && imageLoaded && (
           <svg
@@ -273,14 +275,12 @@ export function DamageOverlay({
             </>
           )}
         </div>
-        <a
-          href={imageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => setLightboxSrc(imageUrl)}
           className="text-[10px] text-muted hover:text-foreground transition-colors"
         >
           Puna velicina
-        </a>
+        </button>
       </div>
     </div>
   );

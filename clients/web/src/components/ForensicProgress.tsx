@@ -148,10 +148,10 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className={cn(
-                "h-full rounded-full transition-all duration-300 ease-out",
+                "h-full rounded-full transition-[width] duration-700 ease-linear",
                 allComplete ? "bg-emerald-500" : "bg-accent"
               )}
-              style={{ width: `${Math.round(progress * 100)}%` }}
+              style={{ width: `${(progress * 100).toFixed(1)}%` }}
             />
           </div>
           {activeFile && !allComplete && (
@@ -278,10 +278,10 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className={cn(
-              "h-full rounded-full transition-all duration-300 ease-out",
+              "h-full rounded-full transition-[width] duration-700 ease-linear",
               allComplete ? "bg-emerald-500" : "bg-accent"
             )}
-            style={{ width: `${Math.round(progress * 100)}%` }}
+            style={{ width: `${(progress * 100).toFixed(1)}%` }}
           />
         </div>
         {waitingForServer ? (
