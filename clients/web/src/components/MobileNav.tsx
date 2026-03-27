@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
+import { getToken } from "@/lib/api";
 
 export function MobileNav() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  const hasToken = typeof window !== "undefined" && !!getToken();
+  const showLoggedIn = user || (isLoading && hasToken);
 
-  const links = user
+  const links = showLoggedIn
     ? [
         { href: "/", label: "Početna" },
         { href: "/inspect", label: "Upload", primary: true },
@@ -35,7 +38,7 @@ export function MobileNav() {
                 className="flex flex-col items-center gap-0.5 -mt-4"
               >
                 <div className="w-11 h-11 rounded-full bg-accent flex items-center justify-center shadow-sm">
-                  {user ? (
+                  {showLoggedIn ? (
                     <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                     </svg>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
+import { getToken } from "@/lib/api";
 
 const links = [
   { href: "/", label: "Početna" },
@@ -13,8 +14,11 @@ const links = [
 
 export function Navbar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Show logged-in layout if token exists (even before auth resolves) to prevent flash
+  const hasToken = typeof window !== "undefined" && !!getToken();
+  const showLoggedIn = user || (isLoading && hasToken);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -63,7 +67,7 @@ export function Navbar() {
             );
           })}
 
-          {user ? (
+          {showLoggedIn ? (
             <>
               <Link
                 href="/inspect"
@@ -80,18 +84,18 @@ export function Navbar() {
               {/* User menu */}
               <div className="relative ml-2">
                 <button
-                  onClick={() => setMenuOpen(!menuOpen)}
+                  onClick={() => user && setMenuOpen(!menuOpen)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-muted hover:text-foreground hover:bg-card transition-colors"
                 >
                   <div className="w-7 h-7 rounded-full bg-accent/10 text-accent flex items-center justify-center text-xs font-bold">
-                    {user.fullName.charAt(0).toUpperCase()}
+                    {user ? user.fullName.charAt(0).toUpperCase() : ""}
                   </div>
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
 
-                {menuOpen && (
+                {menuOpen && user && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                     <div className="absolute right-0 mt-1 w-48 bg-background rounded-xl border border-border shadow-lg z-50 py-1">
@@ -119,7 +123,7 @@ export function Navbar() {
                 )}
               </div>
             </>
-          ) : (
+          ) : isLoading ? null : (
             <Link
               href="/login"
               className="ml-2 px-5 py-2 rounded-lg text-sm font-semibold bg-accent text-white hover:bg-accent-hover transition-colors"
