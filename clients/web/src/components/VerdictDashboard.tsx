@@ -103,93 +103,99 @@ function getVerdictBadge(riskPercent: number) {
   };
 }
 
-// ── Risk Gauge (stroke-dasharray animation) ──────────────────────
+// ── Risk Gauge (full circle donut) ───────────────────────────────
+
+function getRiskColor(value: number): string {
+  if (value <= 20) return "#10b981";
+  if (value <= 40) return "#06b6d4";
+  if (value <= 60) return "#f59e0b";
+  if (value <= 80) return "#f97316";
+  return "#ef4444";
+}
+
+function getRiskLabel(value: number): string {
+  if (value <= 20) return "Nizak rizik";
+  if (value <= 40) return "Umjeren";
+  if (value <= 60) return "Povišen";
+  if (value <= 80) return "Visok rizik";
+  return "Kritičan";
+}
+
+function useCountUp(target: number, enabled: boolean, duration = 800) {
+  const [current, setCurrent] = useState(0);
+  useEffect(() => {
+    if (!enabled) { setCurrent(0); return; }
+    const start = performance.now();
+    let raf: number;
+    function tick(now: number) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCurrent(eased * target);
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, enabled, duration]);
+  return current;
+}
 
 function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
-  const size = 220;
-  const cx = size / 2;
-  const cy = size / 2 + 8;
-  const r = size / 2 - 20;
-  const strokeWidth = 14;
-
-  const startAngle = 180;
-  const endAngle = 0;
-
-  function polarToCartesian(angle: number) {
-    const rad = (angle * Math.PI) / 180;
-    return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
-  }
-
-  const bgStart = polarToCartesian(startAngle);
-  const bgEnd = polarToCartesian(endAngle);
-  const bgArc = `M ${bgStart.x} ${bgStart.y} A ${r} ${r} 0 0 1 ${bgEnd.x} ${bgEnd.y}`;
-
-  // stroke-dasharray/offset for smooth animation
-  const totalArcLength = Math.PI * r;
-  const fillLength = (value / 100) * totalArcLength;
-  const dashOffset = animated ? totalArcLength - fillLength : totalArcLength;
+  const size = 200;
+  const strokeWidth = 10;
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const fillOffset = animated ? circumference * (1 - value / 100) : circumference;
+  const color = getRiskColor(value);
+  const label = getRiskLabel(value);
+  const displayValue = useCountUp(value, animated);
 
   return (
-    <svg width={size} height={size / 2 + 30} viewBox={`0 0 ${size} ${size / 2 + 30}`}>
-      <defs>
-        <linearGradient id="risk-arc-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#22c55e" />
-          <stop offset="35%" stopColor="#eab308" />
-          <stop offset="60%" stopColor="#f97316" />
-          <stop offset="100%" stopColor="#ef4444" />
-        </linearGradient>
-      </defs>
-
-      {/* Background arc */}
-      <path
-        d={bgArc}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        className="text-border"
-      />
-
-      {/* Fill arc — always in DOM, animated via stroke-dashoffset */}
-      <path
-        d={bgArc}
-        fill="none"
-        stroke="url(#risk-arc-gradient)"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        strokeDasharray={totalArcLength}
-        strokeDashoffset={dashOffset}
-        className="gauge-fill-animation"
-      />
-
-      {/* Center number */}
-      <text
-        x={cx}
-        y={cy - 14}
-        textAnchor="middle"
-        fill="currentColor"
-        fontSize="42"
-        fontWeight="900"
-        className="text-foreground"
-        style={{
-          opacity: animated ? 1 : 0,
-          transition: "opacity 0.4s ease-in 0.2s",
-        }}
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        {/* Background ring */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-border"
+        />
+        {/* Progress ring */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={fillOffset}
+          className="gauge-fill-animation"
+          style={{ filter: animated ? `drop-shadow(0 0 6px ${color}40)` : "none" }}
+        />
+      </svg>
+      {/* Center content */}
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center"
+        style={{ opacity: animated ? 1 : 0, transition: "opacity 0.3s ease-out 0.2s" }}
       >
-        {animated ? value.toFixed(1) : "0.0"}%
-      </text>
-      <text
-        x={cx}
-        y={cy + 10}
-        textAnchor="middle"
-        fill="currentColor"
-        fontSize="10"
-        letterSpacing="3"
-        className="text-muted"
-      >
-        INDEKS RIZIKA
-      </text>
-    </svg>
+        <span className="text-4xl font-black tabular-nums text-foreground leading-none">
+          {displayValue.toFixed(1)}
+        </span>
+        <span className="text-xs text-muted mt-0.5">%</span>
+        <span
+          className="text-[11px] font-semibold mt-2 px-2.5 py-0.5 rounded-full"
+          style={{ color, backgroundColor: `${color}15` }}
+        >
+          {label}
+        </span>
+      </div>
+    </div>
   );
 }
 
