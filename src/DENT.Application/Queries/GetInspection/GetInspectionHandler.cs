@@ -18,7 +18,7 @@ public class GetInspectionHandler : IRequestHandler<GetInspectionQuery, Inspecti
             .Include(i => i.Damages)
             .Include(i => i.AdditionalImages)
             .Include(i => i.DecisionOverrides)
-            .Include(i => i.ForensicResult)
+            .Include(i => i.ForensicResults)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == request.Id, ct);
 

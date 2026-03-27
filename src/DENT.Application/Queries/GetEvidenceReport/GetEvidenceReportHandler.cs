@@ -21,7 +21,7 @@ public class GetEvidenceReportHandler : IRequestHandler<GetEvidenceReportQuery, 
     {
         var inspection = await _db.Inspections
             .Include(i => i.Damages)
-            .Include(i => i.ForensicResult)
+            .Include(i => i.ForensicResults)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == request.InspectionId, ct);
 
@@ -56,11 +56,12 @@ public class GetEvidenceReportHandler : IRequestHandler<GetEvidenceReportQuery, 
         }
 
         var forensicModules = new List<object>();
-        if (i.ForensicResult?.ModuleResultsJson is not null)
+        var primaryForensic = i.ForensicResults.OrderBy(f => f.SortOrder).FirstOrDefault();
+        if (primaryForensic?.ModuleResultsJson is not null)
         {
             try
             {
-                forensicModules = JsonSerializer.Deserialize<List<object>>(i.ForensicResult.ModuleResultsJson,
+                forensicModules = JsonSerializer.Deserialize<List<object>>(primaryForensic.ModuleResultsJson,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
             }
             catch { /* ignore */ }

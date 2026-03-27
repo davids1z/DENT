@@ -118,6 +118,9 @@ export interface ForensicModuleResult {
 }
 
 export interface ForensicResult {
+  fileName: string | null;
+  fileUrl: string | null;
+  sortOrder: number;
   overallRiskScore: number;
   overallRiskScore100: number;
   overallRiskLevel: string;
@@ -194,6 +197,7 @@ export interface Inspection {
   fraudRiskScore: number | null;
   fraudRiskLevel: string | null;
   forensicResult: ForensicResult | null;
+  fileForensicResults: ForensicResult[];
   // Capture metadata (Phase 6)
   captureLatitude: number | null;
   captureLongitude: number | null;

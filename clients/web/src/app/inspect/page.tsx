@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { uploadInspection, pollInspectionUntilComplete, type Inspection } from "@/lib/api";
+import { useState, useMemo } from "react";
+import { uploadInspection, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
 import { ImageUpload } from "@/components/ImageUpload";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
@@ -13,15 +13,34 @@ import { ForensicProgress, useForensicProgress } from "@/components/ForensicProg
 
 export default function InspectPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [result, setResult] = useState<Inspection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDamageIndex, setSelectedDamageIndex] = useState<number | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const forensicProgress = useForensicProgress(isLoading, uploadedFiles[0]?.name);
+  const forensicProgress = useForensicProgress(isLoading, uploadedFiles);
 
   const currentStep = result ? 2 : isLoading ? 1 : 0;
+
+  // Find the forensic result matching the currently active image
+  const activeForensicResult = useMemo<ForensicResult | null>(() => {
+    if (!result) return null;
+    const fileResults = result.fileForensicResults;
+    if (!fileResults || fileResults.length === 0) return result.forensicResult;
+
+    // Match by fileUrl
+    const currentUrl = activeImageUrl || result.imageUrl;
+    const match = fileResults.find((fr) => fr.fileUrl === currentUrl);
+    if (match) return match;
+
+    // Fallback: if viewing primary image, use sort=0
+    if (currentUrl === result.imageUrl) {
+      return fileResults.find((fr) => fr.sortOrder === 0) || result.forensicResult;
+    }
+
+    return result.forensicResult;
+  }, [result, activeImageUrl]);
 
   const handleUploadSubmit = async (files: File[]) => {
     setIsLoading(true);
@@ -57,6 +76,7 @@ export default function InspectPage() {
     setSelectedDamageIndex(null);
     setActiveImageUrl(null);
     setActiveImageIndex(0);
+    setUploadedFiles([]);
   };
 
   const handleImageSelect = (url: string) => {
@@ -104,12 +124,14 @@ export default function InspectPage() {
           <h3 className="font-heading font-semibold text-lg mb-1 text-center">Forenzicka analiza u tijeku</h3>
           <p className="text-sm text-muted mb-6 text-center">
             {uploadedFiles.length > 1
-              ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi forenzicku provjeru.`
+              ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi zasebnu forenzicku analizu.`
               : "Forenzicki moduli provjeravaju autenticnost, detektiraju manipulacije i AI-generirani sadrzaj."}
           </p>
           <ForensicProgress
             steps={forensicProgress.steps}
             progress={forensicProgress.progress}
+            fileProgresses={forensicProgress.fileProgresses}
+            currentFileIndex={forensicProgress.currentFileIndex}
           />
           <p className="text-xs text-muted mt-5 text-center">Ovo moze potrajati do 2 minute za vise datoteka</p>
         </div>
@@ -127,7 +149,7 @@ export default function InspectPage() {
               <ImageGallery primaryImageUrl={result.imageUrl} additionalImages={result.additionalImages} activeImageUrl={activeImageUrl || result.imageUrl} onSelect={handleImageSelect} />
             </div>
             <div>
-              <DamageReport inspection={result} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} />
+              <DamageReport inspection={result} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} forensicResult={activeForensicResult} />
             </div>
           </div>
           {result.decisionTraces && result.decisionTraces.length > 0 && (

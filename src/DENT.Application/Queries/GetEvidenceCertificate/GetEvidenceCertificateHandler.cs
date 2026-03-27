@@ -20,7 +20,7 @@ public class GetEvidenceCertificateHandler : IRequestHandler<GetEvidenceCertific
     {
         var inspection = await _db.Inspections
             .Include(i => i.Damages)
-            .Include(i => i.ForensicResult)
+            .Include(i => i.ForensicResults)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == request.InspectionId, ct);
 

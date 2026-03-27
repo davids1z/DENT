@@ -5,6 +5,11 @@ public class ForensicResult
     public Guid Id { get; set; }
     public Guid InspectionId { get; set; }
 
+    // Per-file identification (multi-file support)
+    public string? FileName { get; set; }
+    public string? FileUrl { get; set; }
+    public int SortOrder { get; set; } // 0 = primary file
+
     public double OverallRiskScore { get; set; }
     public int OverallRiskScore100 { get; set; }
     public string OverallRiskLevel { get; set; } = "Low";

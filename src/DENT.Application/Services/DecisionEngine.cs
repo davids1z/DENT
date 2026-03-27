@@ -16,7 +16,8 @@ public static class DecisionEngine
         var findingCount = inspection.Damages.Count;
 
         // Parse forensic module scores for fine-grained rules
-        var modules = ParseModuleScores(inspection.ForensicResult?.ModuleResultsJson);
+        var primaryForensic = inspection.ForensicResults.OrderBy(f => f.SortOrder).FirstOrDefault();
+        var modules = ParseModuleScores(primaryForensic?.ModuleResultsJson);
         var aiGenScore = modules.GetValueOrDefault("ai_generation_detection", 0);
         var spectralScore = modules.GetValueOrDefault("spectral_forensics", 0);
         var cnnScore = modules.GetValueOrDefault("deep_modification_detection", 0);

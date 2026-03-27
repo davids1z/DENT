@@ -74,6 +74,8 @@ public class DentDbContext : DbContext, IDentDbContext
         modelBuilder.Entity<ForensicResult>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.FileName).HasMaxLength(500);
+            entity.Property(e => e.FileUrl).HasMaxLength(1000);
             entity.Property(e => e.OverallRiskLevel).HasMaxLength(50);
             entity.Property(e => e.ModuleResultsJson).HasMaxLength(50000);
             entity.Property(e => e.ElaHeatmapUrl).HasMaxLength(1000);
@@ -83,10 +85,10 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.C2paStatus).HasMaxLength(50);
             entity.Property(e => e.C2paIssuer).HasMaxLength(500);
             entity.HasOne(e => e.Inspection)
-                .WithOne(i => i.ForensicResult)
-                .HasForeignKey<ForensicResult>(e => e.InspectionId)
+                .WithMany(i => i.ForensicResults)
+                .HasForeignKey(e => e.InspectionId)
                 .OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(e => e.InspectionId).IsUnique();
+            entity.HasIndex(e => e.InspectionId);
         });
 
         modelBuilder.Entity<DamageDetection>(entity =>

@@ -61,6 +61,7 @@ public record InspectionDto
     public double? FraudRiskScore { get; init; }
     public string? FraudRiskLevel { get; init; }
     public ForensicResultDto? ForensicResult { get; init; }
+    public List<ForensicResultDto> FileForensicResults { get; init; } = [];
 
     // Evidence integrity (Phase 8)
     public string? EvidenceHash { get; init; }
@@ -142,6 +143,9 @@ public record DecisionOverrideDto
 
 public record ForensicResultDto
 {
+    public string? FileName { get; init; }
+    public string? FileUrl { get; init; }
+    public int SortOrder { get; init; }
     public double OverallRiskScore { get; init; }
     public int OverallRiskScore100 { get; init; }
     public string OverallRiskLevel { get; init; } = "Low";

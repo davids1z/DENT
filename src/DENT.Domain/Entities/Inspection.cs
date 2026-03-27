@@ -78,5 +78,5 @@ public class Inspection
     public List<DamageDetection> Damages { get; set; } = [];
     public List<InspectionImage> AdditionalImages { get; set; } = [];
     public List<DecisionOverride> DecisionOverrides { get; set; } = [];
-    public ForensicResult? ForensicResult { get; set; }
+    public List<ForensicResult> ForensicResults { get; set; } = [];
 }

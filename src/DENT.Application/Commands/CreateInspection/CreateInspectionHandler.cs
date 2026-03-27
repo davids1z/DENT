@@ -189,104 +189,132 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
         try
         {
-            // ── Step 1: Run forensics on EACH uploaded file ──────────────
+            // ── Step 1: Run forensics on ALL files ─────────────────────
             // Each file gets its own forensic analysis (PDF→document modules,
             // image→AI detection modules). The highest-risk result becomes primary.
-            MlForensicResult? forensicResult = null;
+            MlForensicResult? primaryForensicResult = null;
+            ForensicResult? primaryFr = null;
             try
             {
-                var allForensicResults = new List<(string fileName, MlForensicResult result)>();
-                foreach (var image in data.AllImages)
+                // Build list of all files to analyze
+                var filesToAnalyze = new List<(byte[] Data, string FileName, string FileUrl, int SortOrder)>();
+                filesToAnalyze.Add((data.FirstImageData, data.FirstImageFileName, inspection.ImageUrl, 0));
+                for (int fi = 1; fi < data.AllImages.Count; fi++)
+                {
+                    var img = data.AllImages[fi];
+                    var additionalImg = inspection.AdditionalImages
+                        .FirstOrDefault(a => a.OriginalFileName == img.FileName);
+                    var fileUrl = additionalImg?.ImageUrl ?? "";
+                    filesToAnalyze.Add((img.Data, img.FileName, fileUrl, fi));
+                }
+
+                double maxRiskScore = 0;
+                string maxRiskLevel = "Low";
+
+                foreach (var (fileData, fileName, fileUrl, sortOrder) in filesToAnalyze)
                 {
                     try
                     {
-                        var fileResult = await mlService.RunForensicsAsync(
-                            image.Data, image.FileName, CancellationToken.None);
-                        allForensicResults.Add((image.FileName, fileResult));
+                        var forensicResult = await mlService.RunForensicsAsync(
+                            fileData, fileName, CancellationToken.None);
+
+                        string? elaUrl = null;
+                        if (forensicResult.ElaHeatmapB64 is not null)
+                        {
+                            var elaBytes = Convert.FromBase64String(forensicResult.ElaHeatmapB64);
+                            using var elaStream = new MemoryStream(elaBytes);
+                            var elaKey = await storage.UploadAsync(
+                                elaStream, $"ela_{inspection.Id}_{sortOrder}.png", "image/png", CancellationToken.None);
+                            elaUrl = storage.GetPublicUrl(elaKey);
+                        }
+
+                        string? fftUrl = null;
+                        if (forensicResult.FftSpectrumB64 is not null)
+                        {
+                            var fftBytes = Convert.FromBase64String(forensicResult.FftSpectrumB64);
+                            using var fftStream = new MemoryStream(fftBytes);
+                            var fftKey = await storage.UploadAsync(
+                                fftStream, $"fft_{inspection.Id}_{sortOrder}.png", "image/png", CancellationToken.None);
+                            fftUrl = storage.GetPublicUrl(fftKey);
+                        }
+
+                        string? spectralUrl = null;
+                        if (forensicResult.SpectralHeatmapB64 is not null)
+                        {
+                            var spectralBytes = Convert.FromBase64String(forensicResult.SpectralHeatmapB64);
+                            using var spectralStream = new MemoryStream(spectralBytes);
+                            var spectralKey = await storage.UploadAsync(
+                                spectralStream, $"spectral_{inspection.Id}_{sortOrder}.png", "image/png", CancellationToken.None);
+                            spectralUrl = storage.GetPublicUrl(spectralKey);
+                        }
+
+                        var fr = new ForensicResult
+                        {
+                            Id = Guid.NewGuid(),
+                            InspectionId = inspection.Id,
+                            FileName = fileName,
+                            FileUrl = fileUrl,
+                            SortOrder = sortOrder,
+                            OverallRiskScore = forensicResult.OverallRiskScore,
+                            OverallRiskScore100 = forensicResult.OverallRiskScore100,
+                            OverallRiskLevel = forensicResult.OverallRiskLevel,
+                            ModuleResultsJson = JsonSerializer.Serialize(forensicResult.Modules,
+                                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
+                            ElaHeatmapUrl = elaUrl,
+                            FftSpectrumUrl = fftUrl,
+                            SpectralHeatmapUrl = spectralUrl,
+                            PredictedSource = forensicResult.PredictedSource,
+                            SourceConfidence = forensicResult.SourceConfidence,
+                            C2paStatus = forensicResult.C2paStatus,
+                            C2paIssuer = forensicResult.C2paIssuer,
+                            TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
+                            VerdictProbabilitiesJson = forensicResult.VerdictProbabilities != null
+                                ? JsonSerializer.Serialize(forensicResult.VerdictProbabilities)
+                                : null,
+                        };
+                        db.ForensicResults.Add(fr);
+                        inspection.ForensicResults.Add(fr);
+
+                        if (sortOrder == 0)
+                        {
+                            primaryForensicResult = forensicResult;
+                            primaryFr = fr;
+                        }
+
+                        if (forensicResult.OverallRiskScore > maxRiskScore)
+                        {
+                            maxRiskScore = forensicResult.OverallRiskScore;
+                            maxRiskLevel = forensicResult.OverallRiskLevel;
+                        }
+
+                        custodyLog.Add(new EvidenceCustodyEvent
+                        {
+                            Event = "forensics_complete",
+                            Timestamp = DateTime.UtcNow,
+                            Hash = ComputeSha256(fr.ModuleResultsJson ?? "[]"),
+                            Details = $"file={fileName}, risk={forensicResult.OverallRiskScore:F2}",
+                        });
+
                         logger.LogInformation(
-                            "Forensics for {FileName}: risk={Risk:F2} ({Level})",
-                            image.FileName, fileResult.OverallRiskScore, fileResult.OverallRiskLevel);
+                            "Forensics complete for file {FileName} (sort={Sort}): risk={Risk:F2}",
+                            fileName, sortOrder, forensicResult.OverallRiskScore);
                     }
                     catch (Exception fileEx)
                     {
-                        logger.LogWarning(fileEx, "Forensics failed for {FileName}", image.FileName);
+                        logger.LogWarning(fileEx,
+                            "Forensic analysis failed for file {FileName} in inspection {Id}, continuing",
+                            fileName, inspection.Id);
                     }
                 }
 
-                // Use highest-risk result as primary
-                forensicResult = allForensicResults
-                    .OrderByDescending(r => r.result.OverallRiskScore)
-                    .Select(r => r.result)
-                    .FirstOrDefault()
-                    ?? await mlService.RunForensicsAsync(
-                        data.FirstImageData, data.FirstImageFileName, CancellationToken.None);
+                // Overall inspection risk = highest across all files
+                inspection.FraudRiskScore = maxRiskScore;
+                inspection.FraudRiskLevel = maxRiskLevel;
 
-                string? elaUrl = null;
-                if (forensicResult.ElaHeatmapB64 is not null)
+                if (primaryFr != null)
                 {
-                    var elaBytes = Convert.FromBase64String(forensicResult.ElaHeatmapB64);
-                    using var elaStream = new MemoryStream(elaBytes);
-                    var elaKey = await storage.UploadAsync(
-                        elaStream, $"ela_{inspection.Id}.png", "image/png", CancellationToken.None);
-                    elaUrl = storage.GetPublicUrl(elaKey);
+                    inspection.ForensicResultHash = ComputeSha256(primaryFr.ModuleResultsJson ?? "[]");
                 }
-
-                string? fftUrl = null;
-                if (forensicResult.FftSpectrumB64 is not null)
-                {
-                    var fftBytes = Convert.FromBase64String(forensicResult.FftSpectrumB64);
-                    using var fftStream = new MemoryStream(fftBytes);
-                    var fftKey = await storage.UploadAsync(
-                        fftStream, $"fft_{inspection.Id}.png", "image/png", CancellationToken.None);
-                    fftUrl = storage.GetPublicUrl(fftKey);
-                }
-
-                string? spectralUrl = null;
-                if (forensicResult.SpectralHeatmapB64 is not null)
-                {
-                    var spectralBytes = Convert.FromBase64String(forensicResult.SpectralHeatmapB64);
-                    using var spectralStream = new MemoryStream(spectralBytes);
-                    var spectralKey = await storage.UploadAsync(
-                        spectralStream, $"spectral_{inspection.Id}.png", "image/png", CancellationToken.None);
-                    spectralUrl = storage.GetPublicUrl(spectralKey);
-                }
-
-                inspection.FraudRiskScore = forensicResult.OverallRiskScore;
-                inspection.FraudRiskLevel = forensicResult.OverallRiskLevel;
-
-                var fr = new ForensicResult
-                {
-                    Id = Guid.NewGuid(),
-                    InspectionId = inspection.Id,
-                    OverallRiskScore = forensicResult.OverallRiskScore,
-                    OverallRiskScore100 = forensicResult.OverallRiskScore100,
-                    OverallRiskLevel = forensicResult.OverallRiskLevel,
-                    ModuleResultsJson = JsonSerializer.Serialize(forensicResult.Modules,
-                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
-                    ElaHeatmapUrl = elaUrl,
-                    FftSpectrumUrl = fftUrl,
-                    SpectralHeatmapUrl = spectralUrl,
-                    PredictedSource = forensicResult.PredictedSource,
-                    SourceConfidence = forensicResult.SourceConfidence,
-                    C2paStatus = forensicResult.C2paStatus,
-                    C2paIssuer = forensicResult.C2paIssuer,
-                    TotalProcessingTimeMs = forensicResult.TotalProcessingTimeMs,
-                    VerdictProbabilitiesJson = forensicResult.VerdictProbabilities != null
-                        ? JsonSerializer.Serialize(forensicResult.VerdictProbabilities)
-                        : null,
-                };
-                db.ForensicResults.Add(fr);
-                inspection.ForensicResult = fr;
-
-                var forensicJson = fr.ModuleResultsJson ?? "[]";
-                inspection.ForensicResultHash = ComputeSha256(forensicJson);
-                custodyLog.Add(new EvidenceCustodyEvent
-                {
-                    Event = "forensics_complete",
-                    Timestamp = DateTime.UtcNow,
-                    Hash = inspection.ForensicResultHash,
-                    Details = $"risk={inspection.FraudRiskScore:F2}",
-                });
             }
             catch (Exception fex)
             {
@@ -316,21 +344,21 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                 inspection.UrgencyLevel = result.UrgencyLevel;
 
                 // Safety net: override urgency if forensic risk is high
-                if (forensicResult != null
-                    && forensicResult.OverallRiskScore >= 0.40
+                if (primaryForensicResult != null
+                    && primaryForensicResult.OverallRiskScore >= 0.40
                     && (inspection.UrgencyLevel == null || inspection.UrgencyLevel == "Low"))
                 {
-                    inspection.UrgencyLevel = forensicResult.OverallRiskScore >= 0.65
+                    inspection.UrgencyLevel = primaryForensicResult.OverallRiskScore >= 0.65
                         ? "Critical" : "High";
                     logger.LogWarning(
                         "Urgency safety net: forensic risk {Risk:F2} overrode ML urgency to {Urgency} for inspection {Id}",
-                        forensicResult.OverallRiskScore, inspection.UrgencyLevel, inspection.Id);
+                        primaryForensicResult.OverallRiskScore, inspection.UrgencyLevel, inspection.Id);
                 }
 
                 // ── C# SAFETY NET: Summary & finding consistency ─────────
                 // Defence-in-depth: even after Python enforcement, verify that
                 // the summary and individual findings don't contradict forensics.
-                if (forensicResult != null && forensicResult.OverallRiskScore >= 0.40)
+                if (primaryForensicResult != null && primaryForensicResult.OverallRiskScore >= 0.40)
                 {
                     // Summary contradiction check (normalize: strip diacritics + lowercase)
                     var summaryNorm = (inspection.Summary ?? "")
@@ -348,14 +376,14 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
                     if (contradictions.Any(c => summaryNorm.Contains(c)))
                     {
-                        inspection.Summary = $"Forenzicka analiza utvrdila je visoku sumnju na manipulaciju (ukupni rizik: {forensicResult.OverallRiskScore:P0}).";
+                        inspection.Summary = $"Forenzicka analiza utvrdila je visoku sumnju na manipulaciju (ukupni rizik: {primaryForensicResult.OverallRiskScore:P0}).";
                         logger.LogWarning(
                             "C# safety net: summary contradicted forensics for inspection {Id}, overridden",
                             inspection.Id);
                     }
 
                     // Individual damage safety_rating check
-                    var isCriticalRisk = forensicResult.OverallRiskScore >= 0.75;
+                    var isCriticalRisk = primaryForensicResult.OverallRiskScore >= 0.75;
                     foreach (var dmg in result.Damages)
                     {
                         if (string.Equals(dmg.SafetyRating, "Safe", StringComparison.OrdinalIgnoreCase))
@@ -363,7 +391,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                             dmg.SafetyRating = isCriticalRisk ? "Critical" : "Warning";
                             if (string.Equals(dmg.Severity, "Minor", StringComparison.OrdinalIgnoreCase))
                                 dmg.Severity = isCriticalRisk ? "Critical"
-                                    : forensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
+                                    : primaryForensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
                             logger.LogWarning(
                                 "C# safety net: blocked Safe on cause={Cause} for inspection {Id}",
                                 dmg.DamageCause, inspection.Id);
@@ -379,10 +407,10 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
 
                         if (causeNorm is "autenticno" or "autenticna" or "authentic" or "autenticni")
                         {
-                            dmg.DamageCause = DeriveForensicCategory(forensicResult);
+                            dmg.DamageCause = DeriveForensicCategory(primaryForensicResult);
                             dmg.SafetyRating = isCriticalRisk ? "Critical" : "Warning";
                             dmg.Severity = isCriticalRisk ? "Critical"
-                                : forensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
+                                : primaryForensicResult.OverallRiskScore >= 0.65 ? "Severe" : "Moderate";
                             dmg.Description += " [C# safety net: forenzicki moduli ukazuju na visok rizik manipulacije.]";
                             logger.LogWarning(
                                 "C# safety net: blocked Autenticno damage_cause for inspection {Id}",
@@ -459,9 +487,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
                             ["damageCause"] = (object)(d.DamageCause ?? ""),
                             ["repairMethod"] = (object)(d.RepairMethod ?? ""),
                         }).ToList(),
-                        ForensicModules = inspection.ForensicResult != null
+                        ForensicModules = primaryFr != null
                             ? JsonSerializer.Deserialize<List<Dictionary<string, object>>>(
-                                inspection.ForensicResult.ModuleResultsJson ?? "[]",
+                                primaryFr.ModuleResultsJson ?? "[]",
                                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []
                             : [],
                         OverallForensicRiskScore = inspection.FraudRiskScore ?? 0,
@@ -636,7 +664,8 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         AgentProcessingTimeMs = i.AgentProcessingTimeMs,
         FraudRiskScore = i.FraudRiskScore,
         FraudRiskLevel = i.FraudRiskLevel,
-        ForensicResult = MapForensicResult(i.ForensicResult),
+        ForensicResult = MapForensicResult(i.ForensicResults.OrderBy(f => f.SortOrder).FirstOrDefault()),
+        FileForensicResults = i.ForensicResults.OrderBy(f => f.SortOrder).Select(f => MapForensicResult(f)!).ToList(),
         EvidenceHash = i.EvidenceHash,
         ImageHashes = ParseImageHashes(i.ImageHashesJson),
         ForensicResultHash = i.ForensicResultHash,
@@ -702,6 +731,9 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
         if (fr == null) return null;
         return new ForensicResultDto
         {
+            FileName = fr.FileName,
+            FileUrl = fr.FileUrl,
+            SortOrder = fr.SortOrder,
             OverallRiskScore = fr.OverallRiskScore,
             OverallRiskScore100 = fr.OverallRiskScore100,
             OverallRiskLevel = fr.OverallRiskLevel,

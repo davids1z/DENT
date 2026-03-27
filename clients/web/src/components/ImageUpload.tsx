@@ -102,7 +102,7 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
       {previews.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted">{files.length}/{MAX_IMAGES} slika</span>
+            <span className="text-sm text-muted">{files.length}/{MAX_IMAGES} datoteka</span>
             {files.length > 0 && !isLoading && (
               <button
                 onClick={() => { setFiles([]); setPreviews([]); }}
@@ -177,7 +177,7 @@ export function ImageUpload({ onUpload, isLoading }: ImageUploadProps) {
               Analiziranje...
             </span>
           ) : (
-            `Analiziraj ${files.length} ${files.length === 1 ? "sliku" : files.length < 5 ? "slike" : "slika"}`
+            `Analiziraj ${files.length} ${files.length === 1 ? "datoteku" : files.length < 5 ? "datoteke" : "datoteka"}`
           )}
         </button>
       )}
