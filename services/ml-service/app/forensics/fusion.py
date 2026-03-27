@@ -283,6 +283,7 @@ def fuse_scores(
     _RELIABLE_AI_DETECTORS = {
         "safe_ai_detection",
         "dinov2_ai_detection",
+        "bfree_detection",
         "community_forensics_detection",
         "efficientnet_ai_detection",
         "clip_ai_detection",
