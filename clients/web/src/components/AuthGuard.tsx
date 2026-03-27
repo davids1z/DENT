@@ -8,7 +8,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-[60dvh] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -16,7 +16,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center px-4">
+      <div className="min-h-[60dvh] flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center">
           <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-accent-light flex items-center justify-center">
             <svg className="w-8 h-8 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

@@ -46,7 +46,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           <Navbar />
-          <main className="min-h-[calc(100vh-64px)] pb-20 md:pb-0">
+          <main className="min-h-[calc(100dvh-56px)] pb-20 md:pb-0">
             <ErrorBoundary>
               {children}
             </ErrorBoundary>
