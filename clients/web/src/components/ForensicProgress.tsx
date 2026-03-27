@@ -24,6 +24,7 @@ export const IMAGE_STEPS: ForensicStep[] = [
   { id: "clip_ai_detection", label: "CLIP AI detekcija", status: "pending" },
   { id: "mesorch_detection", label: "Mesorch detekcija manipulacija", status: "pending" },
   { id: "bfree_detection", label: "B-Free AI detekcija", status: "pending" },
+  { id: "spai_detection", label: "SPAI spektralna detekcija", status: "pending" },
 ];
 
 export const DOCUMENT_STEPS: ForensicStep[] = [
@@ -52,6 +53,7 @@ const IMAGE_STEP_DURATIONS: Record<string, number> = {
   clip_ai_detection: 1,
   mesorch_detection: 1,
   bfree_detection: 1.5,
+  spai_detection: 2,
 };
 
 const DOCUMENT_STEP_DURATIONS: Record<string, number> = {

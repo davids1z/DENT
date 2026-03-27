@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     forensics_dinov2_ai_enabled: bool = True
     forensics_dinov2_ai_model: str = "facebook/dinov2-base"
 
+    # SPAI spectral AI detection (CVPR 2025, FFT + ViT, compression-invariant)
+    forensics_spai_enabled: bool = False
+    forensics_spai_model_dir: str = "/app/models/spai"
+
     # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators)
     forensics_bfree_enabled: bool = False
     forensics_bfree_model_dir: str = "/app/models/bfree"

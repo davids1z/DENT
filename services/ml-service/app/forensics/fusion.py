@@ -51,9 +51,11 @@ _AI_DETECTOR_MODULES = frozenset({
     "safe_ai_detection",
     "dinov2_ai_detection",
     "bfree_detection",
+    "spai_detection",
 })
 
 # Core AI detection modules — only these determine AI generation score
+# SPAI: CVPR 2025, frequency-domain, compression-invariant (Apache 2.0)
 # B-Free: CVPR 2025, bias-free DINOv2, 27 generators incl. Flux/SD 3.5
 # DINOv2: 0% FP on diverse auth (best discriminator, 0.55 separation)
 # SAFE: KDD 2025, JPEG-dampened (×0.70 for compression artifacts)
@@ -61,12 +63,14 @@ _AI_DETECTOR_MODULES = frozenset({
 # CLIP: retrained probe F1=0.746
 # Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.25,
-    "bfree_detection": 0.20,
-    "dinov2_ai_detection": 0.20,
-    "community_forensics_detection": 0.20,
+    "safe_ai_detection": 0.20,
+    "spai_detection": 0.15,
+    "bfree_detection": 0.15,
+    "dinov2_ai_detection": 0.15,
+    "community_forensics_detection": 0.15,
     "clip_ai_detection": 0.10,
     "ai_generation_detection": 0.05,
+    "efficientnet_ai_detection": 0.05,
 }
 
 
@@ -132,6 +136,7 @@ def fuse_scores(
     _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection"}
     _DAMPENING_INDEPENDENT = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
+        "spai_detection",                 # Frequency-domain spectral (CVPR 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",              # Language-vision embedding
     }
@@ -282,6 +287,7 @@ def fuse_scores(
     #   Independent: SAFE (pixel correlations), CommFor (4803 generators), CLIP (language-vision)
     _RELIABLE_AI_DETECTORS = {
         "safe_ai_detection",
+        "spai_detection",
         "dinov2_ai_detection",
         "bfree_detection",
         "community_forensics_detection",
@@ -290,10 +296,11 @@ def fuse_scores(
     }
     # For CONSENSUS: method-diverse detectors that must confirm.
     # EfficientNet is CNN-architecture (like DINOv2) — when both fire high
-    # but SAFE/CommFor/CLIP don't, that's CNN-family bias, not real AI.
-    # Keep consensus independent = SAFE/CommFor/CLIP only.
+    # but SAFE/CommFor/CLIP/SPAI don't, that's CNN-family bias, not real AI.
+    # SPAI is frequency-domain (truly independent from all pixel-domain methods).
     _INDEPENDENT_DETECTORS = {
         "safe_ai_detection",           # Pixel correlation (KDD 2025)
+        "spai_detection",              # Frequency-domain spectral (CVPR 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",           # Language-vision embedding
     }

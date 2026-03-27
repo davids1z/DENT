@@ -24,6 +24,7 @@ from .analyzers.semantic import SemanticForensicsAnalyzer
 from .analyzers.text_ai_detection import TextAiDetectionAnalyzer
 from .analyzers.content_validation import ContentValidationAnalyzer
 from .analyzers.bfree_detection import BFreeDetectionAnalyzer
+from .analyzers.spai_detection import SPAIDetectionAnalyzer
 from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
@@ -55,6 +56,7 @@ class ForensicPipeline:
         safe_ai_enabled: bool = True,
         dinov2_ai_enabled: bool = True,
         bfree_enabled: bool = False,
+        spai_enabled: bool = False,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
@@ -125,6 +127,9 @@ class ForensicPipeline:
         )
         self._bfree: BFreeDetectionAnalyzer | None = (
             BFreeDetectionAnalyzer() if bfree_enabled else None
+        )
+        self._spai: SPAIDetectionAnalyzer | None = (
+            SPAIDetectionAnalyzer() if spai_enabled else None
         )
         self._npr: NprDetectionAnalyzer | None = (
             NprDetectionAnalyzer() if npr_enabled else None
@@ -330,6 +335,8 @@ class ForensicPipeline:
             count += 1
         if self._bfree and self._bfree.MODULE_NAME not in skip:
             count += 1
+        if self._spai and self._spai.MODULE_NAME not in skip:
+            count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
             count += 1
         if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
@@ -361,6 +368,9 @@ class ForensicPipeline:
         if self._bfree:
             self._bfree._ensure_models()
             logger.info("B-Free AI detector ready")
+        if self._spai:
+            self._spai._ensure_models()
+            logger.info("SPAI spectral AI detector ready")
         if self._commfor:
             self._commfor._ensure_models()
             logger.info("Community Forensics model ready")
@@ -530,6 +540,8 @@ class ForensicPipeline:
                 all_analyzers.append((self._dinov2.MODULE_NAME, self._dinov2))
             if self._bfree and self._bfree.MODULE_NAME not in skip:
                 all_analyzers.append((self._bfree.MODULE_NAME, self._bfree))
+            if self._spai and self._spai.MODULE_NAME not in skip:
+                all_analyzers.append((self._spai.MODULE_NAME, self._spai))
             if self._commfor and self._commfor.MODULE_NAME not in skip:
                 all_analyzers.append((self._commfor.MODULE_NAME, self._commfor))
             if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
