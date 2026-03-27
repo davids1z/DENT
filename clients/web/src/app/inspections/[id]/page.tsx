@@ -121,6 +121,7 @@ export default function InspectionDetailPage() {
             decisionOutcome={inspection.decisionOutcome}
             decisionReason={inspection.decisionReason}
             verdictProbabilities={inspection.forensicResult.verdictProbabilities}
+            fileName={inspection.originalFileName}
           />
         </div>
       )}
@@ -128,7 +129,7 @@ export default function InspectionDetailPage() {
       {/* ── 2. IMAGE + FINDINGS ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
-          <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} />
+          <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} fileName={inspection.originalFileName} />
           <ImageGallery primaryImageUrl={inspection.imageUrl} additionalImages={inspection.additionalImages} activeImageUrl={activeImageUrl || inspection.imageUrl} onSelect={handleImageSelect} />
           <GlassPanel>
             <div className="text-xs text-muted">

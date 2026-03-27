@@ -336,6 +336,10 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
   const fileIndexRef = useRef(0);
   const isMultiFile = (files?.length ?? 0) > 1;
 
+  // Detect single-file type for proper step selection
+  const singleFileName = (!isMultiFile && files?.[0]?.name) || "";
+  const isSingleDoc = singleFileName ? isDocumentFile(singleFileName) : false;
+
   // Reset whenever analysis starts
   useEffect(() => {
     if (!isActive) return;
@@ -357,15 +361,18 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
       stepElapsedRef.current = 0;
       setProgress(0);
     } else {
-      // Single-file mode (original behavior)
-      const fresh = createForensicSteps();
+      // Single-file mode — pick steps based on file type
+      const baseSteps = isSingleDoc
+        ? DOCUMENT_STEPS.map((s) => ({ ...s }))
+        : IMAGE_STEPS.map((s) => ({ ...s }));
+      const fresh = [...baseSteps, ...SHARED_STEPS.map((s) => ({ ...s }))];
       fresh[0].status = "active";
       setSteps(fresh);
       setProgress(0);
       stepIndexRef.current = 0;
       stepElapsedRef.current = 0;
     }
-  }, [isActive, isMultiFile]);
+  }, [isActive, isMultiFile, isSingleDoc]);
 
   // Tick every 500ms — multi-file mode
   useEffect(() => {
@@ -467,9 +474,16 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
   useEffect(() => {
     if (!isActive || isMultiFile) return;
 
-    const stepIds = DEFAULT_STEPS.map((s) => s.id);
-    const lastStepIndex = DEFAULT_STEPS.length - 1;
-    const totalEstDuration = Object.values(STEP_DURATIONS).reduce((a, b) => a + b, 0);
+    const currentSteps = isSingleDoc
+      ? [...DOCUMENT_STEPS, ...SHARED_STEPS]
+      : [...IMAGE_STEPS, ...SHARED_STEPS];
+    const currentDurations = isSingleDoc
+      ? { ...DOCUMENT_STEP_DURATIONS, ...SHARED_STEP_DURATIONS }
+      : { ...IMAGE_STEP_DURATIONS, ...SHARED_STEP_DURATIONS };
+
+    const stepIds = currentSteps.map((s) => s.id);
+    const lastStepIndex = currentSteps.length - 1;
+    const totalEstDuration = Object.values(currentDurations).reduce((a, b) => a + b, 0);
     const tick = 0.5; // seconds per interval
 
     const interval = setInterval(() => {
@@ -480,7 +494,7 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
       if (idx > lastStepIndex) return;
 
       const currentId = stepIds[idx];
-      const duration = STEP_DURATIONS[currentId] || 3;
+      const duration = currentDurations[currentId] || 3;
 
       // Last step: NEVER auto-complete — keep it spinning until complete() is called.
       // Slowly creep progress from ~90% toward 98% using asymptotic curve.
@@ -508,8 +522,8 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
 
       const completedDuration = stepIds
         .slice(0, stepIndexRef.current)
-        .reduce((sum, id) => sum + (STEP_DURATIONS[id] || 3), 0);
-      const currentDuration = STEP_DURATIONS[stepIds[stepIndexRef.current]] || 3;
+        .reduce((sum, id) => sum + (currentDurations[id] || 3), 0);
+      const currentDuration = currentDurations[stepIds[stepIndexRef.current]] || 3;
       const withinStep = Math.min(stepElapsedRef.current / currentDuration, 0.95);
       const totalProg = (completedDuration + withinStep * currentDuration) / totalEstDuration;
 
@@ -517,7 +531,7 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
     }, tick * 1000);
 
     return () => clearInterval(interval);
-  }, [isActive, isMultiFile]);
+  }, [isActive, isMultiFile, isSingleDoc]);
 
   /**
    * Call when the real API result arrives.

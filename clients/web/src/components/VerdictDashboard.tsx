@@ -18,6 +18,7 @@ interface VerdictDashboardProps {
   decisionOutcome?: string | null;
   decisionReason?: string | null;
   verdictProbabilities?: Record<string, number> | null;
+  fileName?: string;
 }
 
 // 3-class verdict from risk score
@@ -263,8 +264,11 @@ export function VerdictDashboard({
   decisionOutcome,
   decisionReason,
   verdictProbabilities,
+  fileName,
 }: VerdictDashboardProps) {
   const [animated, setAnimated] = useState(false);
+  const isDocument = fileName ? ["pdf", "docx", "xlsx", "doc", "xls"].includes(fileName.split(".").pop()?.toLowerCase() ?? "") : false;
+  const contentWord = isDocument ? "DOKUMENT" : "SLIKA";
 
   // Use REAL meta-learner probabilities if available, else heuristic fallback
   const verdict = verdictProbabilities
@@ -275,9 +279,9 @@ export function VerdictDashboard({
         const maxVal = Math.max(a, ai, t);
         const cls: VerdictClass = maxVal === ai ? "ai_generated" : maxVal === t ? "tampered" : "authentic";
         const labels: Record<VerdictClass, string> = {
-          authentic: "AUTENTIČNA FOTOGRAFIJA",
-          ai_generated: "UMJETNO GENERIRANA SLIKA",
-          tampered: "DIGITALNO IZMIJENJENA SLIKA",
+          authentic: isDocument ? "AUTENTIČAN DOKUMENT" : "AUTENTIČNA FOTOGRAFIJA",
+          ai_generated: `UMJETNO GENERIRANA ${contentWord}`,
+          tampered: `DIGITALNO IZMIJENJENA ${contentWord}`,
         };
         return {
           cls,
@@ -287,6 +291,13 @@ export function VerdictDashboard({
         };
       })()
     : getVerdict(riskScore, riskLevel);
+
+  // Override labels for documents
+  if (isDocument && !verdictProbabilities) {
+    if (verdict.cls === "authentic") verdict.label = "AUTENTIČAN DOKUMENT";
+    else if (verdict.cls === "ai_generated") verdict.label = `UMJETNO GENERIRAN ${contentWord}`;
+    else if (verdict.cls === "tampered") verdict.label = `DIGITALNO IZMIJENJEN ${contentWord}`;
+  }
 
   const riskPercent = riskScore * 100;
   const badge = getVerdictBadge(riskPercent);
@@ -347,7 +358,7 @@ export function VerdictDashboard({
           </p>
 
           <ModuleBar
-            label="Autentična slika"
+            label={isDocument ? "Autentičan dokument" : "Autentična slika"}
             value={verdict.scores.authentic}
             color="#22c55e"
             animated={animated}

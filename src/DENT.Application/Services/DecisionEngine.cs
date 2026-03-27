@@ -140,7 +140,7 @@ public static class DecisionEngine
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Upload s povisenim rizikom",
-            RuleDescription = "Slika uploadana (ne slikana kamerom) uz povisenu forenzicku sumnju",
+            RuleDescription = "Datoteka uploadana (ne slikana kamerom) uz povisenu forenzicku sumnju",
             Triggered = uploadWithRisk,
             ThresholdValue = "Upload + >= 25% rizik",
             ActualValue = $"Izvor: {inspection.CaptureSource ?? "N/A"}, Rizik: {fraudRiskScore:P0}",
@@ -173,7 +173,7 @@ public static class DecisionEngine
             if (hasHighFraud) reasons.Add($"povisen forenzicki rizik ({fraudRiskScore:P0})");
             if (hasSevereFinding) reasons.Add("ozbiljni nalazi AI analize");
             if (findingCount > 3) reasons.Add($"{findingCount} sumnjivih nalaza");
-            if (uploadWithRisk) reasons.Add("slika uploadana uz forenzicku sumnju");
+            if (uploadWithRisk) reasons.Add("datoteka uploadana uz forenzicku sumnju");
             if (cnnScore >= 0.50) reasons.Add($"CNN detektor: {cnnScore:P0}");
             reason = $"Potreban pregled: {string.Join(", ", reasons)}";
         }
