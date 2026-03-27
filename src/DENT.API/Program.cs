@@ -70,31 +70,45 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-// Rate limiting
-builder.Services.AddRateLimiter(options =>
+// Rate limiting (disabled in Development/test for integration tests)
+if (!builder.Environment.IsDevelopment())
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    options.AddPolicy("auth", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(5),
-                QueueLimit = 0,
-            }));
+        options.AddPolicy("auth", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(5),
+                    QueueLimit = 0,
+                }));
 
-    options.AddPolicy("api", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 60,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 2,
-            }));
-});
+        options.AddPolicy("api", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 2,
+                }));
+    });
+}
+else
+{
+    // No-op rate limiter for development/test
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.AddPolicy("auth", _ =>
+            RateLimitPartition.GetNoLimiter("dev"));
+        options.AddPolicy("api", _ =>
+            RateLimitPartition.GetNoLimiter("dev"));
+    });
+}
 
 // CORS
 builder.Services.AddCors(options =>
@@ -114,7 +128,11 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DentDbContext>();
-    await db.Database.MigrateAsync();
+    // MigrateAsync only works with relational providers (not InMemory for tests)
+    if (db.Database.IsRelational())
+        await db.Database.MigrateAsync();
+    else
+        await db.Database.EnsureCreatedAsync();
 
     var adminEmail = app.Configuration["Admin:Email"] ?? "admin@dent.hr";
     var adminPassword = app.Configuration["Admin:Password"];
@@ -144,11 +162,12 @@ using (var scope = app.Services.CreateScope())
     var admin = await db.Users.FirstOrDefaultAsync(u => u.Email == adminEmail);
     if (admin is not null)
     {
-        var orphaned = await db.Inspections.Where(i => i.UserId == null).CountAsync();
-        if (orphaned > 0)
+        var orphaned = await db.Inspections.Where(i => i.UserId == null).ToListAsync();
+        if (orphaned.Count > 0)
         {
-            await db.Inspections.Where(i => i.UserId == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(i => i.UserId, admin.Id));
+            foreach (var insp in orphaned)
+                insp.UserId = admin.Id;
+            await db.SaveChangesAsync();
         }
     }
 }
@@ -181,3 +200,6 @@ app.MapGet("/api/health", (IAnalysisQueue queue) =>
 });
 
 app.Run();
+
+// Required for WebApplicationFactory in integration tests
+public partial class Program { }
