@@ -1282,17 +1282,30 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
                         for line in block.get("lines", []):
                             for span in line.get("spans", []):
                                 span_rect = fitz.Rect(span["bbox"])
-                                # Check if rectangle covers this text span
                                 if rect.contains(span_rect) or rect.intersects(span_rect):
-                                    overlap = rect & span_rect  # intersection
+                                    overlap = rect & span_rect
                                     if overlap.width > span_rect.width * 0.5:
                                         text = span.get("text", "").strip()
-                                        if text:
-                                            hidden_chars += len(text)
-                                            if len(hidden_texts) < 3:
-                                                hidden_texts.append(text[:50])
+                                        if not text:
+                                            continue
 
-                    if hidden_chars > 2:
+                                        # Skip VISIBLE text on colored background
+                                        # (white/light text on dark rect = normal design)
+                                        text_color = span.get("color", 0)
+                                        if isinstance(text_color, int):
+                                            tr = (text_color >> 16) & 0xFF
+                                            tg = (text_color >> 8) & 0xFF
+                                            tb = text_color & 0xFF
+                                            text_bright = (0.299*tr + 0.587*tg + 0.114*tb) / 255.0
+                                            # Light text on dark background = header/design
+                                            if text_bright > 0.55:
+                                                continue
+
+                                        hidden_chars += len(text)
+                                        if len(hidden_texts) < 3:
+                                            hidden_texts.append(text[:50])
+
+                    if hidden_chars > 5:
                         fake_redactions.append({
                             "page": page_idx + 1,
                             "rect": [round(rect.x0, 1), round(rect.y0, 1),
@@ -1750,12 +1763,14 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
 
                 # 3. Normalize both texts for comparison
                 def _normalize(t: str) -> str:
-                    # Strip non-printable / replacement chars that cause
-                    # false mismatches with OCR output (Latin-2/WinAnsi
-                    # encoded PDFs produce replacement chars for č/š/ž)
+                    # Strip replacement chars and encoding artifacts
                     t = t.replace("\ufffd", "")  # U+FFFD replacement char
-                    # Remove isolated special chars that OCR won't reproduce
-                    t = re.sub(r"[^\w\s.,;:!?€$%&/()=+\-@#]", "", t)
+                    # Remove all non-ASCII non-letter chars that differ
+                    # between text extraction and OCR due to encoding
+                    # (Latin-2/WinAnsi č/š/ž → garbled in extraction)
+                    t = re.sub(r"[^\x20-\x7E]", "", t)  # Keep only ASCII printable
+                    # Remove punctuation that OCR often garbles
+                    t = re.sub(r"[^\w\s]", " ", t)
                     # Collapse whitespace, lowercase
                     t = re.sub(r"\s+", " ", t).strip().lower()
                     return t
