@@ -508,18 +508,116 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
     return () => clearInterval(interval);
   }, [isActive, isMultiFile]);
 
-  /** Call when the real API result arrives — instantly completes all remaining steps. */
-  const complete = useCallback(() => {
-    setSteps((prev) => prev.map((s) => ({ ...s, status: "complete" as const })));
-    setFileProgresses((prev) =>
-      prev.map((fp) => ({
-        ...fp,
-        status: "complete" as const,
-        steps: fp.steps.map((s) => ({ ...s, status: "complete" as const })),
-      }))
-    );
-    setProgress(1);
-  }, []);
+  /**
+   * Call when the real API result arrives.
+   * Rapidly cascades through remaining steps (120ms each) so the user
+   * sees every step turn green, then resolves the returned Promise.
+   */
+  const complete = useCallback((): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      // Stop the normal tick timers by pushing index past the end
+      stepIndexRef.current = 999;
+      fileIndexRef.current = 999;
+
+      // Collect all remaining pending/active steps across single + multi-file
+      const CASCADE_MS = 120;
+
+      // Single-file mode: cascade steps
+      setSteps((prev) => {
+        const remaining = prev.filter((s) => s.status !== "complete");
+        if (remaining.length === 0) {
+          setProgress(1);
+          resolve();
+          return prev;
+        }
+
+        let delay = 0;
+        for (const step of remaining) {
+          const id = step.id;
+          delay += CASCADE_MS;
+          setTimeout(() => {
+            setSteps((cur) =>
+              cur.map((s) => (s.id === id ? { ...s, status: "complete" as const } : s))
+            );
+          }, delay);
+        }
+        setTimeout(() => {
+          setProgress(1);
+        }, delay);
+        // Don't resolve yet — multi-file cascade below handles its own resolve
+        if (!isMultiFile) {
+          setTimeout(resolve, delay + 200);
+        }
+        return prev;
+      });
+
+      // Multi-file mode: cascade file-by-file, step-by-step
+      setFileProgresses((prev) => {
+        if (prev.length === 0) {
+          if (isMultiFile) resolve();
+          return prev;
+        }
+        let delay = 0;
+        for (let fi = 0; fi < prev.length; fi++) {
+          const fp = prev[fi];
+          const pendingSteps = fp.steps.filter((s) => s.status !== "complete");
+          for (const step of pendingSteps) {
+            delay += CASCADE_MS;
+            const capturedFi = fi;
+            const capturedStepId = step.id;
+            setTimeout(() => {
+              setFileProgresses((cur) =>
+                cur.map((f, idx) =>
+                  idx === capturedFi
+                    ? {
+                        ...f,
+                        status: f.steps.every((s) => s.id === capturedStepId || s.status === "complete")
+                          ? ("complete" as const)
+                          : ("active" as const),
+                        steps: f.steps.map((s) =>
+                          s.id === capturedStepId ? { ...s, status: "complete" as const } : s
+                        ),
+                      }
+                    : f
+                )
+              );
+            }, delay);
+          }
+          // Mark file complete after its steps
+          delay += CASCADE_MS;
+          const capturedFi2 = fi;
+          setTimeout(() => {
+            setFileProgresses((cur) =>
+              cur.map((f, idx) =>
+                idx === capturedFi2
+                  ? {
+                      ...f,
+                      status: "complete" as const,
+                      steps: f.steps.map((s) => ({ ...s, status: "complete" as const })),
+                    }
+                  : f
+              )
+            );
+          }, delay);
+        }
+        // Smooth progress ramp
+        const totalDelay = delay;
+        const progressInterval = setInterval(() => {
+          setProgress((p) => {
+            const next = Math.min(p + 0.05, 1);
+            if (next >= 1) clearInterval(progressInterval);
+            return next;
+          });
+        }, CASCADE_MS);
+        setTimeout(() => {
+          clearInterval(progressInterval);
+          setProgress(1);
+          resolve();
+        }, totalDelay + 200);
+        return prev;
+      });
+    });
+  }, [isMultiFile]);
 
   /** Reset to initial state. */
   const reset = useCallback(() => {

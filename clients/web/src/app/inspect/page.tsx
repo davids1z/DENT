@@ -68,7 +68,9 @@ export default function InspectPage() {
         throw new Error(inspection.errorMessage || "Analiza nije uspjela");
       }
 
-      forensicProgress.complete();
+      // Rapidly cascade remaining steps to green, then show result
+      await forensicProgress.complete();
+
       setResult(inspection);
       setActiveImageUrl(inspection.imageUrl);
     } catch (e) {
