@@ -1319,6 +1319,11 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
             doc.close()
 
         if fake_redactions:
+            # Many rects with text underneath (>8) = likely table/form layout,
+            # not targeted redaction. Real fake redactions are surgical: 1-5 rects.
+            if len(fake_redactions) > 8:
+                return  # Table layout, not redaction
+
             total_hidden = sum(r["hidden_chars"] for r in fake_redactions)
             findings.append(
                 AnalyzerFinding(
