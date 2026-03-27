@@ -254,7 +254,7 @@ export interface VehicleContext {
 const UPLOAD_TIMEOUT_MS = 120_000;
 
 /** Poll interval for checking analysis completion. */
-const POLL_INTERVAL_MS = 3_000;
+const POLL_INTERVAL_MS = 1_000;
 
 /** Max time to poll before giving up (5 minutes). */
 const POLL_MAX_MS = 300_000;

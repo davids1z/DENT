@@ -171,7 +171,7 @@ function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
         fontWeight="900"
         style={{
           opacity: animated ? 1 : 0,
-          transition: "opacity 0.8s ease-in 0.5s",
+          transition: "opacity 0.4s ease-in 0.2s",
         }}
       >
         {animated ? value.toFixed(1) : "0.0"}%
@@ -213,7 +213,7 @@ function ModuleBar({
       </div>
       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div
-          className="h-full rounded-full transition-all duration-[1200ms] ease-out"
+          className="h-full rounded-full transition-all duration-[600ms] ease-out"
           style={{
             width: animated ? `${value}%` : "0%",
             backgroundColor: color,
@@ -303,7 +303,7 @@ export function VerdictDashboard({
   const badge = getVerdictBadge(riskPercent);
 
   useEffect(() => {
-    const timer = setTimeout(() => setAnimated(true), 100);
+    const timer = setTimeout(() => setAnimated(true), 30);
     return () => clearTimeout(timer);
   }, []);
 
@@ -327,7 +327,7 @@ export function VerdictDashboard({
       {/* Verdict Badge — hidden when decision outcome already shown (avoids contradictions) */}
       {!decisionOutcome && <div
         className={cn(
-          "flex justify-center mb-6 transition-opacity duration-500",
+          "flex justify-center mb-6 transition-opacity duration-200",
           animated ? "opacity-100" : "opacity-0"
         )}
       >

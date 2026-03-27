@@ -86,7 +86,7 @@ h3 { font-weight: 600; }
 .skeleton {
   background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+  animation: shimmer 0.9s infinite;
 }
 
 /* ========== SCROLLBAR ========== */
@@ -113,7 +113,7 @@ h3 { font-weight: 600; }
 
 /* ========== GAUGE ========== */
 .gauge-fill-animation {
-  transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ========== SECTION DIVIDER ========== */

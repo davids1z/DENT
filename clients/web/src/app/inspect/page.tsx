@@ -73,7 +73,6 @@ export default function InspectPage() {
       }
 
       await forensicProgress.complete();
-      await new Promise((r) => setTimeout(r, 1000));
 
       // Show the first completed inspection result
       const firstCompleted = inspections.find((i) => i.status === "Completed") || inspections[0];

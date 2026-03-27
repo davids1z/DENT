@@ -110,7 +110,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
                     <div className="flex items-center gap-2 mt-3">
                       <span className="text-[10px] text-slate-400 flex-shrink-0">Rizik</span>
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${risk * 100}%`, backgroundColor: color }} />
+                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${risk * 100}%`, backgroundColor: color }} />
                       </div>
                       <span className="text-xs text-slate-500 font-mono">{Math.round(risk * 100)}%</span>
                     </div>
@@ -212,7 +212,7 @@ function FindingCard({ damage: d, index, isSelected, onSelect, forensicResult }:
           <div className="flex items-center gap-2 mt-3">
             <span className="text-[10px] text-slate-400 flex-shrink-0">Pouzdanost</span>
             <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${d.confidence * 100}%`, backgroundColor: borderColor }} />
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${d.confidence * 100}%`, backgroundColor: borderColor }} />
             </div>
             <span className="text-xs text-slate-500 font-mono">{Math.round(d.confidence * 100)}%</span>
           </div>

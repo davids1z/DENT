@@ -168,7 +168,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className={cn(
-                "h-full rounded-full transition-all duration-500 ease-out",
+                "h-full rounded-full transition-all duration-300 ease-out",
                 allComplete ? "bg-emerald-500" : "bg-accent"
               )}
               style={{ width: `${Math.round(progress * 100)}%` }}
@@ -298,7 +298,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className={cn(
-              "h-full rounded-full transition-all duration-500 ease-out",
+              "h-full rounded-full transition-all duration-300 ease-out",
               allComplete ? "bg-emerald-500" : "bg-accent"
             )}
             style={{ width: `${Math.round(progress * 100)}%` }}
@@ -570,7 +570,7 @@ export function useForensicProgress(isActive: boolean, files?: File[]) {
     fileIndexRef.current = 999;
 
     return new Promise<void>((resolve) => {
-      const TICK = 250; // ms between each step turning green
+      const TICK = 120; // ms between each step turning green
 
       const iv = setInterval(() => {
         let madeProgress = false;
