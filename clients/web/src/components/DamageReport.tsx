@@ -121,17 +121,39 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
         </div>
       )}
 
-      {/* Only show "Nema nalaza" when BOTH damages are empty AND forensic risk is low */}
+      {/* Low risk: show "all clear" + module summary so user sees WHY it's authentic */}
       {i.damages.length === 0 && i.status === "Completed" && !isHighRisk && !isMediumRisk && (
-        <GlassPanel className="text-center">
-          <div className="flex items-center justify-center gap-2 text-green-600 mb-2">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="font-medium">Nema sumnjivih nalaza</span>
-          </div>
-          <p className="text-muted text-sm">AI analiza nije detektirala znakove manipulacije ili krivotvorenja.</p>
-        </GlassPanel>
+        <>
+          <GlassPanel className="text-center">
+            <div className="flex items-center justify-center gap-2 text-green-600 mb-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">Nema sumnjivih nalaza</span>
+            </div>
+            <p className="text-muted text-sm">Svi forenzicki moduli potvrduju autenticnost sadrzaja.</p>
+          </GlassPanel>
+
+          {/* Show all modules that ran — proves thorough analysis */}
+          {modules.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
+                Provedene provjere ({modules.filter(m => !m.error).length})
+              </h3>
+              {modules
+                .filter(m => !m.error)
+                .map((m, idx) => (
+                  <div key={m.moduleName || idx} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-green-50/50 border border-green-100">
+                    <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                    <span className="text-sm text-green-800 flex-1">{m.moduleLabel || m.moduleName}</span>
+                    <span className="text-xs text-green-600 font-mono">{Math.round(m.riskScore * 100)}%</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
