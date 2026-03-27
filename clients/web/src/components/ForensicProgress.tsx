@@ -37,26 +37,26 @@ const SHARED_STEPS: ForensicStep[] = [
 ];
 
 /**
- * Durations tuned for parallel backend execution.
- * Image modules run simultaneously (~15s wall clock).
- * Document modules run in parallel (~3s).
+ * Durations tuned so all steps finish BEFORE the backend returns (~7-15s).
+ * The last step ("evidence") stays spinning until the real result arrives.
+ * Image: 8 steps × ~1s = ~8s, Document: 4 steps × ~0.8s = ~3s.
  */
 const IMAGE_STEP_DURATIONS: Record<string, number> = {
-  metadata_analysis: 1,
-  modification_detection: 2,
-  safe_ai_detection: 2,
-  dinov2_ai_detection: 2,
-  community_forensics_detection: 2,
-  efficientnet_ai_detection: 2,
-  clip_ai_detection: 2,
-  mesorch_detection: 2,
+  metadata_analysis: 0.8,
+  modification_detection: 1,
+  safe_ai_detection: 1,
+  dinov2_ai_detection: 1,
+  community_forensics_detection: 1,
+  efficientnet_ai_detection: 1,
+  clip_ai_detection: 1,
+  mesorch_detection: 1,
 };
 
 const DOCUMENT_STEP_DURATIONS: Record<string, number> = {
-  document_forensics: 2,
-  text_ai_detection: 2,
-  content_validation: 2,
-  embedded_images: 3,
+  document_forensics: 0.8,
+  text_ai_detection: 0.8,
+  content_validation: 0.8,
+  embedded_images: 1,
 };
 
 const SHARED_STEP_DURATIONS: Record<string, number> = {
@@ -71,7 +71,6 @@ const DEFAULT_STEPS: ForensicStep[] = [
 
 const STEP_DURATIONS: Record<string, number> = {
   ...IMAGE_STEP_DURATIONS,
-  gemini: 18,
   ...SHARED_STEP_DURATIONS,
 };
 

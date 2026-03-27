@@ -68,8 +68,10 @@ export default function InspectPage() {
         throw new Error(inspection.errorMessage || "Analiza nije uspjela");
       }
 
-      // Rapidly cascade remaining steps to green, then show result
+      // Rapidly cascade remaining steps to green, then show result.
+      // The 1s pause lets the user see the "all complete" state.
       await forensicProgress.complete();
+      await new Promise((r) => setTimeout(r, 1000));
 
       setResult(inspection);
       setActiveImageUrl(inspection.imageUrl);
