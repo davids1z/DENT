@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { uploadInspection, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
+import { uploadInspections, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
 import { ImageUpload } from "@/components/ImageUpload";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
@@ -58,23 +58,32 @@ export default function InspectPage() {
     setUploadedFiles(files);
 
     try {
-      // Upload returns immediately with status=Analyzing
-      const created = await uploadInspection(files);
+      // Each file becomes a SEPARATE inspection
+      const created = await uploadInspections(files);
 
-      // Poll until analysis completes in background
-      const inspection = await pollInspectionUntilComplete(created.id);
+      // Poll ALL inspections in parallel
+      const inspections = await Promise.all(
+        created.map((c) => pollInspectionUntilComplete(c.id))
+      );
 
-      if (inspection.status === "Failed") {
-        throw new Error(inspection.errorMessage || "Analiza nije uspjela");
+      const failed = inspections.filter((i) => i.status === "Failed");
+      if (failed.length === inspections.length) {
+        throw new Error(failed[0]?.errorMessage || "Analiza nije uspjela");
       }
 
-      // Rapidly cascade remaining steps to green, then show result.
-      // The 1s pause lets the user see the "all complete" state.
       await forensicProgress.complete();
       await new Promise((r) => setTimeout(r, 1000));
 
-      setResult(inspection);
-      setActiveImageUrl(inspection.imageUrl);
+      // Show the first completed inspection as result
+      const firstCompleted = inspections.find((i) => i.status === "Completed") || inspections[0];
+      setResult(firstCompleted);
+      setActiveImageUrl(firstCompleted.imageUrl);
+
+      // If multiple files, redirect to inspections list so user sees all
+      if (files.length > 1) {
+        window.location.href = "/inspections";
+        return;
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Doslo je do greske");
     } finally {

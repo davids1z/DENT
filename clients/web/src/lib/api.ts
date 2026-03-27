@@ -298,7 +298,90 @@ export async function uploadInspectionWithMetadata(
   }
 }
 
+/**
+ * Upload files as SEPARATE inspections — one inspection per file.
+ * Each file appears as its own entry in the "Analize" list.
+ */
 export async function uploadInspection(
+  files: File[],
+  vehicle?: VehicleContext
+): Promise<Inspection> {
+  // Upload each file as a separate inspection
+  const uploads = files.map(async (file) => {
+    const formData = new FormData();
+    formData.append("images", file);
+    if (vehicle?.vehicleMake) formData.append("vehicleMake", vehicle.vehicleMake);
+    if (vehicle?.vehicleModel) formData.append("vehicleModel", vehicle.vehicleModel);
+    if (vehicle?.vehicleYear) formData.append("vehicleYear", String(vehicle.vehicleYear));
+    if (vehicle?.mileage) formData.append("mileage", String(vehicle.mileage));
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(`${API_BASE}/inspections`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(err.error || `Upload failed: ${res.status}`);
+      }
+
+      return res.json() as Promise<Inspection>;
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  // Upload all in parallel, return the first one for immediate display
+  const results = await Promise.all(uploads);
+  return results[0];
+}
+
+/**
+ * Upload files as separate inspections and return ALL inspection IDs.
+ */
+export async function uploadInspections(
+  files: File[],
+  vehicle?: VehicleContext
+): Promise<Inspection[]> {
+  const uploads = files.map(async (file) => {
+    const formData = new FormData();
+    formData.append("images", file);
+    if (vehicle?.vehicleMake) formData.append("vehicleMake", vehicle.vehicleMake);
+    if (vehicle?.vehicleModel) formData.append("vehicleModel", vehicle.vehicleModel);
+    if (vehicle?.vehicleYear) formData.append("vehicleYear", String(vehicle.vehicleYear));
+    if (vehicle?.mileage) formData.append("mileage", String(vehicle.mileage));
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(`${API_BASE}/inspections`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(err.error || `Upload failed: ${res.status}`);
+      }
+
+      return res.json() as Promise<Inspection>;
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  return Promise.all(uploads);
+}
+
+// Legacy compatibility — kept for old code paths
+async function _uploadSingleInspection(
   files: File[],
   vehicle?: VehicleContext
 ): Promise<Inspection> {
