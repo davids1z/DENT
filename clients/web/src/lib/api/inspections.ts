@@ -5,6 +5,67 @@ const UPLOAD_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 1_000;
 const POLL_MAX_MS = 300_000;
 
+// ---------------------------------------------------------------------------
+// Client-side image compression — reduces upload from 5-10MB to ~150-300KB
+// ---------------------------------------------------------------------------
+const COMPRESS_MAX_DIM = 1536; // px — enough for all ML models (max input 518px)
+const COMPRESS_QUALITY = 0.80; // JPEG quality
+
+/**
+ * Compress an image File on the client using canvas.
+ * Returns a smaller JPEG Blob. Skips non-image files (PDFs, DOCX).
+ */
+async function compressImage(file: File): Promise<File> {
+  // Skip non-image files
+  if (!file.type.startsWith("image/")) return file;
+
+  return new Promise<File>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Downscale if larger than max dimension
+      if (width > COMPRESS_MAX_DIM || height > COMPRESS_MAX_DIM) {
+        const ratio = Math.min(COMPRESS_MAX_DIM / width, COMPRESS_MAX_DIM / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size < file.size) {
+            // Use compressed version (rename to .jpg)
+            const name = file.name.replace(/\.[^.]+$/, ".jpg");
+            resolve(new File([blob], name, { type: "image/jpeg" }));
+          } else {
+            // Compressed is larger (tiny image) — use original
+            resolve(file);
+          }
+          URL.revokeObjectURL(img.src);
+        },
+        "image/jpeg",
+        COMPRESS_QUALITY,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      resolve(file); // fallback to original on error
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/** Compress multiple files in parallel. */
+async function compressFiles(files: File[]): Promise<File[]> {
+  return Promise.all(files.map(compressImage));
+}
+
 /**
  * Upload files as a single inspection with all images.
  * Optionally include capture metadata (GPS, device) and vehicle context.
@@ -16,8 +77,9 @@ export async function uploadInspection(
     vehicle?: VehicleContext;
   },
 ): Promise<Inspection> {
+  const compressed = await compressFiles(files);
   const formData = new FormData();
-  files.forEach((f) => formData.append("images", f));
+  compressed.forEach((f) => formData.append("images", f));
 
   const vehicle = options?.vehicle;
   if (vehicle?.vehicleMake) formData.append("vehicleMake", vehicle.vehicleMake);
@@ -67,7 +129,10 @@ export async function uploadInspectionsSeparate(
   files: File[],
   vehicle?: VehicleContext,
 ): Promise<Inspection[]> {
-  const uploads = files.map(async (file) => {
+  // Compress all images in parallel first (5MB → ~200KB each)
+  const compressed = await compressFiles(files);
+
+  const uploads = compressed.map(async (file) => {
     const formData = new FormData();
     formData.append("images", file);
     if (vehicle?.vehicleMake) formData.append("vehicleMake", vehicle.vehicleMake);
