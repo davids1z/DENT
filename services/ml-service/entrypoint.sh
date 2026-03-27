@@ -225,8 +225,5 @@ else
     echo "[entrypoint] SAFE checkpoint already cached"
 fi
 
-echo "[entrypoint] Fixing model ownership..."
-chown -R appuser:appuser /app/models 2>/dev/null || true
-
-echo "[entrypoint] Starting server as appuser (workers=${DENT_UVICORN_WORKERS:-2})..."
-exec gosu appuser "$@"
+echo "[entrypoint] Starting server (workers=${DENT_UVICORN_WORKERS:-2})..."
+exec "$@"
