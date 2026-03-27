@@ -1,16 +1,28 @@
 """Document forensics: PDF structure, metadata, font, and signature analysis.
 
-Enhanced with:
-  - XMP vs Info dictionary asymmetry detection
-  - Orphaned object detection (hidden previous values)
-  - Font glyph analysis via fontTools
-  - Zero-width Unicode character detection (Cf category)
-  - Mixed-script / Trojan Source detection
-  - Shadow attack overlay percentage calculation
-  - Kids reference swap detection
-  - Post-signature modification analysis
+18 check categories (A-R), ~50+ finding codes:
+  A.  XREF / Incremental update detection
+  B.  Metadata asymmetry (Info dict + XMP)
+  C.  Font forensics (subset, glyph, zero-width, homoglyph, per-char metrics)
+  D.  Digital signature verification + post-sig analysis
+  E.  Fake redaction detection
+  F.  Shadow attack detection (overlay %, Kids swap)
+  G.  Orphaned object detection
+  H.  Visual vs OCR comparison (render + pytesseract vs text layer)
+  I.  Per-character font metrics (rawdict baseline/kerning anomalies)
+  J.  PDF version recovery + pixel diff between revisions
+  K.  ELA on embedded images within PDF documents
+  L.  JavaScript / dangerous action detection
+  M.  AcroForm / XFA form overlay attack detection
+  N.  Color space inconsistency analysis
+  O.  Compression filter inconsistency detection
+  P.  ToUnicode CMap / ActualText discrepancy
+  Q.  Evil Annotation Attack (EAA) detection
+  R.  OCG default-off hidden layer detection
 """
 
+import base64
+import difflib
 import io
 import logging
 import re
@@ -18,6 +30,9 @@ import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree
+
+import numpy as np
+from PIL import Image
 
 from ..base import AnalyzerFinding, BaseAnalyzer, ModuleResult
 
@@ -56,6 +71,14 @@ try:
     _FONTTOOLS_AVAILABLE = True
 except ImportError:
     logger.info("fontTools not installed, font glyph analysis disabled")
+
+_TESSERACT_AVAILABLE = False
+try:
+    import pytesseract
+
+    _TESSERACT_AVAILABLE = True
+except ImportError:
+    logger.info("pytesseract not installed, Visual vs OCR comparison disabled")
 
 # Known PDF editing software (keyword_lower, risk_score, display_name)
 # Ordered from highest risk (online tools) to lowest risk (standard office).
@@ -1648,6 +1671,1682 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
             doc.close()
 
     # ------------------------------------------------------------------
+    # H. Visual vs OCR Comparison
+    # ------------------------------------------------------------------
+
+    def _check_visual_vs_ocr(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Render PDF to image, OCR it, compare with embedded text layer.
+
+        Catches:
+        - Black rectangles hiding text (OCR misses it, text layer has it)
+        - Invisible text differing from visible content
+        - Text replacement where visual != text layer
+        """
+        if not _PYMUPDF_AVAILABLE or not _TESSERACT_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for visual-vs-OCR: %s", e)
+            return
+
+        page_diffs: list[dict] = []
+
+        try:
+            max_pages = min(len(doc), 5)  # Limit for performance (OCR is slow)
+
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+
+                # 1. Extract text from PDF text layer (what copy-paste gives)
+                text_layer = page.get_text("text").strip()
+                if not text_layer:
+                    continue  # Skip pages with no text layer
+
+                # 2. Render page to image and OCR it (what human eyes see)
+                # Use 150 DPI for speed/quality balance
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+                pil_img = Image.open(io.BytesIO(img_bytes))
+
+                try:
+                    ocr_text = pytesseract.image_to_string(
+                        pil_img, lang="hrv+eng", timeout=15
+                    ).strip()
+                except Exception as e:
+                    logger.debug("OCR failed on page %d: %s", page_idx, e)
+                    continue
+
+                if not ocr_text:
+                    continue
+
+                # 3. Normalize both texts for comparison
+                def _normalize(t: str) -> str:
+                    # Collapse whitespace, lowercase, strip non-alnum for comparison
+                    t = re.sub(r"\s+", " ", t).strip().lower()
+                    return t
+
+                text_norm = _normalize(text_layer)
+                ocr_norm = _normalize(ocr_text)
+
+                if not text_norm or not ocr_norm:
+                    continue
+
+                # 4. Compare using SequenceMatcher
+                matcher = difflib.SequenceMatcher(None, text_norm, ocr_norm)
+                similarity = matcher.ratio()
+
+                if similarity > 0.85:
+                    continue  # Texts match well enough
+
+                # 5. Find specific differences
+                # Text in layer but NOT in OCR = hidden/invisible text
+                # Text in OCR but NOT in layer = visible but not in text layer (image-based)
+                text_words = set(text_norm.split())
+                ocr_words = set(ocr_norm.split())
+
+                only_in_layer = text_words - ocr_words
+                only_in_ocr = ocr_words - text_words
+
+                # Filter out very short words (noise from OCR)
+                only_in_layer = {w for w in only_in_layer if len(w) > 2}
+                only_in_ocr = {w for w in only_in_ocr if len(w) > 2}
+
+                if len(only_in_layer) > 3 or len(only_in_ocr) > 3 or similarity < 0.70:
+                    page_diffs.append({
+                        "page": page_idx + 1,
+                        "similarity": round(similarity, 3),
+                        "text_layer_len": len(text_norm),
+                        "ocr_text_len": len(ocr_norm),
+                        "only_in_text_layer": sorted(only_in_layer)[:10],
+                        "only_in_ocr": sorted(only_in_ocr)[:10],
+                    })
+
+        except Exception as e:
+            logger.debug("Visual-vs-OCR check error: %s", e)
+        finally:
+            doc.close()
+
+        if not page_diffs:
+            return
+
+        worst = min(page_diffs, key=lambda d: d["similarity"])
+        avg_sim = sum(d["similarity"] for d in page_diffs) / len(page_diffs)
+
+        if worst["similarity"] < 0.50:
+            # Major discrepancy — likely hidden text or content manipulation
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_VISUAL_OCR_MAJOR_MISMATCH",
+                    title="Velika nepodudarnost vizualnog i tekstualnog sloja",
+                    description=(
+                        f"Vizualni sadrzaj stranice {worst['page']} znacajno se razlikuje "
+                        f"od ugradenog tekstualnog sloja (podudarnost: {worst['similarity']:.0%}). "
+                        f"Ovo ukazuje na skriveni tekst, crne pravokutnike koji maskiraju "
+                        f"sadrzaj, ili manipulaciju tekstualnog sloja."
+                    ),
+                    risk_score=0.80,
+                    confidence=0.80,
+                    evidence={
+                        "page_diffs": page_diffs[:5],
+                        "average_similarity": round(avg_sim, 3),
+                        "worst_page": worst["page"],
+                    },
+                )
+            )
+        elif worst["similarity"] < 0.70:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_VISUAL_OCR_MISMATCH",
+                    title="Nepodudarnost vizualnog i tekstualnog sloja",
+                    description=(
+                        f"Na {len(page_diffs)} stranica otkrivena je razlika izmedu "
+                        f"onoga sto se vidi (OCR) i ugradenog teksta "
+                        f"(prosjecna podudarnost: {avg_sim:.0%}). "
+                        f"Moguca manipulacija sadrzaja ili skriveni tekst."
+                    ),
+                    risk_score=0.60,
+                    confidence=0.75,
+                    evidence={
+                        "page_diffs": page_diffs[:5],
+                        "average_similarity": round(avg_sim, 3),
+                    },
+                )
+            )
+        else:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_VISUAL_OCR_MINOR_DIFF",
+                    title="Blage razlike vizualnog i tekstualnog sloja",
+                    description=(
+                        f"Na {len(page_diffs)} stranica postoje manje razlike "
+                        f"izmedu vizualnog prikaza i tekstualnog sloja "
+                        f"(prosjecna podudarnost: {avg_sim:.0%})."
+                    ),
+                    risk_score=0.35,
+                    confidence=0.65,
+                    evidence={
+                        "page_diffs": page_diffs[:5],
+                        "average_similarity": round(avg_sim, 3),
+                    },
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # I. Per-Character Font Metrics (rawdict baseline/kerning)
+    # ------------------------------------------------------------------
+
+    def _check_char_metrics_anomalies(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect per-character baseline/kerning anomalies via PyMuPDF rawdict.
+
+        When someone edits a single digit or character in a PDF, the replacement
+        character often has subtly different metrics (baseline offset, width,
+        kerning gap) compared to its neighbors from the original font rendering.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for char metrics: %s", e)
+            return
+
+        anomalous_spans: list[dict] = []
+
+        try:
+            max_pages = min(len(doc), 10)
+
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+                # rawdict gives per-character bounding boxes
+                raw = page.get_text("rawdict", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+
+                for block in raw.get("blocks", []):
+                    if block.get("type") != 0:
+                        continue
+
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            chars = span.get("chars", [])
+                            if len(chars) < 4:
+                                continue
+
+                            font_name = span.get("font", "")
+                            font_size = span.get("size", 0)
+
+                            # Collect baselines (y1 = bottom of char bbox)
+                            baselines = []
+                            widths = []
+                            kernings = []
+
+                            for i, ch in enumerate(chars):
+                                c = ch.get("c", "")
+                                if not c.strip():
+                                    continue  # Skip whitespace
+
+                                bbox = ch.get("bbox")
+                                if not bbox or len(bbox) < 4:
+                                    continue
+
+                                x0, y0, x1, y1 = bbox
+                                baselines.append(y1)
+                                widths.append(x1 - x0)
+
+                                # Kerning: gap between this char and previous
+                                if i > 0 and chars[i - 1].get("bbox"):
+                                    prev_x1 = chars[i - 1]["bbox"][2]
+                                    kernings.append(x0 - prev_x1)
+
+                            if len(baselines) < 4:
+                                continue
+
+                            # Detect baseline anomalies
+                            bl_arr = np.array(baselines)
+                            bl_median = np.median(bl_arr)
+                            bl_deviations = np.abs(bl_arr - bl_median)
+                            # A normal span should have very consistent baselines
+                            # (within ~0.5pt for same-font text)
+                            threshold = max(0.5, font_size * 0.03)
+                            outlier_mask = bl_deviations > threshold
+                            n_bl_outliers = int(np.sum(outlier_mask))
+
+                            # Detect width anomalies (for monospaced-like chars e.g. digits)
+                            w_arr = np.array(widths)
+                            w_median = np.median(w_arr)
+                            w_threshold = max(0.3, w_median * 0.15)
+                            w_deviations = np.abs(w_arr - w_median)
+                            n_w_outliers = int(np.sum(w_deviations > w_threshold))
+
+                            # Detect kerning anomalies
+                            n_k_outliers = 0
+                            if len(kernings) >= 3:
+                                k_arr = np.array(kernings)
+                                k_median = np.median(k_arr)
+                                k_threshold = max(0.3, abs(k_median) * 0.30 + 0.5)
+                                k_deviations = np.abs(k_arr - k_median)
+                                n_k_outliers = int(np.sum(k_deviations > k_threshold))
+
+                            # Flag if multiple anomaly types detected in same span
+                            total_anomalies = n_bl_outliers + n_w_outliers + n_k_outliers
+                            char_count = len(baselines)
+
+                            if total_anomalies >= 2 and total_anomalies <= char_count * 0.4:
+                                # Suspicious: a few chars deviate (not all — that'd be different font)
+                                text_sample = span.get("text", "")[:60]
+                                anomalous_spans.append({
+                                    "page": page_idx + 1,
+                                    "text": text_sample,
+                                    "font": font_name,
+                                    "font_size": round(font_size, 1),
+                                    "baseline_outliers": n_bl_outliers,
+                                    "width_outliers": n_w_outliers,
+                                    "kerning_outliers": n_k_outliers,
+                                    "total_chars": char_count,
+                                })
+
+        except Exception as e:
+            logger.debug("Char metrics check error: %s", e)
+        finally:
+            doc.close()
+
+        if not anomalous_spans:
+            return
+
+        # Group: many anomalous spans → likely systematic editing
+        if len(anomalous_spans) >= 5:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_CHAR_METRICS_SYSTEMATIC",
+                    title="Sustavne anomalije metrika znakova",
+                    description=(
+                        f"Otkriveno {len(anomalous_spans)} tekstualnih segmenata s "
+                        f"nekonzistentnim baseline, sirinom ili kerning razmacima. "
+                        f"Kad netko editira pojedine znakove (npr. cifre na fakturi), "
+                        f"zamijenjeni znakovi imaju subtilno razlicite tipografske metrike."
+                    ),
+                    risk_score=0.70,
+                    confidence=0.75,
+                    evidence={"anomalous_spans": anomalous_spans[:10]},
+                )
+            )
+        elif len(anomalous_spans) >= 2:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_CHAR_METRICS_ANOMALY",
+                    title="Anomalije metrika znakova",
+                    description=(
+                        f"Otkriveno {len(anomalous_spans)} segmenata gdje pojedini "
+                        f"znakovi imaju razlicitu baseline poziciju, sirinu ili kerning "
+                        f"u odnosu na susjedne znakove istog fonta. Moguci trag "
+                        f"rucnog uredivanja teksta u PDF editoru."
+                    ),
+                    risk_score=0.55,
+                    confidence=0.70,
+                    evidence={"anomalous_spans": anomalous_spans[:10]},
+                )
+            )
+        else:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_CHAR_METRICS_MINOR",
+                    title="Blaga anomalija metrika znakova",
+                    description=(
+                        f"Jedan tekstualni segment pokazuje nekonzistentne tipografske "
+                        f"metrike — moguce uredivanje pojedinog znaka."
+                    ),
+                    risk_score=0.35,
+                    confidence=0.60,
+                    evidence={"anomalous_spans": anomalous_spans[:5]},
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # J. PDF Version Recovery + Pixel Diff
+    # ------------------------------------------------------------------
+
+    def _check_version_pixel_diff(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Extract all PDF revisions and compute pixel diffs between them.
+
+        For documents with incremental saves (multiple %%EOF markers),
+        we can recover each version by truncating at each %%EOF boundary
+        and rendering the pages. Pixel diffs show EXACTLY what changed.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        # Find %%EOF positions
+        eof_positions = [m.end() for m in re.finditer(rb"%%EOF", doc_bytes)]
+        if len(eof_positions) < 2:
+            return  # Only one version, nothing to diff
+
+        # Extract version snapshots (truncate at each %%EOF)
+        versions: list[bytes] = []
+        for eof_end in eof_positions:
+            # Include any trailing whitespace/newline after %%EOF
+            end_pos = min(eof_end + 2, len(doc_bytes))
+            version_bytes = doc_bytes[:end_pos]
+            # Verify it's a valid PDF by trying to open it
+            try:
+                test_doc = fitz.open(stream=version_bytes, filetype="pdf")
+                if len(test_doc) > 0:
+                    versions.append(version_bytes)
+                test_doc.close()
+            except Exception:
+                continue
+
+        if len(versions) < 2:
+            return  # Need at least 2 valid versions to diff
+
+        # Limit to first and last version for performance (and one middle if many)
+        if len(versions) > 3:
+            versions = [versions[0], versions[len(versions) // 2], versions[-1]]
+
+        version_diffs: list[dict] = []
+        diff_heatmaps: list[str] = []
+
+        for i in range(len(versions) - 1):
+            try:
+                doc_old = fitz.open(stream=versions[i], filetype="pdf")
+                doc_new = fitz.open(stream=versions[i + 1], filetype="pdf")
+
+                # Compare first page of each version (most document modifications happen on page 1)
+                max_cmp_pages = min(len(doc_old), len(doc_new), 3)
+
+                for page_idx in range(max_cmp_pages):
+                    page_old = doc_old[page_idx]
+                    page_new = doc_new[page_idx]
+
+                    # Render at 150 DPI
+                    pix_old = page_old.get_pixmap(dpi=150)
+                    pix_new = page_new.get_pixmap(dpi=150)
+
+                    # Convert to numpy arrays
+                    arr_old = np.frombuffer(pix_old.samples, dtype=np.uint8).reshape(
+                        pix_old.height, pix_old.width, pix_old.n
+                    )
+                    arr_new = np.frombuffer(pix_new.samples, dtype=np.uint8).reshape(
+                        pix_new.height, pix_new.width, pix_new.n
+                    )
+
+                    # Ensure same dimensions (crop to minimum)
+                    min_h = min(arr_old.shape[0], arr_new.shape[0])
+                    min_w = min(arr_old.shape[1], arr_new.shape[1])
+                    min_c = min(arr_old.shape[2], arr_new.shape[2])
+                    arr_old = arr_old[:min_h, :min_w, :min_c]
+                    arr_new = arr_new[:min_h, :min_w, :min_c]
+
+                    # Compute absolute difference
+                    diff = np.abs(arr_old.astype(np.int16) - arr_new.astype(np.int16)).astype(np.uint8)
+                    diff_gray = np.max(diff, axis=2)  # Max across channels
+
+                    # Count significantly different pixels (threshold > 10)
+                    changed_mask = diff_gray > 10
+                    n_changed = int(np.sum(changed_mask))
+                    total_pixels = diff_gray.size
+                    change_ratio = n_changed / max(total_pixels, 1)
+
+                    if change_ratio < 0.001:
+                        continue  # Less than 0.1% changed — ignore
+
+                    # Find bounding box of changes
+                    rows = np.any(changed_mask, axis=1)
+                    cols = np.any(changed_mask, axis=0)
+                    if not np.any(rows):
+                        continue
+
+                    rmin, rmax = int(np.where(rows)[0][0]), int(np.where(rows)[0][-1])
+                    cmin, cmax = int(np.where(cols)[0][0]), int(np.where(cols)[0][-1])
+
+                    # Create a diff heatmap image (amplify differences)
+                    heatmap = np.clip(diff_gray * 10, 0, 255).astype(np.uint8)
+                    heatmap_img = Image.fromarray(heatmap, mode="L")
+                    # Apply a red tint: changed pixels in red, unchanged in gray
+                    heatmap_rgb = Image.merge("RGB", (
+                        heatmap_img,
+                        Image.fromarray(np.zeros_like(heatmap), mode="L"),
+                        Image.fromarray(np.zeros_like(heatmap), mode="L"),
+                    ))
+                    # Composite over the new version for context
+                    new_img = Image.fromarray(arr_new[:, :, :3] if arr_new.shape[2] >= 3 else arr_new)
+                    if new_img.mode != "RGB":
+                        new_img = new_img.convert("RGB")
+                    composite = Image.blend(new_img, heatmap_rgb, alpha=0.5)
+
+                    # Encode to base64
+                    buf = io.BytesIO()
+                    composite.save(buf, format="JPEG", quality=60)
+                    diff_b64 = base64.b64encode(buf.getvalue()).decode()
+                    if len(diff_heatmaps) < 3:
+                        diff_heatmaps.append(diff_b64)
+
+                    version_diffs.append({
+                        "from_version": i + 1,
+                        "to_version": i + 2,
+                        "page": page_idx + 1,
+                        "change_ratio": round(change_ratio, 4),
+                        "changed_pixels": n_changed,
+                        "total_pixels": total_pixels,
+                        "change_bbox": {
+                            "top": rmin, "left": cmin,
+                            "bottom": rmax, "right": cmax,
+                        },
+                    })
+
+                doc_old.close()
+                doc_new.close()
+
+            except Exception as e:
+                logger.debug("Version diff error (v%d→v%d): %s", i + 1, i + 2, e)
+                continue
+
+        if not version_diffs:
+            return
+
+        max_change = max(d["change_ratio"] for d in version_diffs)
+        evidence = {
+            "total_versions": len(eof_positions),
+            "diffs": version_diffs[:5],
+        }
+        if diff_heatmaps:
+            evidence["diff_heatmap_b64"] = diff_heatmaps[0]
+
+        if max_change > 0.05:
+            # More than 5% of pixels changed — significant modification
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_VERSION_MAJOR_CHANGE",
+                    title="Znacajne vizualne promjene izmedu verzija dokumenta",
+                    description=(
+                        f"Usporedba {len(eof_positions)} verzija dokumenta otkriva "
+                        f"promjenu {max_change:.1%} piksela. Pixel diff jasno pokazuje "
+                        f"TOCNO koja podrucja su izmijenjena izmedu revizija."
+                    ),
+                    risk_score=0.75,
+                    confidence=0.85,
+                    evidence=evidence,
+                )
+            )
+        elif max_change > 0.005:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_VERSION_CHANGE",
+                    title="Vizualne promjene izmedu verzija dokumenta",
+                    description=(
+                        f"Pixel diff izmedu {len(eof_positions)} verzija otkriva "
+                        f"izmjene na {max_change:.2%} piksela — lokalizirane promjene "
+                        f"u specifičnim podrucjima dokumenta."
+                    ),
+                    risk_score=0.55,
+                    confidence=0.80,
+                    evidence=evidence,
+                )
+            )
+        else:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_VERSION_MINOR_CHANGE",
+                    title="Manje vizualne razlike izmedu verzija",
+                    description=(
+                        f"Pixel diff otkriva minimalne promjene ({max_change:.3%}) "
+                        f"izmedu verzija — moguce samo formatiranje ili metadata update."
+                    ),
+                    risk_score=0.25,
+                    confidence=0.70,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # K. ELA on Embedded Images
+    # ------------------------------------------------------------------
+
+    def _check_embedded_image_ela(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Run Error Level Analysis on images embedded within the PDF.
+
+        Photos inside PDF documents (e.g., ID photos, scanned receipts) can be
+        manipulated. ELA detects compression-level inconsistencies that indicate
+        pixel-level editing within those embedded images.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for embedded ELA: %s", e)
+            return
+
+        ela_results: list[dict] = []
+
+        try:
+            seen_xrefs: set[int] = set()
+
+            for page_idx in range(min(len(doc), 20)):
+                page = doc[page_idx]
+                img_list = page.get_images(full=True)
+
+                for img_info in img_list:
+                    xref = img_info[0]
+                    if xref in seen_xrefs or xref <= 0:
+                        continue
+                    seen_xrefs.add(xref)
+
+                    try:
+                        base_image = doc.extract_image(xref)
+                        if not base_image:
+                            continue
+
+                        img_bytes = base_image.get("image")
+                        width = base_image.get("width", 0)
+                        height = base_image.get("height", 0)
+
+                        # Skip tiny images
+                        if width < 100 or height < 100:
+                            continue
+                        if not img_bytes or len(img_bytes) < 1000:
+                            continue
+
+                        # Run ELA
+                        anomaly_ratio, heatmap_b64 = self._perform_ela(img_bytes)
+
+                        if anomaly_ratio > 0.02:  # More than 2% anomalous pixels
+                            ela_results.append({
+                                "page": page_idx + 1,
+                                "xref": xref,
+                                "image_size": f"{width}x{height}",
+                                "anomaly_ratio": round(anomaly_ratio, 4),
+                                "ela_heatmap_b64": heatmap_b64,
+                            })
+
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            logger.debug("Embedded image ELA error: %s", e)
+        finally:
+            doc.close()
+
+        if not ela_results:
+            return
+
+        worst = max(ela_results, key=lambda r: r["anomaly_ratio"])
+        evidence = {
+            "images_analyzed": len(ela_results),
+            "ela_results": [{k: v for k, v in r.items() if k != "ela_heatmap_b64"}
+                            for r in ela_results[:5]],
+        }
+        if worst.get("ela_heatmap_b64"):
+            evidence["ela_heatmap_b64"] = worst["ela_heatmap_b64"]
+
+        if worst["anomaly_ratio"] > 0.10:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_EMBEDDED_IMG_ELA_HIGH",
+                    title="Visoka ELA anomalija u ugradenoj slici",
+                    description=(
+                        f"Error Level Analysis otkriva znacajne anomalije kompresije "
+                        f"({worst['anomaly_ratio']:.1%} anomalnih piksela) u slici na "
+                        f"stranici {worst['page']}. Ovo ukazuje na manipulaciju piksela "
+                        f"unutar fotografije ugradene u dokument."
+                    ),
+                    risk_score=0.70,
+                    confidence=0.80,
+                    evidence=evidence,
+                )
+            )
+        elif worst["anomaly_ratio"] > 0.04:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_EMBEDDED_IMG_ELA_MODERATE",
+                    title="Umjerena ELA anomalija u ugradenoj slici",
+                    description=(
+                        f"Umjerene anomalije kompresije ({worst['anomaly_ratio']:.1%}) "
+                        f"u ugradenoj slici na stranici {worst['page']}."
+                    ),
+                    risk_score=0.50,
+                    confidence=0.70,
+                    evidence=evidence,
+                )
+            )
+        else:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_EMBEDDED_IMG_ELA_LOW",
+                    title="Blage ELA anomalije u ugradenoj slici",
+                    description=(
+                        f"Blage anomalije kompresije ({worst['anomaly_ratio']:.2%}) "
+                        f"u ugradenoj slici — moguca blaga manipulacija ili "
+                        f"visestruka rekompresija."
+                    ),
+                    risk_score=0.30,
+                    confidence=0.60,
+                    evidence=evidence,
+                )
+            )
+
+    @staticmethod
+    def _perform_ela(img_bytes: bytes, quality: int = 95, scale: int = 20) -> tuple[float, str]:
+        """Run ELA on a single image. Returns (anomaly_ratio, heatmap_b64)."""
+        img = Image.open(io.BytesIO(img_bytes))
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Re-save at fixed JPEG quality
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality)
+        buf.seek(0)
+        resaved = Image.open(buf)
+
+        # Compute absolute difference
+        arr_orig = np.array(img, dtype=np.int16)
+        arr_resaved = np.array(resaved, dtype=np.int16)
+        diff = np.abs(arr_orig - arr_resaved).astype(np.uint8)
+
+        # Amplify
+        ela = np.clip(diff * scale, 0, 255).astype(np.uint8)
+
+        # Grayscale for analysis
+        ela_gray = np.max(ela, axis=2)
+
+        # Anomaly ratio: pixels significantly above mean
+        mean_val = float(np.mean(ela_gray))
+        std_val = float(np.std(ela_gray))
+        threshold = mean_val + 2.0 * std_val
+        anomaly_mask = ela_gray > threshold
+        anomaly_ratio = float(np.sum(anomaly_mask)) / max(ela_gray.size, 1)
+
+        # Generate heatmap
+        heatmap_img = Image.fromarray(ela)
+        hm_buf = io.BytesIO()
+        heatmap_img.save(hm_buf, format="JPEG", quality=50)
+        heatmap_b64 = base64.b64encode(hm_buf.getvalue()).decode()
+
+        return anomaly_ratio, heatmap_b64
+
+    # ------------------------------------------------------------------
+    # L. JavaScript / Dangerous Action Detection
+    # ------------------------------------------------------------------
+
+    def _check_dangerous_actions(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect embedded JavaScript and dangerous PDF actions.
+
+        Invoices and financial documents should NEVER contain JavaScript,
+        Launch actions, or auto-submission forms. Their presence is a
+        strong indicator of either malware or sophisticated fraud.
+        """
+        raw = doc_bytes
+
+        # Keywords to scan for, with risk levels and descriptions
+        dangerous_keywords: list[tuple[bytes, str, float, str]] = [
+            (b"/JavaScript", "DOC_DANGEROUS_JAVASCRIPT", 0.80,
+             "Ugraden JavaScript kod — fakture i izvodi nikad ne sadrze JavaScript"),
+            (b"/JS", "DOC_DANGEROUS_JS", 0.75,
+             "Skracena JavaScript referenca u PDF objektu"),
+            (b"/OpenAction", "DOC_DANGEROUS_OPENACTION", 0.60,
+             "Automatska akcija pri otvaranju dokumenta"),
+            (b"/AA", "DOC_DANGEROUS_AA", 0.50,
+             "Dodatne automatske akcije (Additional Actions)"),
+            (b"/Launch", "DOC_DANGEROUS_LAUNCH", 0.85,
+             "Launch akcija — pokusaj pokretanja eksterne aplikacije"),
+            (b"/SubmitForm", "DOC_DANGEROUS_SUBMITFORM", 0.80,
+             "Automatsko slanje podataka na vanjski URL"),
+            (b"/GoToR", "DOC_DANGEROUS_GOTOR", 0.45,
+             "Referenca na vanjsku PDF datoteku (GoToR)"),
+            (b"/GoToE", "DOC_DANGEROUS_GOTOE", 0.45,
+             "Referenca na ugradenu datoteku (GoToE)"),
+            (b"/EmbeddedFile", "DOC_DANGEROUS_EMBEDDED_FILE", 0.55,
+             "Ugradena datoteka unutar PDF-a"),
+            (b"/RichMedia", "DOC_DANGEROUS_RICHMEDIA", 0.60,
+             "Ugraden multimedijalni sadrzaj (Flash, video)"),
+        ]
+
+        found_actions: list[dict] = []
+
+        for keyword, code, risk, desc in dangerous_keywords:
+            count = raw.count(keyword)
+            if count > 0:
+                found_actions.append({
+                    "keyword": keyword.decode(),
+                    "code": code,
+                    "count": count,
+                    "risk": risk,
+                    "description": desc,
+                })
+
+        if not found_actions:
+            return
+
+        # Sort by risk descending
+        found_actions.sort(key=lambda x: -x["risk"])
+        worst = found_actions[0]
+
+        # High-risk actions (JavaScript, Launch, SubmitForm)
+        high_risk = [a for a in found_actions if a["risk"] >= 0.70]
+        medium_risk = [a for a in found_actions if 0.40 <= a["risk"] < 0.70]
+
+        evidence = {
+            "dangerous_actions": [{k: v for k, v in a.items() if k != "description"}
+                                  for a in found_actions],
+        }
+
+        if high_risk:
+            action_names = ", ".join(a["keyword"] for a in high_risk)
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_DANGEROUS_ACTIONS_HIGH",
+                    title="Opasne akcije u dokumentu",
+                    description=(
+                        f"Dokument sadrzi {len(high_risk)} visokorizicnih akcija "
+                        f"({action_names}). Legitimne fakture, izvodi i potvrde "
+                        f"NIKAD ne sadrze JavaScript ili Launch akcije — ovo je "
+                        f"snazni indikator zlonamjernog ili laznog dokumenta."
+                    ),
+                    risk_score=worst["risk"],
+                    confidence=0.90,
+                    evidence=evidence,
+                )
+            )
+        elif medium_risk:
+            action_names = ", ".join(a["keyword"] for a in medium_risk)
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_DANGEROUS_ACTIONS_MEDIUM",
+                    title="Sumnjive akcije u dokumentu",
+                    description=(
+                        f"Dokument sadrzi {len(medium_risk)} sumnjivih elemenata "
+                        f"({action_names}). Neobicno za standardne poslovne dokumente."
+                    ),
+                    risk_score=worst["risk"],
+                    confidence=0.75,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # M. AcroForm / XFA Form Overlay Attack Detection
+    # ------------------------------------------------------------------
+
+    def _check_form_overlay_attacks(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect form fields with custom appearance streams overlaying content.
+
+        A common tampering technique: place a form field with a custom
+        appearance stream over original text. The visible content changes
+        but the underlying PDF text layer remains — or vice versa.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for form check: %s", e)
+            return
+
+        suspicious_fields: list[dict] = []
+        has_xfa = False
+
+        try:
+            # Check for XFA (XML Forms Architecture) — highly unusual in normal docs
+            raw = doc_bytes
+            if b"/XFA" in raw:
+                has_xfa = True
+
+            max_pages = min(len(doc), 20)
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+
+                # Get all widgets (form fields) on this page
+                widgets = list(page.widgets()) if hasattr(page, "widgets") else []
+
+                for widget in widgets:
+                    try:
+                        field_name = widget.field_name or ""
+                        field_type = widget.field_type_string or ""
+                        field_value = widget.field_value or ""
+                        rect = widget.rect
+
+                        # Check if this widget has a custom appearance stream
+                        # Widgets with custom /AP that cover significant area
+                        field_area = rect.width * rect.height
+                        page_area = page.rect.width * page.rect.height
+
+                        if field_area <= 0 or page_area <= 0:
+                            continue
+
+                        coverage = field_area / page_area
+
+                        # Check if text exists under this widget
+                        text_under = page.get_text("text", clip=rect).strip()
+
+                        if coverage > 0.02 and text_under:
+                            # Widget covers area with text underneath
+                            suspicious_fields.append({
+                                "page": page_idx + 1,
+                                "field_name": field_name[:50],
+                                "field_type": field_type,
+                                "field_value": str(field_value)[:50],
+                                "coverage_pct": round(coverage * 100, 2),
+                                "text_underneath": text_under[:80],
+                                "rect": [round(rect.x0), round(rect.y0),
+                                         round(rect.x1), round(rect.y1)],
+                            })
+
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            logger.debug("Form overlay check error: %s", e)
+        finally:
+            doc.close()
+
+        # XFA finding
+        if has_xfa:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_XFA_FORM",
+                    title="XFA formulari u dokumentu",
+                    description=(
+                        "Dokument sadrzi XML Forms Architecture (XFA) — napredni "
+                        "formular sustav koji se rijetko koristi u standardnim "
+                        "poslovnim dokumentima i moze sadrzavati skripta."
+                    ),
+                    risk_score=0.45,
+                    confidence=0.70,
+                    evidence={"has_xfa": True},
+                )
+            )
+
+        if not suspicious_fields:
+            return
+
+        # Fields covering text = likely overlay attack
+        total_covering = len(suspicious_fields)
+        max_coverage = max(f["coverage_pct"] for f in suspicious_fields)
+
+        if total_covering >= 3 or max_coverage > 10:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_FORM_OVERLAY_ATTACK",
+                    title="Formular polja prekrivaju postojeci tekst",
+                    description=(
+                        f"Otkriveno {total_covering} interaktivnih polja formulara "
+                        f"koja prekrivaju tekstualni sadrzaj ispod sebe (max pokrivanje: "
+                        f"{max_coverage:.1f}%). Ovo je tipican napad gdje se form field "
+                        f"s prilagodenim izgledom postavi preko originalnog teksta "
+                        f"da bi se promijenio vidljivi sadrzaj."
+                    ),
+                    risk_score=0.75,
+                    confidence=0.80,
+                    evidence={"suspicious_fields": suspicious_fields[:10]},
+                )
+            )
+        elif total_covering >= 1:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_FORM_OVERLAY_SUSPICIOUS",
+                    title="Sumnjivo pozicionirano polje formulara",
+                    description=(
+                        f"Polje formulara '{suspicious_fields[0]['field_name']}' "
+                        f"prekriva tekst na stranici {suspicious_fields[0]['page']}."
+                    ),
+                    risk_score=0.50,
+                    confidence=0.70,
+                    evidence={"suspicious_fields": suspicious_fields[:5]},
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # N. Color Space Inconsistency Analysis
+    # ------------------------------------------------------------------
+
+    def _check_color_space_inconsistency(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect mixed color spaces within a document.
+
+        When a document is created by one tool and edited by another,
+        the original content typically uses one color space (e.g. DeviceCMYK)
+        while edits use another (e.g. DeviceRGB or ICCBased). This
+        inconsistency is a strong indicator of multi-tool editing.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for color space check: %s", e)
+            return
+
+        page_colorspaces: dict[int, set[str]] = {}
+        all_colorspaces: set[str] = set()
+
+        try:
+            max_pages = min(len(doc), 20)
+
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+                cs_set: set[str] = set()
+
+                # Extract color spaces from page resources
+                try:
+                    xref = page.xref
+                    # Get the page's resource dictionary
+                    res_str = doc.xref_object(xref)
+
+                    # Look for color space references in the content
+                    # Common patterns: /DeviceRGB, /DeviceCMYK, /DeviceGray,
+                    # /ICCBased, /CalRGB, /CalGray, /Lab
+                    cs_patterns = [
+                        "DeviceRGB", "DeviceCMYK", "DeviceGray",
+                        "ICCBased", "CalRGB", "CalGray", "Lab",
+                        "Indexed", "Separation", "DeviceN",
+                    ]
+
+                    for cs in cs_patterns:
+                        if cs in res_str:
+                            cs_set.add(cs)
+
+                    # Also check the content stream for inline color operators
+                    try:
+                        # Get raw content stream text
+                        page_text_raw = page.get_text("rawdict", flags=0)
+                        blocks = page_text_raw.get("blocks", [])
+                        for block in blocks:
+                            if block.get("type") == 0:
+                                for line in block.get("lines", []):
+                                    for span in line.get("spans", []):
+                                        color = span.get("color", 0)
+                                        # PyMuPDF returns color as int (RGB packed)
+                                        if color != 0:
+                                            cs_set.add("DeviceRGB")  # Text with color
+                    except Exception:
+                        pass
+
+                except Exception:
+                    continue
+
+                if cs_set:
+                    page_colorspaces[page_idx] = cs_set
+                    all_colorspaces.update(cs_set)
+
+        except Exception as e:
+            logger.debug("Color space check error: %s", e)
+        finally:
+            doc.close()
+
+        if len(all_colorspaces) < 2:
+            return  # Uniform color space — normal
+
+        # Check for suspicious mixes
+        has_rgb = "DeviceRGB" in all_colorspaces
+        has_cmyk = "DeviceCMYK" in all_colorspaces
+        has_icc = "ICCBased" in all_colorspaces
+
+        evidence = {
+            "all_colorspaces": sorted(all_colorspaces),
+            "per_page": {str(k): sorted(v) for k, v in page_colorspaces.items()},
+        }
+
+        # RGB + CMYK mix is the strongest signal of multi-tool editing
+        if has_rgb and has_cmyk:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_COLORSPACE_MIXED_RGB_CMYK",
+                    title="Mijesani RGB i CMYK prostori boja",
+                    description=(
+                        "Dokument kombinira DeviceRGB i DeviceCMYK prostore boja. "
+                        "Kad se dokument generira jednim alatom, koristi se jedan "
+                        "prostor boja. Mijesanje ukazuje na uredivanje razlicitim "
+                        "alatom koji koristi drugaciji sustav boja."
+                    ),
+                    risk_score=0.55,
+                    confidence=0.75,
+                    evidence=evidence,
+                )
+            )
+        elif has_icc and (has_rgb or has_cmyk):
+            # ICC profile mixed with Device color — less suspicious but notable
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_COLORSPACE_MIXED",
+                    title="Nekonzistentni prostori boja",
+                    description=(
+                        f"Dokument koristi {len(all_colorspaces)} razlicitih prostora "
+                        f"boja ({', '.join(sorted(all_colorspaces))}). "
+                        f"Moguca indikacija uredivanja razlicitim alatima."
+                    ),
+                    risk_score=0.35,
+                    confidence=0.65,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # O. Compression Filter Inconsistency Detection
+    # ------------------------------------------------------------------
+
+    def _check_compression_inconsistency(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect inconsistent compression filters across content streams.
+
+        A document produced by a single tool uses the same compression
+        for all content streams. If some streams use FlateDecode while
+        others use no compression (or different filters), it suggests
+        content was added or replaced by a different tool.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for compression check: %s", e)
+            return
+
+        stream_filters: dict[str, int] = {}  # filter_name → count
+        page_filters: dict[int, set[str]] = {}  # page_idx → set of filters
+
+        try:
+            total_xrefs = doc.xref_length()
+
+            for xref in range(1, min(total_xrefs, 500)):
+                try:
+                    if not doc.xref_is_stream(xref):
+                        continue
+
+                    # Get the object's dictionary to find Filter
+                    obj_str = doc.xref_object(xref)
+
+                    # Extract filter
+                    filter_match = re.search(r"/Filter\s*(/\w+|\[([^\]]+)\])", obj_str)
+                    if filter_match:
+                        filter_name = filter_match.group(1).strip()
+                    else:
+                        filter_name = "None"
+
+                    stream_filters[filter_name] = stream_filters.get(filter_name, 0) + 1
+
+                except Exception:
+                    continue
+
+            # Also check per-page content streams
+            max_pages = min(len(doc), 20)
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+                xref = page.xref
+                try:
+                    obj_str = doc.xref_object(xref)
+                    # Check Contents reference
+                    filter_match = re.search(r"/Filter\s*(/\w+)", obj_str)
+                    if filter_match:
+                        page_filters.setdefault(page_idx, set()).add(filter_match.group(1))
+                except Exception:
+                    continue
+
+        except Exception as e:
+            logger.debug("Compression check error: %s", e)
+        finally:
+            doc.close()
+
+        if len(stream_filters) < 2:
+            return  # Uniform compression — normal
+
+        # Check for uncompressed streams mixed with compressed
+        has_none = stream_filters.get("None", 0) > 0
+        has_flate = stream_filters.get("/FlateDecode", 0) > 0
+        has_other = any(k not in ("None", "/FlateDecode") for k in stream_filters)
+
+        evidence = {
+            "stream_filters": stream_filters,
+            "distinct_filters": len(stream_filters),
+        }
+
+        if has_none and has_flate and stream_filters.get("None", 0) < stream_filters.get("/FlateDecode", 0) * 0.3:
+            # A few uncompressed streams among mostly compressed — suspicious
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_COMPRESSION_INCONSISTENT",
+                    title="Nekonzistentna kompresija content streamova",
+                    description=(
+                        f"Dokument sadrzi {stream_filters.get('None', 0)} nekomprimiranih "
+                        f"streamova medu {stream_filters.get('/FlateDecode', 0)} komprimiranih. "
+                        f"Kad jedan alat generira PDF, svi streamovi koriste isti filter. "
+                        f"Nekonzistentnost ukazuje na naknadno dodavanje sadrzaja."
+                    ),
+                    risk_score=0.45,
+                    confidence=0.70,
+                    evidence=evidence,
+                )
+            )
+        elif has_other:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_COMPRESSION_MIXED_FILTERS",
+                    title="Razliciti kompresijski filteri u dokumentu",
+                    description=(
+                        f"Dokument koristi {len(stream_filters)} razlicitih "
+                        f"kompresijskih filtera ({', '.join(stream_filters.keys())}). "
+                        f"Neobicno za dokument generiran jednim alatom."
+                    ),
+                    risk_score=0.35,
+                    confidence=0.65,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # P. ToUnicode CMap / ActualText Discrepancy Detection
+    # ------------------------------------------------------------------
+
+    def _check_tounicode_discrepancy(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect discrepancies between visual glyphs and text extraction.
+
+        A PDF can display one thing visually via glyphs but report
+        different text via the ToUnicode CMap or ActualText attribute.
+        For example: visually shows "$50,000" but text extraction yields
+        "$500,000". This is nearly invisible to humans but affects all
+        automated processing systems.
+
+        We compare PyMuPDF's text extraction (which uses ToUnicode/CMap)
+        against the raw content stream operators to detect mismatches.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for ToUnicode check: %s", e)
+            return
+
+        discrepancies: list[dict] = []
+
+        try:
+            max_pages = min(len(doc), 10)
+
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+
+                # Method 1: Compare get_text("text") with get_text("rawdict")
+                # text mode uses ToUnicode CMap for mapping
+                # rawdict gives per-char info including the original char code
+
+                text_extracted = page.get_text("text").strip()
+                if not text_extracted:
+                    continue
+
+                # Check for /ActualText in the page's structure
+                try:
+                    xref = page.xref
+                    page_obj = doc.xref_object(xref)
+
+                    # Look for ActualText entries in marked content
+                    if "/ActualText" in page_obj:
+                        # Extract ActualText values
+                        at_matches = re.findall(
+                            r"/ActualText\s*\(([^)]*)\)", page_obj
+                        )
+                        at_hex_matches = re.findall(
+                            r"/ActualText\s*<([^>]*)>", page_obj
+                        )
+
+                        if at_matches or at_hex_matches:
+                            actual_texts = at_matches + [
+                                bytes.fromhex(h).decode("utf-16-be", errors="ignore")
+                                for h in at_hex_matches if h
+                            ]
+
+                            for at in actual_texts:
+                                at_clean = at.strip()
+                                if at_clean and at_clean not in text_extracted:
+                                    discrepancies.append({
+                                        "page": page_idx + 1,
+                                        "type": "ActualText",
+                                        "actual_text": at_clean[:80],
+                                        "not_in_visual": True,
+                                    })
+                except Exception:
+                    pass
+
+                # Method 2: Check for ToUnicode CMap irregularities
+                # via raw content streams
+                try:
+                    raw = page.get_text("rawdict", flags=0)
+                    blocks = raw.get("blocks", [])
+
+                    for block in blocks:
+                        if block.get("type") != 0:
+                            continue
+
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                chars = span.get("chars", [])
+                                if not chars:
+                                    continue
+
+                                for ch in chars:
+                                    c = ch.get("c", "")
+                                    # Check for replacement characters or unusual
+                                    # mappings (private use area)
+                                    if c and ord(c) >= 0xE000 and ord(c) <= 0xF8FF:
+                                        # Private Use Area — might indicate CMap trick
+                                        discrepancies.append({
+                                            "page": page_idx + 1,
+                                            "type": "PrivateUseArea",
+                                            "char": c,
+                                            "codepoint": f"U+{ord(c):04X}",
+                                            "context": span.get("text", "")[:40],
+                                        })
+                except Exception:
+                    pass
+
+                # Method 3: Check if any content stream contains raw text
+                # operators with strings that differ from extracted text
+                try:
+                    # Get content stream bytes
+                    xref = page.xref
+                    # Read all content streams for this page
+                    page_contents = doc.xref_stream(xref) if doc.xref_is_stream(xref) else None
+
+                    if not page_contents:
+                        # Page might reference content via /Contents array
+                        obj_str = doc.xref_object(xref)
+                        contents_match = re.findall(r"(\d+)\s+0\s+R", obj_str)
+                        for ref_xref in contents_match[:5]:
+                            try:
+                                ref_int = int(ref_xref)
+                                if doc.xref_is_stream(ref_int):
+                                    stream_data = doc.xref_stream(ref_int)
+                                    if stream_data:
+                                        # Look for text showing operators: Tj, TJ, ', "
+                                        text_ops = re.findall(
+                                            rb"\(([^)]{2,50})\)\s*Tj",
+                                            stream_data,
+                                        )
+                                        for op in text_ops:
+                                            try:
+                                                raw_text = op.decode("latin-1", errors="ignore")
+                                                # Check if this raw text appears in extracted text
+                                                # (after allowing for encoding differences)
+                                                if (len(raw_text) >= 3
+                                                        and raw_text.isprintable()
+                                                        and raw_text not in text_extracted):
+                                                    discrepancies.append({
+                                                        "page": page_idx + 1,
+                                                        "type": "ContentStreamMismatch",
+                                                        "raw_text": raw_text[:50],
+                                                        "not_in_extracted": True,
+                                                    })
+                                            except Exception:
+                                                continue
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.debug("ToUnicode check error: %s", e)
+        finally:
+            doc.close()
+
+        if not discrepancies:
+            return
+
+        # Filter: Private Use Area characters are only suspicious in quantity
+        pua_count = sum(1 for d in discrepancies if d["type"] == "PrivateUseArea")
+        actual_text_issues = [d for d in discrepancies if d["type"] == "ActualText"]
+        content_mismatches = [d for d in discrepancies if d["type"] == "ContentStreamMismatch"]
+
+        evidence = {"discrepancies": discrepancies[:15]}
+
+        if actual_text_issues:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_ACTUALTEXT_DISCREPANCY",
+                    title="ActualText razlikuje se od vidljivog sadrzaja",
+                    description=(
+                        f"Otkriveno {len(actual_text_issues)} /ActualText unosa koji se "
+                        f"ne podudaraju s vizualnim prikazom. Ovo znaci da PDF prikazuje "
+                        f"jedan tekst ljudskom oku, ali automatskim sustavima (OCR, copy-paste) "
+                        f"isporucuje DRUGACIJI tekst — izuzetno opasan oblik manipulacije."
+                    ),
+                    risk_score=0.85,
+                    confidence=0.85,
+                    evidence=evidence,
+                )
+            )
+
+        if content_mismatches:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_TOUNICODE_MISMATCH",
+                    title="Nepodudarnost content streama i ekstrahiranog teksta",
+                    description=(
+                        f"Otkriveno {len(content_mismatches)} tekstualnih segmenata u "
+                        f"content streamu koji se ne pojavljuju u ekstrahiranom tekstu. "
+                        f"Moguca ToUnicode CMap manipulacija — tekst se vizualno prikazuje "
+                        f"drugacije od onoga sto sustav za obradu cita."
+                    ),
+                    risk_score=0.70,
+                    confidence=0.75,
+                    evidence=evidence,
+                )
+            )
+
+        if pua_count > 5:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_PRIVATE_USE_CHARS",
+                    title="Znakovi iz privatnog Unicode podrucja",
+                    description=(
+                        f"Pronadeno {pua_count} znakova iz Unicode Private Use Area "
+                        f"(U+E000-U+F8FF). Ovo moze ukazivati na prilagodenu CMap "
+                        f"tablicu koja mapira glifove na nestandardne kodne tocke."
+                    ),
+                    risk_score=0.40,
+                    confidence=0.60,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # Q. Evil Annotation Attack (EAA) Detection
+    # ------------------------------------------------------------------
+
+    def _check_evil_annotations(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect Evil Annotation Attack patterns.
+
+        Unlike fake redactions (section E) which use obviously dark rectangles,
+        EAA uses annotations with custom appearance streams (/AP) that LOOK
+        like normal content but actually overlay and replace the original.
+        These are much harder to detect visually.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for EAA check: %s", e)
+            return
+
+        evil_annots: list[dict] = []
+
+        try:
+            max_pages = min(len(doc), 20)
+
+            for page_idx in range(max_pages):
+                page = doc[page_idx]
+                annots = list(page.annots()) if page.annots() else []
+
+                if not annots:
+                    continue
+
+                # Get all text positions on this page
+                text_dict = page.get_text("dict", flags=0)
+                text_rects: list[fitz.Rect] = []
+                for block in text_dict.get("blocks", []):
+                    if block.get("type") == 0:
+                        text_rects.append(fitz.Rect(block["bbox"]))
+
+                for annot in annots:
+                    try:
+                        annot_type = annot.type[0]  # numeric type
+                        annot_type_name = annot.type[1]  # string name
+
+                        # Skip redact annotations (handled in section E)
+                        if annot_type == 12:
+                            continue
+
+                        # Focus on annotations that can carry appearance streams:
+                        # FreeText (2), Stamp (13), Widget (20), various others
+                        rect = annot.rect
+
+                        # Check if annotation has a custom appearance stream
+                        has_ap = False
+                        try:
+                            ap_xref = annot.xref
+                            ap_obj = doc.xref_object(ap_xref)
+                            has_ap = "/AP" in ap_obj
+                        except Exception:
+                            pass
+
+                        if not has_ap:
+                            continue
+
+                        # Check if this annotation covers existing text
+                        text_overlap = 0
+                        for tr in text_rects:
+                            intersection = rect & tr
+                            if not intersection.is_empty:
+                                text_overlap += intersection.width * intersection.height
+
+                        if text_overlap <= 0:
+                            continue
+
+                        annot_area = rect.width * rect.height
+                        if annot_area <= 0:
+                            continue
+
+                        # FreeText annotations with AP streams covering text = EAA
+                        if annot_type == 2:  # FreeText
+                            evil_annots.append({
+                                "page": page_idx + 1,
+                                "type": annot_type_name,
+                                "rect": [round(rect.x0, 1), round(rect.y0, 1),
+                                         round(rect.x1, 1), round(rect.y1, 1)],
+                                "text_overlap_area": round(text_overlap, 1),
+                                "has_custom_ap": True,
+                                "severity": "high",
+                            })
+                        elif annot_type == 13:  # Stamp
+                            evil_annots.append({
+                                "page": page_idx + 1,
+                                "type": annot_type_name,
+                                "rect": [round(rect.x0, 1), round(rect.y0, 1),
+                                         round(rect.x1, 1), round(rect.y1, 1)],
+                                "text_overlap_area": round(text_overlap, 1),
+                                "has_custom_ap": True,
+                                "severity": "medium",
+                            })
+                        elif annot_type == 20 and text_overlap > 100:  # Widget
+                            evil_annots.append({
+                                "page": page_idx + 1,
+                                "type": "Widget",
+                                "rect": [round(rect.x0, 1), round(rect.y0, 1),
+                                         round(rect.x1, 1), round(rect.y1, 1)],
+                                "text_overlap_area": round(text_overlap, 1),
+                                "has_custom_ap": True,
+                                "severity": "medium",
+                            })
+
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            logger.debug("EAA check error: %s", e)
+        finally:
+            doc.close()
+
+        if not evil_annots:
+            return
+
+        high_severity = [a for a in evil_annots if a["severity"] == "high"]
+        evidence = {"evil_annotations": evil_annots[:10]}
+
+        if high_severity:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_EVIL_ANNOTATION_ATTACK",
+                    title="Evil Annotation napad — anotacija prekriva tekst",
+                    description=(
+                        f"Otkriveno {len(high_severity)} FreeText anotacija s prilagodenim "
+                        f"appearance streamovima koje prekrivaju postojeci tekst. "
+                        f"Za razliku od lazne redakcije, ove anotacije IZGLEDAJU kao "
+                        f"normalan tekst ali zapravo prekrivaju i zamjenjuju original."
+                    ),
+                    risk_score=0.75,
+                    confidence=0.80,
+                    evidence=evidence,
+                )
+            )
+        else:
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_SUSPICIOUS_ANNOTATION_OVERLAY",
+                    title="Sumnjive anotacije s prekrivanjem teksta",
+                    description=(
+                        f"Otkriveno {len(evil_annots)} anotacija s prilagodenim "
+                        f"appearance streamovima koje prekrivaju tekst na stranici."
+                    ),
+                    risk_score=0.55,
+                    confidence=0.70,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # R. OCG Default-Off Hidden Layer Detection
+    # ------------------------------------------------------------------
+
+    def _check_ocg_hidden_layers(
+        self, doc_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Detect Optional Content Groups (layers) that are hidden by default.
+
+        A sophisticated attack hides content in a layer set to OFF in
+        the screen view but ON in the print view — or vice versa. The
+        document looks normal on screen but prints differently, or
+        content is hidden from automated processing but visible when printed.
+        """
+        if not _PYMUPDF_AVAILABLE:
+            return
+
+        try:
+            doc = fitz.open(stream=doc_bytes, filetype="pdf")
+        except Exception as e:
+            logger.debug("Could not open PDF for OCG check: %s", e)
+            return
+
+        hidden_layers: list[dict] = []
+        view_print_mismatch: list[dict] = []
+
+        try:
+            ocgs = doc.get_ocgs()
+            if not ocgs:
+                return
+
+            total_layers = len(ocgs)
+
+            for xref, info in ocgs.items():
+                layer_name = info.get("name", f"Layer_{xref}")
+                is_on = info.get("on", True)
+                intent = info.get("intent", "View")
+                usage = info.get("usage", "")
+
+                if not is_on:
+                    hidden_layers.append({
+                        "xref": xref,
+                        "name": layer_name,
+                        "on": False,
+                        "intent": intent,
+                    })
+
+                # Check for View vs Print intent mismatch
+                if isinstance(intent, str) and intent.lower() == "design":
+                    view_print_mismatch.append({
+                        "xref": xref,
+                        "name": layer_name,
+                        "intent": intent,
+                    })
+
+            # Also check the OCProperties for Default configuration
+            # Look for print-only or screen-only layers in raw PDF
+            raw = doc_bytes
+            # /Usage with /Print and /View states
+            if b"/Usage" in raw:
+                usage_sections = re.findall(
+                    rb"/Usage\s*<<([^>]*(?:>>|>)[^>]*)>>",
+                    raw, re.DOTALL,
+                )
+                for usage_raw in usage_sections:
+                    usage_str = usage_raw.decode("latin-1", errors="ignore")
+                    # Check for Print ON but View OFF (or vice versa)
+                    has_print = "/Print" in usage_str
+                    has_view = "/View" in usage_str
+                    if has_print and has_view:
+                        view_print_mismatch.append({
+                            "type": "usage_directive",
+                            "raw_hint": usage_str[:100],
+                        })
+
+        except Exception as e:
+            logger.debug("OCG check error: %s", e)
+        finally:
+            doc.close()
+
+        evidence = {
+            "total_layers": len(ocgs) if ocgs else 0,
+        }
+
+        if hidden_layers:
+            evidence["hidden_layers"] = hidden_layers[:10]
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_OCG_HIDDEN_LAYERS",
+                    title="Skriveni slojevi sadrzaja (OCG OFF)",
+                    description=(
+                        f"Dokument sadrzi {len(hidden_layers)} od {total_layers} "
+                        f"slojeva (Optional Content Groups) koji su zadano ISKLJUCENI. "
+                        f"Skriveni slojevi mogu sadrzavati alternativni tekst ili "
+                        f"slike koje su nevidljive na ekranu ali se otkrivaju u "
+                        f"odredenim kontekstima (ispis, eksport, specificni citaci)."
+                    ),
+                    risk_score=0.65,
+                    confidence=0.80,
+                    evidence=evidence,
+                )
+            )
+
+        if view_print_mismatch:
+            evidence["view_print_mismatch"] = view_print_mismatch[:5]
+            findings.append(
+                AnalyzerFinding(
+                    code="DOC_OCG_VIEW_PRINT_MISMATCH",
+                    title="Razlicit sadrzaj za prikaz i ispis",
+                    description=(
+                        "Dokument sadrzi slojeve s razlicitim postavkama za "
+                        "prikaz na ekranu i ispis. Ovo znaci da se dokument "
+                        "prikazuje drugacije ovisno o kontekstu — moguc napad "
+                        "gdje se na ekranu vidi jedan sadrzaj a tiska drugi."
+                    ),
+                    risk_score=0.75,
+                    confidence=0.80,
+                    evidence=evidence,
+                )
+            )
+
+    # ------------------------------------------------------------------
     # Main analysis
     # ------------------------------------------------------------------
 
@@ -1697,6 +3396,39 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
 
             # G. Orphaned object detection
             self._check_orphaned_objects(doc_bytes, findings)
+
+            # H. Visual vs OCR comparison
+            self._check_visual_vs_ocr(doc_bytes, findings)
+
+            # I. Per-character font metrics (baseline/kerning anomalies)
+            self._check_char_metrics_anomalies(doc_bytes, findings)
+
+            # J. PDF version recovery + pixel diff
+            self._check_version_pixel_diff(doc_bytes, findings)
+
+            # K. ELA on embedded images
+            self._check_embedded_image_ela(doc_bytes, findings)
+
+            # L. JavaScript / dangerous action detection
+            self._check_dangerous_actions(doc_bytes, findings)
+
+            # M. AcroForm / XFA form overlay attack detection
+            self._check_form_overlay_attacks(doc_bytes, findings)
+
+            # N. Color space inconsistency analysis
+            self._check_color_space_inconsistency(doc_bytes, findings)
+
+            # O. Compression filter inconsistency detection
+            self._check_compression_inconsistency(doc_bytes, findings)
+
+            # P. ToUnicode / ActualText discrepancy (highest value check)
+            self._check_tounicode_discrepancy(doc_bytes, findings)
+
+            # Q. Evil Annotation Attack (EAA) detection
+            self._check_evil_annotations(doc_bytes, findings)
+
+            # R. OCG default-off hidden layer detection
+            self._check_ocg_hidden_layers(doc_bytes, findings)
 
         except Exception as e:
             logger.error("Document forensics failed: %s", e, exc_info=True)
