@@ -1,8 +1,23 @@
 using DENT.Application.Interfaces;
 using DENT.Domain.Entities;
+using DENT.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace DENT.Infrastructure.Data;
+
+// Case-insensitive enum converter — handles legacy lowercase data ("camera" → CaptureSource.Camera)
+static class EnumConverters
+{
+    public static ValueConverter<T?, string?> CaseInsensitive<T>() where T : struct, Enum =>
+        new(
+            v => v.HasValue ? v.Value.ToString() : null,
+            v => v != null ? ParseIgnoreCase<T>(v) : null
+        );
+
+    private static T? ParseIgnoreCase<T>(string value) where T : struct, Enum =>
+        Enum.TryParse<T>(value, ignoreCase: true, out var result) ? result : null;
+}
 
 public class DentDbContext : DbContext, IDentDbContext
 {
@@ -41,7 +56,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.VehicleMake).HasMaxLength(100);
             entity.Property(e => e.VehicleModel).HasMaxLength(100);
             entity.Property(e => e.VehicleColor).HasMaxLength(50);
-            entity.Property(e => e.UrgencyLevel).HasConversion<string?>().HasMaxLength(50);
+            entity.Property(e => e.UrgencyLevel).HasConversion(EnumConverters.CaseInsensitive<UrgencyLevel>()).HasMaxLength(50);
             entity.Property(e => e.StructuralIntegrity).HasMaxLength(2000);
 
             // User-provided vehicle context
@@ -50,7 +65,7 @@ public class DentDbContext : DbContext, IDentDbContext
 
             // Capture metadata (Phase 6)
             entity.Property(e => e.CaptureDeviceInfo).HasMaxLength(2000);
-            entity.Property(e => e.CaptureSource).HasConversion<string?>().HasMaxLength(20);
+            entity.Property(e => e.CaptureSource).HasConversion(EnumConverters.CaseInsensitive<CaptureSource>()).HasMaxLength(20);
 
             // Structured cost totals
             entity.Property(e => e.LaborTotal).HasColumnType("decimal(10,2)");
@@ -59,7 +74,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.GrossTotal).HasColumnType("decimal(10,2)");
 
             // Decision engine
-            entity.Property(e => e.DecisionOutcome).HasConversion<string?>().HasMaxLength(50);
+            entity.Property(e => e.DecisionOutcome).HasConversion(EnumConverters.CaseInsensitive<DecisionOutcome>()).HasMaxLength(50);
             entity.Property(e => e.DecisionReason).HasMaxLength(2000);
             entity.Property(e => e.DecisionTraceJson).HasMaxLength(5000);
 
@@ -68,7 +83,7 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.AgentWeatherAssessment).HasMaxLength(2000);
 
             // Fraud detection
-            entity.Property(e => e.FraudRiskLevel).HasConversion<string?>().HasMaxLength(50);
+            entity.Property(e => e.FraudRiskLevel).HasConversion(EnumConverters.CaseInsensitive<FraudRiskLevel>()).HasMaxLength(50);
 
             // Evidence integrity (Phase 8)
             entity.Property(e => e.EvidenceHash).HasMaxLength(128);
@@ -118,10 +133,10 @@ public class DentDbContext : DbContext, IDentDbContext
             entity.Property(e => e.PartsNeeded).HasMaxLength(1000);
             entity.Property(e => e.BoundingBox).HasMaxLength(200);
             entity.Property(e => e.DamageCause).HasMaxLength(500);
-            entity.Property(e => e.SafetyRating).HasConversion<string?>().HasMaxLength(50);
+            entity.Property(e => e.SafetyRating).HasConversion(EnumConverters.CaseInsensitive<SafetyRating>()).HasMaxLength(50);
             entity.Property(e => e.MaterialType).HasMaxLength(100);
             entity.Property(e => e.RepairOperations).HasMaxLength(2000);
-            entity.Property(e => e.RepairCategory).HasConversion<string?>().HasMaxLength(50);
+            entity.Property(e => e.RepairCategory).HasConversion(EnumConverters.CaseInsensitive<RepairCategory>()).HasMaxLength(50);
             entity.Property(e => e.RepairLineItemsJson).HasMaxLength(10000);
             entity.HasOne(e => e.Inspection)
                 .WithMany(i => i.Damages)
