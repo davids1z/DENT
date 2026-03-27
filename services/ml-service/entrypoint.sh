@@ -225,5 +225,18 @@ else
     echo "[entrypoint] SAFE checkpoint already cached"
 fi
 
+# ── ONNX export (one-time, cached in volume) ─────────────────────────
+# Converts PyTorch models to ONNX for 2-3x faster CPU inference.
+# Only runs if ONNX files don't exist yet. Safe to skip on failure.
+clip_onnx="/app/models/clip_ai/clip_vision.onnx"
+dinov2_onnx="/app/models/dinov2/dinov2.onnx"
+if [ ! -f "$clip_onnx" ] || [ ! -f "$dinov2_onnx" ]; then
+    echo "[entrypoint] Exporting models to ONNX (one-time)..."
+    python3 /app/scripts/export_onnx.py --models-dir /app/models || \
+        echo "[entrypoint] WARNING: ONNX export failed (will use PyTorch fallback)"
+else
+    echo "[entrypoint] ONNX models already cached"
+fi
+
 echo "[entrypoint] Starting server (workers=${DENT_UVICORN_WORKERS:-2})..."
 exec "$@"

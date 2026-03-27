@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _TORCH_AVAILABLE = False
 _TRANSFORMERS_AVAILABLE = False
+_ORT_AVAILABLE = False
 
 try:
     import torch
@@ -47,6 +48,12 @@ if _TORCH_AVAILABLE:
         _TRANSFORMERS_AVAILABLE = True
     except ImportError:
         pass
+
+try:
+    import onnxruntime as ort
+    _ORT_AVAILABLE = True
+except ImportError:
+    pass
 
 _DINOV2_MODEL_NAME = "facebook/dinov2-large"
 
@@ -62,6 +69,7 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
         self._processor = None
         self._model = None
         self._probe = None  # {"weights": ndarray(1024,), "bias": float}
+        self._onnx_session = None  # ONNX Runtime session (faster than PyTorch)
 
     # ------------------------------------------------------------------
     # Model loading
@@ -103,7 +111,30 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
         # Load linear probe weights
         self._load_probe(cache_dir)
 
+        # Try to load ONNX model (2-3x faster than PyTorch on CPU)
+        self._load_onnx(cache_dir)
+
         self._models_loaded = True
+
+    def _load_onnx(self, cache_dir: str) -> None:
+        """Load ONNX Runtime session if exported model exists."""
+        if not _ORT_AVAILABLE:
+            return
+        onnx_path = os.path.join(cache_dir, "dinov2.onnx")
+        if not os.path.exists(onnx_path):
+            return
+        try:
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = int(os.environ.get("OMP_NUM_THREADS", "4"))
+            opts.inter_op_num_threads = 1
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self._onnx_session = ort.InferenceSession(
+                onnx_path, opts, providers=["CPUExecutionProvider"]
+            )
+            logger.info("DINOv2 ONNX session loaded from %s", onnx_path)
+        except Exception as e:
+            logger.warning("Failed to load DINOv2 ONNX: %s (falling back to PyTorch)", e)
+            self._onnx_session = None
 
     def _load_probe(self, cache_dir: str) -> None:
         """Load pre-trained linear probe from disk."""
@@ -168,16 +199,9 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _compute_score(self, img: Image.Image) -> float:
-        """Compute AI-generation probability from DINOv2 embedding."""
-        inputs = self._processor(images=img, return_tensors="pt")
-
-        with torch.no_grad():
-            device = getattr(self, "_device", "cpu")
-            pixel_values = inputs["pixel_values"].to(device)
-            outputs = self._model(pixel_values=pixel_values)
-            # CLS token from last hidden state
-            cls_embedding = outputs.last_hidden_state[:, 0, :]  # (1, 768)
-            embedding = cls_embedding.squeeze(0).cpu().numpy()  # (768,)
+        """Compute AI-generation probability from DINOv2 embedding.
+        Uses ONNX Runtime when available (2-3x faster), falls back to PyTorch."""
+        embedding = self._extract_embedding(img)
 
         # L2 normalize
         norm = np.linalg.norm(embedding)
@@ -187,7 +211,6 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
             embedding_normed = embedding
 
         if self._probe is not None and "weights" in self._probe:
-            # Trained linear probe: sigmoid(w . x + b)
             logit = float(
                 np.dot(self._probe["weights"], embedding_normed)
                 + self._probe["bias"]
@@ -197,6 +220,28 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
             score = self._heuristic_score(embedding, embedding_normed, norm)
 
         return float(np.clip(score, 0.0, 1.0))
+
+    def _extract_embedding(self, img: Image.Image) -> np.ndarray:
+        """Extract CLS embedding. Uses ONNX if available."""
+        inputs = self._processor(
+            images=img,
+            return_tensors="pt" if self._onnx_session is None else "np",
+        )
+
+        if self._onnx_session is not None:
+            pixel_values = inputs["pixel_values"]
+            if not isinstance(pixel_values, np.ndarray):
+                pixel_values = pixel_values.numpy()
+            pixel_values = pixel_values.astype(np.float32)
+            result = self._onnx_session.run(None, {"pixel_values": pixel_values})
+            return result[0].squeeze(0)
+
+        with torch.no_grad():
+            device = getattr(self, "_device", "cpu")
+            pixel_values = inputs["pixel_values"].to(device)
+            outputs = self._model(pixel_values=pixel_values)
+            cls_embedding = outputs.last_hidden_state[:, 0, :]
+            return cls_embedding.squeeze(0).cpu().numpy()
 
     @staticmethod
     def _heuristic_score(

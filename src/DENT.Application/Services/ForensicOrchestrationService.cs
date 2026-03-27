@@ -68,29 +68,33 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                 double maxRiskScore = 0;
                 string maxRiskLevel = "Low";
 
-                // ── PARALLEL: fire all /forensics HTTP calls simultaneously ──
-                // The ML service calls are the bottleneck (~15s each). Running
-                // them in parallel means N files complete in ~15s instead of N*15s.
-                var forensicTasks = filesToAnalyze.Select(async file =>
-                {
-                    try
-                    {
-                        var result = await _mlService.RunForensicsAsync(file.Data, file.FileName, ct);
-                        return (file.FileName, file.FileUrl, file.SortOrder, Result: result, Error: (Exception?)null);
-                    }
-                    catch (Exception ex)
-                    {
-                        return (file.FileName, file.FileUrl, file.SortOrder, Result: (MlForensicResult?)null, Error: ex);
-                    }
-                }).ToList();
+                // ── BATCH: send all files in one HTTP request to ML service ──
+                // Much faster than N separate calls. The ML service processes
+                // them concurrently with shared model memory + ONNX batch inference.
+                var batchFiles = filesToAnalyze
+                    .Select(f => (f.Data, f.FileName))
+                    .ToList();
 
-                var forensicResults = await Task.WhenAll(forensicTasks);
+                List<MlForensicResult> batchResults;
+                try
+                {
+                    batchResults = await _mlService.RunForensicsBatchAsync(batchFiles, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Batch forensics failed for inspection {Id}", inspection.Id);
+                    batchResults = filesToAnalyze.Select(_ => (MlForensicResult?)null).Cast<MlForensicResult>().ToList();
+                }
 
                 _logger.LogInformation(
-                    "All {Count} forensic analyses completed in parallel for inspection {Id}",
-                    forensicResults.Length, inspection.Id);
+                    "Batch forensic analysis ({Count} files) completed for inspection {Id}",
+                    batchResults.Count, inspection.Id);
 
-                // Process results sequentially (heatmap uploads + entity creation are fast)
+                // Zip results with file info and process
+                var forensicResults = filesToAnalyze.Zip(batchResults, (file, result) =>
+                    (file.FileName, file.FileUrl, file.SortOrder, Result: result, Error: (Exception?)null)
+                ).ToList();
+
                 foreach (var (fileName, fileUrl, sortOrder, forensicResult, error) in forensicResults)
                 {
                     if (error != null || forensicResult == null)

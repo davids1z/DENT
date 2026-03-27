@@ -109,6 +109,47 @@ public class MlAnalysisService : IMlAnalysisService
         }
     }
 
+    public async Task<List<MlForensicResult>> RunForensicsBatchAsync(
+        List<(byte[] Data, string FileName)> files, CancellationToken ct = default)
+    {
+        if (files.Count == 0) return [];
+        if (files.Count == 1)
+        {
+            var single = await RunForensicsAsync(files[0].Data, files[0].FileName, ct);
+            return [single];
+        }
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            for (int i = 0; i < files.Count; i++)
+            {
+                var byteContent = new ByteArrayContent(files[i].Data);
+                byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    GetContentType(files[i].FileName));
+                content.Add(byteContent, "files", files[i].FileName);
+            }
+
+            var response = await _httpClient.PostAsync("/forensics/batch", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            var results = await response.Content.ReadFromJsonAsync<List<MlForensicResult>>(SnakeCaseOptions, ct);
+            return results ?? files.Select(_ => new MlForensicResult()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Batch forensics failed, falling back to sequential");
+            // Fallback: process sequentially
+            var results = new List<MlForensicResult>();
+            foreach (var (data, fileName) in files)
+            {
+                try { results.Add(await RunForensicsAsync(data, fileName, ct)); }
+                catch { results.Add(new MlForensicResult()); }
+            }
+            return results;
+        }
+    }
+
     public async Task<MlAnalysisResult> AnalyzeImageWithContextAsync(
         byte[] imageData, string fileName,
         MlForensicResult forensicContext,

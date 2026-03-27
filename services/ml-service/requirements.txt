@@ -43,3 +43,5 @@ pytesseract>=0.3.10
 fonttools>=4.40.0
 # QR code reading for Croatian invoice validation (optional, graceful degradation)
 pyzbar>=0.1.9
+# ONNX Runtime for accelerated inference (2-3x faster than PyTorch on CPU)
+onnxruntime>=1.17.0

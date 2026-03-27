@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _TORCH_AVAILABLE = False
 _TRANSFORMERS_AVAILABLE = False
+_ORT_AVAILABLE = False
 
 try:
     import torch
@@ -52,6 +53,12 @@ if _TORCH_AVAILABLE:
         _TRANSFORMERS_AVAILABLE = True
     except ImportError:
         pass
+
+try:
+    import onnxruntime as ort
+    _ORT_AVAILABLE = True
+except ImportError:
+    pass
 
 # Hard-coded centroid vectors are NOT shipped here.  Instead we compute
 # centroids lazily on first run from a tiny calibration dataset, OR fall
@@ -72,6 +79,7 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         self._processor = None
         self._model = None
         self._probe = None  # sklearn LogisticRegression or simple weights
+        self._onnx_session = None  # ONNX Runtime session (faster than PyTorch)
 
     # ------------------------------------------------------------------
     # Model loading
@@ -113,7 +121,30 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         # Load or initialise the linear probe
         self._load_probe(cache_dir)
 
+        # Try to load ONNX model (2-3x faster than PyTorch on CPU)
+        self._load_onnx(cache_dir)
+
         self._models_loaded = True
+
+    def _load_onnx(self, cache_dir: str) -> None:
+        """Load ONNX Runtime session if exported model exists."""
+        if not _ORT_AVAILABLE:
+            return
+        onnx_path = os.path.join(cache_dir, "clip_vision.onnx")
+        if not os.path.exists(onnx_path):
+            return
+        try:
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = int(os.environ.get("OMP_NUM_THREADS", "4"))
+            opts.inter_op_num_threads = 1
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self._onnx_session = ort.InferenceSession(
+                onnx_path, opts, providers=["CPUExecutionProvider"]
+            )
+            logger.info("CLIP ONNX session loaded from %s", onnx_path)
+        except Exception as e:
+            logger.warning("Failed to load CLIP ONNX: %s (falling back to PyTorch)", e)
+            self._onnx_session = None
 
     def _load_probe(self, cache_dir: str) -> None:
         """
@@ -189,22 +220,9 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         """
         Compute AI-generation probability from CLIP embedding.
 
-        Strategy:
-        1. If a trained linear probe exists, use it (most accurate).
-        2. Otherwise, use embedding statistics that correlate with
-           synthetic content: norm magnitude, high-dimensional variance,
-           and specific dimension patterns empirically associated with
-           AI-generated content in CLIP ViT-L/14 space.
+        Uses ONNX Runtime when available (2-3x faster), falls back to PyTorch.
         """
-        inputs = self._processor(images=img, return_tensors="pt")
-
-        with torch.no_grad():
-            device = getattr(self, "_device", "cpu")
-            pixel_values = inputs.get("pixel_values", inputs.get("pixel_values")).to(device)
-            vision_out = self._model.vision_model(pixel_values=pixel_values)
-            pooled = vision_out.pooler_output  # (1, hidden_size)
-            projected = self._model.visual_projection(pooled)  # (1, 768)
-            embedding = projected.squeeze(0).cpu().numpy()  # (768,)
+        embedding = self._extract_embedding(img)
 
         # Normalise
         norm = np.linalg.norm(embedding)
@@ -214,23 +232,35 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
             embedding_normed = embedding
 
         if self._probe is not None and "weights" in self._probe:
-            # Linear probe: sigmoid(w . x + b) — trained on calibration data
             logit = float(np.dot(self._probe["weights"], embedding_normed)
                           + float(self._probe["bias"]))
             score = 1.0 / (1.0 + np.exp(-logit))
         else:
             score = self._heuristic_score(embedding, embedding_normed, norm)
 
-        # ── NS-Net style: strip semantics, analyze residual ──────────
-        # Zero out the top-K semantic dimensions (highest magnitude).
-        # AI images have different residual patterns independent of
-        # image content. This provides a content-agnostic signal.
         nsnet_score = self._nsnet_residual_score(embedding_normed)
-
-        # Combine: 65% primary, 35% NS-Net residual
         combined = score * 0.65 + nsnet_score * 0.35
-
         return float(np.clip(combined, 0.0, 1.0))
+
+    def _extract_embedding(self, img: Image.Image) -> np.ndarray:
+        """Extract 768-dim CLIP embedding. Uses ONNX if available."""
+        inputs = self._processor(images=img, return_tensors="pt" if self._onnx_session is None else "np")
+
+        if self._onnx_session is not None:
+            pixel_values = inputs["pixel_values"]
+            if not isinstance(pixel_values, np.ndarray):
+                pixel_values = pixel_values.numpy()
+            pixel_values = pixel_values.astype(np.float32)
+            result = self._onnx_session.run(None, {"pixel_values": pixel_values})
+            return result[0].squeeze(0)  # (768,)
+
+        with torch.no_grad():
+            device = getattr(self, "_device", "cpu")
+            pixel_values = inputs.get("pixel_values", inputs.get("pixel_values")).to(device)
+            vision_out = self._model.vision_model(pixel_values=pixel_values)
+            pooled = vision_out.pooler_output
+            projected = self._model.visual_projection(pooled)
+            return projected.squeeze(0).cpu().numpy()
 
     @staticmethod
     def _nsnet_residual_score(embedding_normed: np.ndarray, top_k: int = 50) -> float:

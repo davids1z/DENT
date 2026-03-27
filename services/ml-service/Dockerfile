@@ -35,6 +35,9 @@ RUN pip install --no-cache-dir gdown>=5.0.0
 # timm for Community Forensics ViT-Small (CVPR 2025) + future Mesorch
 RUN pip install --no-cache-dir timm>=1.0.0 safetensors>=0.4.0
 
+# ONNX Runtime for 2-3x faster CPU inference (separate layer for caching)
+RUN pip install --no-cache-dir onnxruntime>=1.17.0
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

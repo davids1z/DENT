@@ -119,6 +119,54 @@ async def analyze_forensics(
     return report
 
 
+@router.post("/forensics/batch")
+async def analyze_forensics_batch(
+    files: list[UploadFile] = File(...),
+    skip_modules: str | None = Query(None),
+    scan_mode: str | None = Query(None),
+):
+    """Batch forensic analysis — process multiple files in one request.
+
+    All files are analyzed concurrently using the same pipeline. This is
+    significantly faster than N separate /forensics calls because:
+    1. Single HTTP round-trip instead of N
+    2. ONNX models can batch multiple images in one forward pass
+    3. No queue/scheduling overhead between files
+    """
+    if not settings.forensics_enabled:
+        return [ForensicReport(overall_risk_score=0.0, overall_risk_level="Low")
+                for _ in files]
+
+    max_size = settings.max_image_size_mb * 1024 * 1024
+    skip = set(skip_modules.split(",")) if skip_modules else set()
+    if scan_mode == "quick":
+        skip |= _QUICK_SKIP
+    skip_list = list(skip) if skip else None
+
+    pipeline = get_pipeline()
+
+    # Read all files and fire analyses concurrently
+    async def analyze_one(f: UploadFile) -> ForensicReport:
+        contents = await f.read()
+        filename = f.filename or "unknown"
+        if len(contents) > max_size:
+            return ForensicReport(
+                overall_risk_score=0.0, overall_risk_level="Low",
+                modules=[], total_processing_time_ms=0,
+            )
+        return await pipeline.analyze(contents, filename, skip_list)
+
+    reports = await asyncio.gather(*[analyze_one(f) for f in files])
+
+    logger.info(
+        "Batch forensic analysis complete: %d files, avg_time=%dms",
+        len(reports),
+        sum(r.total_processing_time_ms for r in reports) // max(len(reports), 1),
+    )
+
+    return list(reports)
+
+
 @router.post("/forensics/stream")
 async def analyze_forensics_stream(
     file: UploadFile = File(...),

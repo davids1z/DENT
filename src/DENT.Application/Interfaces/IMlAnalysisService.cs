@@ -12,6 +12,13 @@ public interface IMlAnalysisService
     Task<MlForensicResult> RunForensicsAsync(byte[] fileBytes, string fileName, CancellationToken ct = default);
 
     /// <summary>
+    /// Batch forensic analysis — send multiple files in one HTTP request.
+    /// Much faster than N separate RunForensicsAsync calls.
+    /// </summary>
+    Task<List<MlForensicResult>> RunForensicsBatchAsync(
+        List<(byte[] Data, string FileName)> files, CancellationToken ct = default);
+
+    /// <summary>
     /// Context-aware analysis: sends the image together with forensic module results
     /// so Gemini synthesizes and explains forensic evidence rather than independently detecting.
     /// </summary>
