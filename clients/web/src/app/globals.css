@@ -61,6 +61,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s ease, color 0.2s ease;
+  width: 100vw;
+  overflow-x: hidden;
 }
 
 *, *::before, *::after {
@@ -107,15 +109,19 @@ h3 { font-weight: 600; }
   background: var(--card);
 }
 
-/* ========== SCROLLBAR (thin on all browsers) ========== */
+/* ========== SCROLLBAR (overlay, thin on all browsers) ========== */
+html {
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
-::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--foreground) 15%, transparent); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--foreground) 30%, transparent); }
 
 /* Prevent iOS auto-zoom on input focus (requires ≥16px) */
 @media (max-width: 767px) {
@@ -139,5 +145,5 @@ h3 { font-weight: 600; }
 
 /* ========== SECTION DIVIDER ========== */
 .section-alt {
-  background: var(--card);
+  background: color-mix(in srgb, var(--card) 50%, var(--background));
 }

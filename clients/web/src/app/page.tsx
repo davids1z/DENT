@@ -281,24 +281,18 @@ export default function Dashboard() {
                     {extra > 0 && (
                       <Link
                         href="/inspections"
-                        className="text-sm text-accent hover:text-accent-hover transition-colors font-medium"
+                        className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent-hover transition-colors font-medium"
                       >
+                        <span className="bg-accent/15 text-accent text-xs font-bold px-2 py-0.5 rounded-full">
+                          +{extra}
+                        </span>
                         Pogledaj sve analize
                       </Link>
                     )}
                   </div>
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                    {recent.map((inspection, idx) => (
-                      <div key={inspection.id} className="relative">
-                        <InspectionCard inspection={inspection} />
-                        {extra > 0 && idx === Math.floor(recent.length / 2) && (
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <span className="bg-accent text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-lg">
-                              +{extra}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                    {recent.map((inspection) => (
+                      <InspectionCard key={inspection.id} inspection={inspection} />
                     ))}
                   </div>
                 </div>
