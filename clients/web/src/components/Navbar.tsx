@@ -24,8 +24,16 @@ export function Navbar() {
 
   useEffect(() => {
     if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-user-menu]")) closeMenu();
+    };
     window.addEventListener("scroll", closeMenu, true);
-    return () => window.removeEventListener("scroll", closeMenu, true);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("scroll", closeMenu, true);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [menuOpen, closeMenu]);
 
   function isActive(href: string) {
@@ -84,7 +92,7 @@ export function Navbar() {
               </Link>
 
               {/* User menu */}
-              <div className="relative ml-2">
+              <div className="relative ml-2" data-user-menu>
                 <button
                   onClick={() => user && setMenuOpen(!menuOpen)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-muted hover:text-foreground hover:bg-card transition-colors"
@@ -98,8 +106,6 @@ export function Navbar() {
                 </button>
 
                 {menuOpen && user && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                     <div className="absolute right-0 mt-1 w-48 bg-background rounded-xl border border-border shadow-lg z-50 py-1">
                       <div className="px-4 py-2 border-b border-border">
                         <div className="text-sm font-medium truncate">{user.fullName}</div>
@@ -121,7 +127,6 @@ export function Navbar() {
                         Odjava
                       </button>
                     </div>
-                  </>
                 )}
               </div>
             </>
