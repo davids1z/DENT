@@ -54,6 +54,11 @@
   --font-mono: ui-monospace, "Cascadia Code", "Fira Code", monospace;
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -62,6 +67,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s ease, color 0.2s ease;
   width: 100vw;
+  height: 100%;
+  overflow-y: auto;
   overflow-x: hidden;
 }
 
@@ -110,10 +117,6 @@ h3 { font-weight: 600; }
 }
 
 /* ========== SCROLLBAR (overlay, thin on all browsers) ========== */
-html {
-  overflow-y: scroll;
-  overflow-x: hidden;
-}
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;

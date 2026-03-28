@@ -283,10 +283,10 @@ export default function Dashboard() {
                         href="/inspections"
                         className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent-hover transition-colors font-medium"
                       >
-                        <span className="bg-accent/15 text-accent text-xs font-bold px-2 py-0.5 rounded-full">
+                        Pogledaj sve analize
+                        <span className="bg-accent text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                           +{extra}
                         </span>
-                        Pogledaj sve analize
                       </Link>
                     )}
                   </div>
