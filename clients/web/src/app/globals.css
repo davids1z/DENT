@@ -51,8 +51,8 @@
   --color-muted: var(--muted);
   --color-muted-light: var(--muted-light);
   --font-sans: var(--font-inter);
-  --font-heading: var(--font-space-grotesk);
-  --font-ui: var(--font-inter-tight);
+  --font-heading: var(--font-instrument);
+  --font-ui: var(--font-space-grotesk);
   --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Code", monospace;
 }
 
@@ -74,11 +74,12 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-h1 { font-weight: 700; }
-h2 { font-weight: 700; }
+h1 { font-weight: 400; letter-spacing: -0.03em; }
+h2 { font-weight: 400; letter-spacing: -0.03em; }
 h3 {
   font-family: var(--font-ui), var(--font-sans), system-ui, sans-serif;
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* UI elements: buttons, nav, badges, labels — Inter Tight */
