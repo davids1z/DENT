@@ -50,9 +50,9 @@
   --color-danger: var(--danger);
   --color-muted: var(--muted);
   --color-muted-light: var(--muted-light);
-  --font-sans: var(--font-inter);
-  --font-heading: var(--font-instrument);
-  --font-ui: var(--font-space-grotesk);
+  --font-sans: var(--font-outfit);
+  --font-heading: var(--font-fraunces);
+  --font-ui: var(--font-syne);
   --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Code", monospace;
 }
 
@@ -74,17 +74,22 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-h1 { font-weight: 400; letter-spacing: -0.03em; }
-h2 { font-weight: 400; letter-spacing: -0.03em; }
+h1 { font-weight: 800; letter-spacing: -0.03em; }
+h2 { font-weight: 800; letter-spacing: -0.02em; }
 h3 {
-  font-family: var(--font-ui), var(--font-sans), system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-heading), var(--font-sans), system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
-/* UI elements: buttons, nav, badges, labels — Inter Tight */
-button, a, label, nav, [class*="badge"], [class*="btn"],
-th, select, input::placeholder {
+/* UI elements: buttons, nav, badges, stat numbers — Syne */
+button, label, nav, [class*="badge"], [class*="btn"],
+th, select {
+  font-family: var(--font-ui), var(--font-sans), system-ui, sans-serif;
+}
+
+/* Stat numbers get Syne for distinctive look */
+.font-stat {
   font-family: var(--font-ui), var(--font-sans), system-ui, sans-serif;
 }
 
