@@ -10,10 +10,10 @@ export function ScrollProvider({ children }: { children: React.ReactNode }) {
     style.setAttribute("data-scrollbar-theme", "");
     style.textContent = `
       .os-scrollbar.os-theme-dent { --os-size: 8px; --os-padding-perpendicular: 2px; --os-padding-axis: 2px; }
-      .os-theme-dent .os-scrollbar-handle { background: rgba(100,116,139,0.5) !important; border-radius: 8px !important; }
-      .os-theme-dent .os-scrollbar-handle:hover { background: rgba(100,116,139,0.7) !important; }
-      .dark .os-theme-dent .os-scrollbar-handle { background: rgba(148,163,184,0.4) !important; }
-      .dark .os-theme-dent .os-scrollbar-handle:hover { background: rgba(148,163,184,0.6) !important; }
+      .os-theme-dent .os-scrollbar-handle { background: rgba(100,116,139,0.65) !important; border-radius: 8px !important; }
+      .os-theme-dent .os-scrollbar-handle:hover { background: rgba(100,116,139,0.8) !important; }
+      .dark .os-theme-dent .os-scrollbar-handle { background: rgba(148,163,184,0.55) !important; }
+      .dark .os-theme-dent .os-scrollbar-handle:hover { background: rgba(148,163,184,0.75) !important; }
     `;
     document.body.appendChild(style);
     return () => { style.remove(); };
@@ -26,7 +26,7 @@ export function ScrollProvider({ children }: { children: React.ReactNode }) {
         scrollbars: {
           theme: "os-theme-dent",
           autoHide: "scroll",
-          autoHideDelay: 800,
+          autoHideDelay: 400,
         },
         overflow: { x: "hidden" },
       }}
