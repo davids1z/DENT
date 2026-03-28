@@ -83,15 +83,12 @@ jobs:
               | gzip > "$DEPLOY_DIR/backups/pre-deploy-$(date +%Y%m%d_%H%M%S).sql.gz" || \
               echo "WARNING: Database backup failed (DB may not be running yet)"
 
-            # Build and deploy (remove orphan containers first to avoid name conflicts)
+            # Build new images, then rolling update (no down — avoids full outage)
             docker compose -f docker-compose.server.yml build --parallel
-            docker compose -f docker-compose.server.yml down --remove-orphans 2>/dev/null || true
-            docker compose -f docker-compose.server.yml up -d
+            docker compose -f docker-compose.server.yml up -d --remove-orphans --wait --wait-timeout 120
             docker image prune -f
 
             # Post-deploy: verify API health
-            echo "Waiting 20s for services to start..."
-            sleep 20
             if curl -sf http://127.0.0.1:3200/api/health > /dev/null; then
               echo "Deploy verified — API healthy"
             else
