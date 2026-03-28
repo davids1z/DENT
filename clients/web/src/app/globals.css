@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "overlayscrollbars/overlayscrollbars.css";
 
 :root {
   --background: #ffffff;
@@ -116,16 +117,6 @@ body::-webkit-scrollbar {
   display: none;
 }
 
-/* OverlayScrollbars custom theme */
-.os-theme-custom {
-  --os-handle-bg: color-mix(in srgb, var(--foreground) 20%, transparent);
-  --os-handle-bg-hover: color-mix(in srgb, var(--foreground) 35%, transparent);
-  --os-handle-bg-active: color-mix(in srgb, var(--foreground) 45%, transparent);
-  --os-size: 8px;
-  --os-handle-border-radius: 8px;
-  --os-padding-perpendicular: 2px;
-  --os-padding-axis: 2px;
-}
 
 /* Prevent iOS auto-zoom on input focus (requires ≥16px) */
 @media (max-width: 767px) {

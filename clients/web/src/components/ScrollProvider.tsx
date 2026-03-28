@@ -1,27 +1,38 @@
 "use client";
 
-import { useOverlayScrollbars } from "overlayscrollbars-react";
-import { useEffect, useRef } from "react";
-import "overlayscrollbars/overlayscrollbars.css";
+import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
+import { useEffect } from "react";
 
 export function ScrollProvider({ children }: { children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [initialize] = useOverlayScrollbars({
-    options: {
-      scrollbars: {
-        theme: "os-theme-custom",
-        autoHide: "move",
-        autoHideDelay: 800,
-      },
-      overflow: { x: "hidden" },
-    },
-  });
-
   useEffect(() => {
-    if (ref.current) {
-      initialize(document.body);
-    }
-  }, [initialize]);
+    // Inject styles at end of body to guarantee they come after all other stylesheets
+    const style = document.createElement("style");
+    style.setAttribute("data-scrollbar-theme", "");
+    style.textContent = `
+      .os-scrollbar.os-theme-dent { --os-size: 8px; --os-padding-perpendicular: 2px; --os-padding-axis: 2px; }
+      .os-theme-dent .os-scrollbar-handle { background: rgba(100,116,139,0.35) !important; border-radius: 8px !important; }
+      .os-theme-dent .os-scrollbar-handle:hover { background: rgba(100,116,139,0.55) !important; }
+      .dark .os-theme-dent .os-scrollbar-handle { background: rgba(148,163,184,0.25) !important; }
+      .dark .os-theme-dent .os-scrollbar-handle:hover { background: rgba(148,163,184,0.45) !important; }
+    `;
+    document.body.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
 
-  return <div ref={ref}>{children}</div>;
+  return (
+    <OverlayScrollbarsComponent
+      element="div"
+      options={{
+        scrollbars: {
+          theme: "os-theme-dent",
+          autoHide: "move",
+          autoHideDelay: 800,
+        },
+        overflow: { x: "hidden" },
+      }}
+      style={{ height: "100dvh" }}
+    >
+      {children}
+    </OverlayScrollbarsComponent>
+  );
 }
