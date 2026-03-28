@@ -107,10 +107,13 @@ h3 { font-weight: 600; }
   background: var(--card);
 }
 
-/* ========== SCROLLBAR (native overlay — no ::-webkit-scrollbar to avoid gutter) ========== */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--foreground) 20%, transparent) transparent;
+/* ========== SCROLLBAR (hidden — no gutter, scroll via trackpad/wheel/keys) ========== */
+html, body {
+  scrollbar-width: none;           /* Firefox */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;                   /* Chrome / Safari */
 }
 
 /* Prevent iOS auto-zoom on input focus (requires ≥16px) */
