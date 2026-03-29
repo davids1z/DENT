@@ -104,46 +104,63 @@ export default function AdminPage() {
 function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
   if (loading || !stats) return <Spin />;
 
+  const avgSec = (stats.averageProcessingTimeMs / 1000).toFixed(1);
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPI i={0} label="Korisnici" val={stats.totalUsers} sub={`${stats.activeUsers} aktivnih`} />
-        <KPI i={1} label="Analiza" val={stats.totalInspections} spark={stats.analysesPerDay.map((d) => d.count)} />
-        <KPI i={2} label="Dovrseno" val={stats.completedInspections} accent="text-emerald-400" />
-        <KPI i={3} label="Neuspjelo" val={stats.failedInspections} accent={stats.failedInspections > 0 ? "text-red-400" : undefined} />
+      {/* Main KPI cards with icons */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard i={0} label="Korisnici" value={stats.totalUsers} sub={`${stats.activeUsers} aktivnih`}
+          iconBg="bg-blue-500/15" iconColor="text-blue-400"
+          icon="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-1.997M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+        <KpiCard i={1} label="Ukupno analiza" value={stats.totalInspections}
+          iconBg="bg-violet-500/15" iconColor="text-violet-400"
+          icon="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        <KpiCard i={2} label="Dovrseno" value={stats.completedInspections} valueColor="text-emerald-400"
+          iconBg="bg-emerald-500/15" iconColor="text-emerald-400"
+          icon="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <KpiCard i={3} label="Neuspjelo" value={stats.failedInspections} valueColor={stats.failedInspections > 0 ? "text-red-400" : undefined}
+          iconBg="bg-red-500/15" iconColor="text-red-400"
+          icon="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPI i={0} label="Novi danas" val={stats.usersRegisteredToday} />
-        <KPI i={1} label="Novi tjedan" val={stats.usersRegisteredThisWeek} />
-        <KPI i={2} label="Vrijeme obrade" val={stats.averageProcessingTimeMs / 1000} dec={1} suf="s" />
-        <KPI i={3} label="Red cekanja" val={stats.queuePending} live={stats.queuePending > 0} />
-      </div>
+      {/* Secondary stats in a single row card */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+        <div className="bg-card border border-border rounded-2xl p-5 flex flex-wrap gap-x-8 gap-y-3">
+          <MiniStat label="Novi danas" value={String(stats.usersRegisteredToday)} />
+          <MiniStat label="Novi tjedan" value={String(stats.usersRegisteredThisWeek)} />
+          <MiniStat label="Vrijeme obrade" value={`${avgSec}s`} />
+          <MiniStat label="U analizi" value={String(stats.analyzingInspections)} live={stats.analyzingInspections > 0} />
+          <MiniStat label="Red cekanja" value={String(stats.queuePending)} live={stats.queuePending > 0} />
+        </div>
+      </motion.div>
 
+      {/* Chart */}
       {stats.analysesPerDay.length > 0 && (
-        <Card title="Aktivnost — zadnjih 30 dana" delay={0.15}>
-          <div className="h-[240px] -mx-2">
+        <Card title="Aktivnost — zadnjih 30 dana" delay={0.2}>
+          <div className="h-[200px] -mx-3">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
+              <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
                 <defs>
                   <linearGradient id="aGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-accent-solid)" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="var(--color-accent-solid)" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--color-accent-solid)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="var(--color-accent-solid)" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.4} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(8)} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
-                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-border)", strokeDasharray: "3 3" }} />
-                <Area type="monotone" dataKey="count" stroke="var(--color-accent-solid)" strokeWidth={2} fill="url(#aGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent-solid)" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.25} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => { const d = v.slice(5); return d.replace("-", "/"); }} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={6} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} domain={[0, "auto"]} />
+                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-accent-solid)", strokeOpacity: 0.2 }} />
+                <Area type="monotone" dataKey="count" stroke="var(--color-accent-solid)" strokeWidth={2.5} fill="url(#aGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent-solid)" }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
       )}
 
+      {/* Recent failures */}
       {stats.recentFailures.length > 0 && (
-        <Card title="Nedavni neuspjesi" delay={0.2}>
+        <Card title="Nedavni neuspjesi" delay={0.25}>
           {stats.recentFailures.slice(0, 5).map((f) => (
             <Link key={f.id} href={`/inspections/${f.id}`} className="flex items-center justify-between py-2.5 hover:bg-card-hover -mx-2 px-2 rounded-lg transition-colors">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -491,59 +508,45 @@ function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Rec
 // =========================================================================
 // SHARED
 // =========================================================================
-function KPI({ i, label, val, sub, accent, spark, live, dec, suf }: {
-  i: number; label: string; val: number; sub?: string; accent?: string; spark?: number[]; live?: boolean; dec?: number; suf?: string;
+function KpiCard({ i, label, value, sub, valueColor, iconBg, iconColor, icon }: {
+  i: number; label: string; value: number; sub?: string; valueColor?: string;
+  iconBg: string; iconColor: string; icon: string;
 }) {
-  const d = useCountUp(val, true);
-  const accentColor = accent?.includes("emerald") ? "bg-emerald-500" : accent?.includes("red") ? "bg-red-500" : accent?.includes("blue") ? "bg-blue-500" : "bg-accent";
-
+  const d = useCountUp(value, true);
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.04 }}>
-      <div className="bg-card border border-border rounded-2xl p-5 h-full relative overflow-hidden group hover:border-border/80 transition-colors">
-        {/* Colored top accent line */}
-        <div className={cn("absolute top-0 left-5 right-5 h-[2px] rounded-b opacity-40 group-hover:opacity-70 transition-opacity", accentColor)} />
-
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="text-[11px] text-muted uppercase tracking-wider font-medium mb-2">{label}</div>
-            <div className="flex items-baseline gap-1.5">
-              <span className={cn("text-3xl font-stat font-bold tabular-nums leading-none tracking-tight", accent)}>
-                {dec !== undefined ? d.toFixed(dec) : Math.round(d)}{suf || ""}
-              </span>
-              {live && (
-                <span className="relative flex h-2 w-2 ml-1 mb-1">
-                  <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-60" />
-                  <span className="relative rounded-full h-2 w-2 bg-blue-500" />
-                </span>
-              )}
-            </div>
-            {sub && <div className="text-xs text-muted mt-1.5">{sub}</div>}
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.05 }}>
+      <div className="bg-card border border-border rounded-2xl p-5 h-full">
+        <div className="flex items-center gap-4">
+          <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", iconBg)}>
+            <svg className={cn("w-6 h-6", iconColor)} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+            </svg>
           </div>
-          {spark && spark.length > 2 && (
-            <div className="pt-4">
-              <Sparkline data={spark} />
+          <div className="min-w-0">
+            <div className="text-[11px] text-muted uppercase tracking-wider font-medium">{label}</div>
+            <div className={cn("text-3xl font-stat font-bold tabular-nums leading-none tracking-tight mt-1", valueColor)}>
+              {Math.round(d)}
             </div>
-          )}
+            {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
+          </div>
         </div>
       </div>
     </motion.div>
   );
 }
 
-function Sparkline({ data }: { data: number[] }) {
-  const w = 72, h = 28, max = Math.max(...data, 1);
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - 2 - (v / max) * (h - 4)}`).join(" ");
+function MiniStat({ label, value, live }: { label: string; value: string; live?: boolean }) {
   return (
-    <svg width={w} height={h} className="shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
-      <defs>
-        <linearGradient id="spk" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-accent-solid)" stopOpacity="0.2" />
-          <stop offset="100%" stopColor="var(--color-accent-solid)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={`0,${h} ${pts} ${w},${h}`} fill="url(#spk)" />
-      <polyline points={pts} fill="none" stroke="var(--color-accent-solid)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted">{label}:</span>
+      <span className="text-sm font-stat font-bold">{value}</span>
+      {live && (
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-60" />
+          <span className="relative rounded-full h-1.5 w-1.5 bg-blue-500" />
+        </span>
+      )}
+    </div>
   );
 }
 
