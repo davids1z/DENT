@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
@@ -20,6 +21,28 @@ import { GlowCard } from "@/components/ui/GlowCard";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 
 // ---------------------------------------------------------------------------
+// Count-up hook (from VerdictDashboard pattern)
+// ---------------------------------------------------------------------------
+function useCountUp(target: number, enabled: boolean, duration = 1200) {
+  const [current, setCurrent] = useState(0);
+  useEffect(() => {
+    if (!enabled) { setCurrent(0); return; }
+    const start = performance.now();
+    let raf: number;
+    function tick(now: number) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      setCurrent(eased * target);
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, enabled, duration]);
+  return current;
+}
+
+// ---------------------------------------------------------------------------
 // Tab system
 // ---------------------------------------------------------------------------
 const tabs = [
@@ -31,6 +54,23 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 
+// Motion variants
+const cardEase = [0.25, 0.46, 0.45, 0.94] as const;
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, delay: i * 0.06, ease: cardEase as unknown as [number, number, number, number] },
+  }),
+};
+
+const tabContentVariants = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+};
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -39,7 +79,6 @@ export default function AdminPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("pregled");
 
-  // Shared data
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -73,45 +112,68 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 fade-up">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* Header */}
-      <div className="mb-6">
+      <motion.div
+        className="mb-6"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <h1 className="font-heading text-2xl font-bold">Admin panel</h1>
         <p className="text-sm text-muted mt-1">
           Upravljanje platformom, korisnicima i analizama
         </p>
-      </div>
+      </motion.div>
 
-      {/* Tab navigation */}
+      {/* Tab navigation with sliding indicator */}
       <div className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
             className={cn(
-              "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap",
+              "relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors -mb-px whitespace-nowrap",
               activeTab === t.id
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-foreground"
+                ? "text-accent"
+                : "text-muted hover:text-foreground"
             )}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d={t.icon} />
             </svg>
             {t.label}
+            {activeTab === t.id && (
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"
+                layoutId="admin-tab-indicator"
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              />
+            )}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      {activeTab === "pregled" && (
-        <OverviewTab stats={adminStats} loading={statsLoading} />
-      )}
-      {activeTab === "korisnici" && <UsersTab />}
-      {activeTab === "analize" && <AnalysesTab />}
-      {activeTab === "statistika" && (
-        <StatisticsTab stats={adminStats} loading={statsLoading} />
-      )}
+      {/* Tab content with crossfade */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          variants={tabContentVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: 0.15 }}
+        >
+          {activeTab === "pregled" && (
+            <OverviewTab stats={adminStats} loading={statsLoading} />
+          )}
+          {activeTab === "korisnici" && <UsersTab />}
+          {activeTab === "analize" && <AnalysesTab />}
+          {activeTab === "statistika" && (
+            <StatisticsTab stats={adminStats} loading={statsLoading} />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -121,124 +183,122 @@ export default function AdminPage() {
 // ---------------------------------------------------------------------------
 function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
   if (loading || !stats) {
-    return <SkeletonGrid count={8} />;
+    return <ShimmerGrid count={8} />;
   }
 
-  const avgSeconds = (stats.averageProcessingTimeMs / 1000).toFixed(1);
+  const avgSeconds = stats.averageProcessingTimeMs / 1000;
+  const timeColor = avgSeconds < 15 ? "#22c55e" : avgSeconds < 45 ? "#f59e0b" : "#ef4444";
 
   return (
     <div className="space-y-6">
       {/* Row 1: Primary metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Korisnici"
-          value={stats.totalUsers}
-          sub={`${stats.activeUsers} aktivnih`}
-          icon="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-1.997M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
-        />
-        <StatCard
-          label="Ukupno analiza"
-          value={stats.totalInspections}
-          icon="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-        />
-        <StatCard
-          label="Dovrseno"
-          value={stats.completedInspections}
-          color="text-green-500"
-          icon="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-        <StatCard
-          label="U redu cekanja"
-          value={stats.queuePending}
-          sub={`${stats.queueActiveUsers} korisnika`}
-          dot={stats.queuePending > 0 ? "bg-amber-400" : "bg-green-400"}
-          icon="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
-        />
+        {([
+          { label: "Korisnici", value: stats.totalUsers, sub: `${stats.activeUsers} aktivnih`, icon: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-1.997M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" },
+          { label: "Ukupno analiza", value: stats.totalInspections, icon: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" },
+          { label: "Dovrseno", value: stats.completedInspections, color: "text-green-500" as const, icon: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+          { label: "U redu cekanja", value: stats.queuePending, sub: `${stats.queueActiveUsers} korisnika`, live: stats.queuePending > 0, icon: "M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" },
+        ] as const).map((card, i) => (
+          <motion.div key={card.label} custom={i} variants={cardVariants} initial="hidden" animate="visible">
+            <StatCard {...card} />
+          </motion.div>
+        ))}
       </div>
 
       {/* Row 2: Secondary metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Novi danas" value={stats.usersRegisteredToday} color="text-blue-500" />
-        <StatCard label="Novi tjedan" value={stats.usersRegisteredThisWeek} color="text-blue-500" />
-        <StatCard
-          label="U analizi"
-          value={stats.analyzingInspections}
-          dot={stats.analyzingInspections > 0 ? "bg-blue-400 animate-pulse" : undefined}
-        />
-        <StatCard
-          label="Neuspjelo"
-          value={stats.failedInspections}
-          color={stats.failedInspections > 0 ? "text-red-500" : undefined}
-        />
+        {([
+          { label: "Novi danas", value: stats.usersRegisteredToday, color: "text-blue-500" as const },
+          { label: "Novi tjedan", value: stats.usersRegisteredThisWeek, color: "text-blue-500" as const },
+          { label: "U analizi", value: stats.analyzingInspections, dot: stats.analyzingInspections > 0 ? "bg-blue-400 animate-pulse" : undefined },
+          { label: "Neuspjelo", value: stats.failedInspections, color: stats.failedInspections > 0 ? ("text-red-500" as const) : undefined },
+        ]).map((card, i) => (
+          <motion.div key={card.label} custom={i + 4} variants={cardVariants} initial="hidden" animate="visible">
+            <StatCard {...card} />
+          </motion.div>
+        ))}
       </div>
 
-      {/* Row 3: Processing + System */}
+      {/* Row 3: Processing ring + System status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <GlowCard>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-              <svg className="w-5 h-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+        <motion.div custom={8} variants={cardVariants} initial="hidden" animate="visible">
+          <GlowCard>
+            <div className="flex items-center gap-4">
+              <MiniRingGauge value={avgSeconds} maxValue={60} color={timeColor} />
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wider">Prosjecno vrijeme obrade</div>
+                <div className="text-lg font-stat font-bold mt-0.5">
+                  <AnimatedNumber value={avgSeconds} decimals={1} suffix="s" />
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="text-xs text-muted uppercase tracking-wider">Prosjecno vrijeme obrade</div>
-              <div className="text-2xl font-bold">{avgSeconds}s</div>
+          </GlowCard>
+        </motion.div>
+        <motion.div custom={9} variants={cardVariants} initial="hidden" animate="visible">
+          <GlowCard>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center relative">
+                <div className="w-3 h-3 rounded-full bg-green-400 relative z-10" />
+                <div className="absolute w-3 h-3 rounded-full bg-green-400 animate-ping opacity-40" />
+              </div>
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wider">Status sustava</div>
+                <div className="text-lg font-stat font-bold text-green-500 mt-0.5">Aktivan</div>
+              </div>
             </div>
-          </div>
-        </GlowCard>
-        <GlowCard>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-            </div>
-            <div>
-              <div className="text-xs text-muted uppercase tracking-wider">Status sustava</div>
-              <div className="text-lg font-bold text-green-500">Aktivan</div>
-            </div>
-          </div>
-        </GlowCard>
+          </GlowCard>
+        </motion.div>
       </div>
 
       {/* Row 4: Recent failures */}
       {stats.recentFailures.length > 0 && (
-        <GlassPanel>
-          <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-            Nedavni neuspjesi
-          </h3>
-          <div className="space-y-2">
-            {stats.recentFailures.slice(0, 5).map((f) => (
-              <Link
-                key={f.id}
-                href={`/inspections/${f.id}`}
-                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-card-hover transition-colors group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{f.originalFileName}</div>
-                    <div className="text-xs text-muted truncate">
-                      {f.userFullName || "Nepoznat"} &middot; {f.errorMessage?.slice(0, 60) || "Nepoznata greska"}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
+              Nedavni neuspjesi
+            </h3>
+            <div className="space-y-1">
+              {stats.recentFailures.slice(0, 5).map((f, i) => (
+                <motion.div
+                  key={f.id}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.55 + i * 0.05, duration: 0.3 }}
+                >
+                  <Link
+                    href={`/inspections/${f.id}`}
+                    className="flex items-center justify-between p-2.5 rounded-lg hover:bg-card-hover transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{f.originalFileName}</div>
+                        <div className="text-xs text-muted truncate">
+                          {f.userFullName || "Nepoznat"} &middot; {f.errorMessage?.slice(0, 60) || "Nepoznata greska"}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div className="text-xs text-muted shrink-0 ml-3">
-                  {formatDate(f.createdAt)}
-                </div>
-              </Link>
-            ))}
-          </div>
-        </GlassPanel>
+                    <div className="text-xs text-muted shrink-0 ml-3">
+                      {formatDate(f.createdAt)}
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          </GlassPanel>
+        </motion.div>
       )}
 
-      {/* Mini chart preview */}
+      {/* 30-day chart */}
       {stats.analysesPerDay.length > 0 && (
-        <GlassPanel>
-          <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-            Analize zadnjih 30 dana
-          </h3>
-          <BarChart data={stats.analysesPerDay} />
-        </GlassPanel>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
+              Analize zadnjih 30 dana
+            </h3>
+            <AnimatedBarChart data={stats.analysesPerDay} />
+          </GlassPanel>
+        </motion.div>
       )}
     </div>
   );
@@ -286,11 +346,10 @@ function UsersTab() {
     return u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
 
-  if (loading) return <SkeletonGrid count={3} rows />;
+  if (loading) return <ShimmerGrid count={3} rows />;
 
   return (
     <div>
-      {/* Search */}
       <div className="mb-4">
         <input
           type="text"
@@ -402,14 +461,8 @@ function AnalysesTab() {
     }
   }, [page, status]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Reset page when filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [status]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [status]);
 
   const filtered = inspections.filter((i) => {
     if (!search) return true;
@@ -438,7 +491,6 @@ function AnalysesTab() {
 
   return (
     <div>
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="flex gap-1">
           {statusFilters.map((f) => (
@@ -466,7 +518,7 @@ function AnalysesTab() {
       </div>
 
       {loading ? (
-        <SkeletonGrid count={5} rows />
+        <ShimmerGrid count={5} rows />
       ) : (
         <>
           <div className="border border-border rounded-2xl overflow-hidden overflow-x-auto">
@@ -494,21 +546,11 @@ function AnalysesTab() {
                         {i.originalFileName}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <StatusBadge status={i.status} />
-                    </td>
-                    <td className="px-4 py-3 text-center hidden md:table-cell">
-                      <RiskBadge level={i.forensicResult?.overallRiskLevel} />
-                    </td>
-                    <td className="px-4 py-3 text-center hidden lg:table-cell text-xs">
-                      {getVerdict(i)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-muted text-xs hidden md:table-cell font-mono">
-                      {getProcessingTime(i)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-muted text-xs">
-                      {formatDate(i.createdAt)}
-                    </td>
+                    <td className="px-4 py-3 text-center"><StatusBadge status={i.status} /></td>
+                    <td className="px-4 py-3 text-center hidden md:table-cell"><RiskBadge level={i.forensicResult?.overallRiskLevel} /></td>
+                    <td className="px-4 py-3 text-center hidden lg:table-cell text-xs">{getVerdict(i)}</td>
+                    <td className="px-4 py-3 text-right text-muted text-xs hidden md:table-cell font-mono">{getProcessingTime(i)}</td>
+                    <td className="px-4 py-3 text-right text-muted text-xs">{formatDate(i.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -518,24 +560,15 @@ function AnalysesTab() {
             )}
           </div>
 
-          {/* Pagination */}
           <div className="flex items-center justify-between mt-4">
-            <div className="text-xs text-muted">
-              Stranica {page}
-            </div>
+            <div className="text-xs text-muted">Stranica {page}</div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 Prethodna
               </button>
-              <button
-                onClick={() => setPage(page + 1)}
-                disabled={inspections.length < pageSize}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
+              <button onClick={() => setPage(page + 1)} disabled={inspections.length < pageSize}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 Sljedeca
               </button>
             </div>
@@ -551,81 +584,67 @@ function AnalysesTab() {
 // ---------------------------------------------------------------------------
 function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
   if (loading || !stats) {
-    return <SkeletonGrid count={4} />;
+    return <ShimmerGrid count={4} />;
   }
 
   return (
     <div className="space-y-6">
-      {/* Bar chart */}
       {stats.analysesPerDay.length > 0 && (
         <GlassPanel>
           <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">
             Analize po danu (30 dana)
           </h3>
-          <BarChart data={stats.analysesPerDay} tall />
+          <AnimatedBarChart data={stats.analysesPerDay} tall />
         </GlassPanel>
       )}
 
-      {/* Distribution panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DistributionPanel
-          title="Razina rizika"
-          data={stats.riskLevelDistribution}
-          colorFn={riskColor}
-          labelFn={riskLabel}
-        />
-        <DistributionPanel
-          title="Verdikt"
-          data={stats.verdictDistribution}
-          colorFn={verdictColor}
-          labelFn={verdictLabel}
-        />
-        <DistributionPanel
-          title="Odluke sustava"
-          data={stats.decisionOutcomeDistribution}
-          colorFn={decisionColor}
-          labelFn={decisionLabel}
-        />
-        <DistributionPanel
-          title="Tipovi datoteka"
-          data={stats.fileTypeDistribution}
-          colorFn={() => "var(--color-accent-solid)"}
-          labelFn={(k) => k.toUpperCase()}
-        />
+        <AnimatedDistribution title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
+        <AnimatedDistribution title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
+        <AnimatedDistribution title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
+        <AnimatedDistribution title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={() => "var(--color-accent-solid)"} labelFn={(k) => k.toUpperCase()} />
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Reusable components
+// Animated components
 // ---------------------------------------------------------------------------
 
+function AnimatedNumber({ value, decimals = 0, suffix = "" }: { value: number; decimals?: number; suffix?: string }) {
+  const display = useCountUp(value, true, 1200);
+  return <>{display.toFixed(decimals)}{suffix}</>;
+}
+
 function StatCard({
-  label,
-  value,
-  sub,
-  color,
-  icon,
-  dot,
+  label, value, sub, color, icon, dot, live,
 }: {
-  label: string;
-  value: number;
-  sub?: string;
-  color?: string;
-  icon?: string;
-  dot?: string;
+  label: string; value: number; sub?: string; color?: string; icon?: string; dot?: string; live?: boolean;
 }) {
+  const display = useCountUp(value, true, 1200);
+
   return (
     <GlowCard>
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs text-muted uppercase tracking-wider mb-1.5">{label}</div>
-          <div className={cn("text-2xl font-bold", color)}>{value}</div>
+          <div className={cn("text-2xl font-stat font-bold tabular-nums", color)}>
+            {Math.round(display)}
+          </div>
           {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
         </div>
         <div className="flex items-center gap-2">
-          {dot && <div className={cn("w-2 h-2 rounded-full", dot)} />}
+          {live && (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+              </span>
+              <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Live</span>
+            </span>
+          )}
+          {dot && !live && <div className={cn("w-2 h-2 rounded-full", dot)} />}
           {icon && (
             <div className="w-8 h-8 rounded-lg bg-card-hover flex items-center justify-center">
               <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -639,78 +658,62 @@ function StatCard({
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Completed: "bg-green-500/10 text-green-400 border-green-500/20",
-    Analyzing: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    Pending: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    Failed: "bg-red-500/10 text-red-400 border-red-500/20",
-  };
-  const labels: Record<string, string> = {
-    Completed: "Zavrseno",
-    Analyzing: "U analizi",
-    Pending: "Cekanje",
-    Failed: "Neuspjelo",
-  };
+function MiniRingGauge({ value, maxValue, color }: { value: number; maxValue: number; color: string }) {
+  const size = 48;
+  const stroke = 3;
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const pct = Math.min(value / maxValue, 1);
+  const offset = circumference * (1 - pct);
 
   return (
-    <span className={cn(
-      "inline-flex px-2 py-0.5 rounded-md text-xs font-medium border",
-      styles[status] || "bg-card text-muted border-border"
-    )}>
-      {labels[status] || status}
-    </span>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90" style={{ overflow: "visible" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-border opacity-30" />
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{
+            transition: "stroke-dashoffset 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            filter: `drop-shadow(0 0 4px ${color}40)`,
+          }}
+        />
+      </svg>
+    </div>
   );
 }
 
-function RiskBadge({ level }: { level?: string }) {
-  if (!level) return <span className="text-xs text-muted">—</span>;
-
-  const styles: Record<string, string> = {
-    Low: "bg-green-500/10 text-green-400 border-green-500/20",
-    Medium: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    High: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-    Critical: "bg-red-500/10 text-red-400 border-red-500/20",
-  };
-  const labels: Record<string, string> = {
-    Low: "Nizak",
-    Medium: "Srednji",
-    High: "Visok",
-    Critical: "Kritican",
-  };
-
-  return (
-    <span className={cn(
-      "inline-flex px-2 py-0.5 rounded-md text-xs font-medium border",
-      styles[level] || "bg-card text-muted border-border"
-    )}>
-      {labels[level] || level}
-    </span>
-  );
-}
-
-function BarChart({ data, tall }: { data: { date: string; count: number }[]; tall?: boolean }) {
+function AnimatedBarChart({ data, tall }: { data: { date: string; count: number }[]; tall?: boolean }) {
   const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const barCount = data.length;
+  const [animate, setAnimate] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimate(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div>
       <div className={cn("flex items-end gap-[2px]", tall ? "h-48" : "h-32")}>
         {data.map((d, i) => {
           const heightPct = (d.count / maxCount) * 100;
+          const targetH = Math.max(heightPct, d.count > 0 ? 3 : 0);
           return (
-            <div
-              key={d.date}
-              className="flex-1 group relative"
-              style={{ height: "100%" }}
-            >
-              <div
-                className="absolute bottom-0 left-0 right-0 rounded-t bg-accent/80 hover:bg-accent transition-colors"
-                style={{ height: `${Math.max(heightPct, d.count > 0 ? 2 : 0)}%` }}
+            <div key={d.date} className="flex-1 group relative" style={{ height: "100%" }}>
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 rounded-t"
+                initial={{ height: 0 }}
+                animate={animate ? { height: `${targetH}%` } : {}}
+                transition={{ duration: 0.5, delay: 0.2 + i * 0.018, ease: [0.25, 0.46, 0.45, 0.94] }}
+                style={{
+                  background: `linear-gradient(to top, var(--color-accent-solid) 0%, color-mix(in srgb, var(--color-accent-solid) 70%, white) 100%)`,
+                }}
+                whileHover={{ filter: "brightness(1.2)", transition: { duration: 0.15 } }}
               />
-              {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10">
-                <div className="bg-foreground text-background text-[10px] px-2 py-1 rounded whitespace-nowrap">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
+                <div className="bg-foreground text-background text-[10px] px-2 py-1 rounded whitespace-nowrap shadow-lg">
                   {d.date.slice(5)}: {d.count}
                 </div>
               </div>
@@ -727,16 +730,10 @@ function BarChart({ data, tall }: { data: { date: string; count: number }[]; tal
   );
 }
 
-function DistributionPanel({
-  title,
-  data,
-  colorFn,
-  labelFn,
+function AnimatedDistribution({
+  title, data, colorFn, labelFn,
 }: {
-  title: string;
-  data: Record<string, number>;
-  colorFn: (key: string) => string;
-  labelFn: (key: string) => string;
+  title: string; data: Record<string, number>; colorFn: (key: string) => string; labelFn: (key: string) => string;
 }) {
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
   const total = entries.reduce((sum, [, c]) => sum + c, 0);
@@ -754,32 +751,78 @@ function DistributionPanel({
     <GlassPanel>
       <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">{title}</h3>
       <div className="space-y-3">
-        {entries.map(([key, count]) => (
-          <div key={key} className="flex items-center gap-3">
-            <div className="w-24 text-sm truncate">{labelFn(key)}</div>
-            <div className="flex-1 h-2 bg-card-hover rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${(count / total) * 100}%`,
-                  backgroundColor: colorFn(key),
-                }}
-              />
+        {entries.map(([key, count], i) => {
+          const pct = total > 0 ? (count / total) * 100 : 0;
+          return (
+            <div key={key} className="flex items-center gap-3">
+              <div className="w-24 text-sm truncate">{labelFn(key)}</div>
+              <div className="flex-1 h-2 bg-card-hover rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.7, delay: 0.1 + i * 0.08, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  style={{ backgroundColor: colorFn(key) }}
+                />
+              </div>
+              <div className="text-sm text-muted w-10 text-right font-mono tabular-nums">
+                <AnimatedNumber value={count} />
+              </div>
             </div>
-            <div className="text-sm text-muted w-10 text-right font-mono">{count}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </GlassPanel>
   );
 }
 
-function SkeletonGrid({ count, rows }: { count: number; rows?: boolean }) {
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    Completed: "bg-green-500/10 text-green-400 border-green-500/20",
+    Analyzing: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    Pending: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    Failed: "bg-red-500/10 text-red-400 border-red-500/20",
+  };
+  const labels: Record<string, string> = {
+    Completed: "Zavrseno", Analyzing: "U analizi", Pending: "Cekanje", Failed: "Neuspjelo",
+  };
+  return (
+    <span className={cn("inline-flex px-2 py-0.5 rounded-md text-xs font-medium border", styles[status] || "bg-card text-muted border-border")}>
+      {labels[status] || status}
+    </span>
+  );
+}
+
+function RiskBadge({ level }: { level?: string }) {
+  if (!level) return <span className="text-xs text-muted">—</span>;
+  const styles: Record<string, string> = {
+    Low: "bg-green-500/10 text-green-400 border-green-500/20",
+    Medium: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    High: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    Critical: "bg-red-500/10 text-red-400 border-red-500/20",
+  };
+  const labels: Record<string, string> = { Low: "Nizak", Medium: "Srednji", High: "Visok", Critical: "Kritican" };
+  return (
+    <span className={cn("inline-flex px-2 py-0.5 rounded-md text-xs font-medium border", styles[level] || "bg-card text-muted border-border")}>
+      {labels[level] || level}
+    </span>
+  );
+}
+
+function ShimmerGrid({ count, rows }: { count: number; rows?: boolean }) {
+  const shimmerStyle: React.CSSProperties = {
+    backgroundImage: "linear-gradient(90deg, transparent 0%, var(--color-card-hover) 50%, transparent 100%)",
+    backgroundSize: "200% 100%",
+    animation: "shimmer 1.5s ease-in-out infinite",
+  };
+
   if (rows) {
     return (
       <div className="space-y-3">
         {Array.from({ length: count }).map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-card animate-pulse" />
+          <div key={i} className="h-14 rounded-xl overflow-hidden bg-card">
+            <div className="h-full w-full" style={shimmerStyle} />
+          </div>
         ))}
       </div>
     );
@@ -787,7 +830,9 @@ function SkeletonGrid({ count, rows }: { count: number; rows?: boolean }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="h-24 rounded-xl bg-card animate-pulse" />
+        <div key={i} className="h-24 rounded-xl overflow-hidden bg-card">
+          <div className="h-full w-full" style={shimmerStyle} />
+        </div>
       ))}
     </div>
   );
@@ -808,9 +853,7 @@ function riskColor(level: string): string {
 }
 
 function riskLabel(level: string): string {
-  const labels: Record<string, string> = {
-    Low: "Nizak", Medium: "Srednji", High: "Visok", Critical: "Kritican",
-  };
+  const labels: Record<string, string> = { Low: "Nizak", Medium: "Srednji", High: "Visok", Critical: "Kritican" };
   return labels[level] || level;
 }
 
@@ -824,11 +867,7 @@ function verdictColor(verdict: string): string {
 }
 
 function verdictLabel(verdict: string): string {
-  const labels: Record<string, string> = {
-    authentic: "Autenticno",
-    ai_generated: "AI generirano",
-    tampered: "Manipulirano",
-  };
+  const labels: Record<string, string> = { authentic: "Autenticno", ai_generated: "AI generirano", tampered: "Manipulirano" };
   return labels[verdict] || verdict;
 }
 
@@ -842,10 +881,6 @@ function decisionColor(outcome: string): string {
 }
 
 function decisionLabel(outcome: string): string {
-  const labels: Record<string, string> = {
-    AutoApprove: "Autenticno",
-    HumanReview: "Pregled",
-    Escalate: "Eskalacija",
-  };
+  const labels: Record<string, string> = { AutoApprove: "Autenticno", HumanReview: "Pregled", Escalate: "Eskalacija" };
   return labels[outcome] || outcome;
 }
