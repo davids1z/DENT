@@ -120,10 +120,9 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
         <KPI i={3} label="Red cekanja" val={stats.queuePending} live={stats.queuePending > 0} />
       </div>
 
-      {/* Recharts area chart */}
       {stats.analysesPerDay.length > 0 && (
         <Card title="Aktivnost — zadnjih 30 dana" delay={0.15}>
-          <div className="h-[220px] -mx-2">
+          <div className="h-[240px] -mx-2">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
                 <defs>
@@ -475,10 +474,10 @@ function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Rec
                   <span className="text-sm font-medium">{labelFn(key)}</span>
                   <span className="text-xs text-muted tabular-nums">{count} <span className="text-muted/50">({pct.toFixed(0)}%)</span></span>
                 </div>
-                <div className="h-2 bg-border/20 rounded-full overflow-hidden">
+                <div className="h-2.5 bg-border/15 rounded-full overflow-hidden">
                   <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${pct}%` }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
-                    style={{ backgroundColor: colorFn(key) }} />
+                    style={{ backgroundColor: colorFn(key), boxShadow: `0 0 8px ${colorFn(key)}30` }} />
                 </div>
               </div>
             );
@@ -496,31 +495,54 @@ function KPI({ i, label, val, sub, accent, spark, live, dec, suf }: {
   i: number; label: string; val: number; sub?: string; accent?: string; spark?: number[]; live?: boolean; dec?: number; suf?: string;
 }) {
   const d = useCountUp(val, true);
+  const accentColor = accent?.includes("emerald") ? "bg-emerald-500" : accent?.includes("red") ? "bg-red-500" : accent?.includes("blue") ? "bg-blue-500" : "bg-accent";
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.04 }}>
-      <div className="bg-card border border-border rounded-2xl p-4 h-full relative overflow-hidden">
-        <div className="text-[11px] text-muted uppercase tracking-wider font-medium">{label}</div>
-        <div className="flex items-end justify-between mt-1.5">
-          <span className={cn("text-2xl font-stat font-bold tabular-nums leading-none", accent)}>
-            {dec !== undefined ? d.toFixed(dec) : Math.round(d)}{suf || ""}
-          </span>
-          {spark && spark.length > 2 && <Sparkline data={spark} />}
-          {live && <span className="relative flex h-2.5 w-2.5 mb-1"><span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-50" /><span className="relative rounded-full h-2.5 w-2.5 bg-blue-500" /></span>}
+      <div className="bg-card border border-border rounded-2xl p-5 h-full relative overflow-hidden group hover:border-border/80 transition-colors">
+        {/* Colored top accent line */}
+        <div className={cn("absolute top-0 left-5 right-5 h-[2px] rounded-b opacity-40 group-hover:opacity-70 transition-opacity", accentColor)} />
+
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="text-[11px] text-muted uppercase tracking-wider font-medium mb-2">{label}</div>
+            <div className="flex items-baseline gap-1.5">
+              <span className={cn("text-3xl font-stat font-bold tabular-nums leading-none tracking-tight", accent)}>
+                {dec !== undefined ? d.toFixed(dec) : Math.round(d)}{suf || ""}
+              </span>
+              {live && (
+                <span className="relative flex h-2 w-2 ml-1 mb-1">
+                  <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-60" />
+                  <span className="relative rounded-full h-2 w-2 bg-blue-500" />
+                </span>
+              )}
+            </div>
+            {sub && <div className="text-xs text-muted mt-1.5">{sub}</div>}
+          </div>
+          {spark && spark.length > 2 && (
+            <div className="pt-4">
+              <Sparkline data={spark} />
+            </div>
+          )}
         </div>
-        {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
       </div>
     </motion.div>
   );
 }
 
 function Sparkline({ data }: { data: number[] }) {
-  const w = 56, h = 20, max = Math.max(...data, 1);
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - (v / max) * h}`).join(" ");
+  const w = 72, h = 28, max = Math.max(...data, 1);
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - 2 - (v / max) * (h - 4)}`).join(" ");
   return (
-    <svg width={w} height={h} className="shrink-0 opacity-50">
-      <defs><linearGradient id="spk" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-accent-solid)" stopOpacity="0.3" /><stop offset="100%" stopColor="var(--color-accent-solid)" stopOpacity="0" /></linearGradient></defs>
+    <svg width={w} height={h} className="shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+      <defs>
+        <linearGradient id="spk" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-accent-solid)" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="var(--color-accent-solid)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
       <polygon points={`0,${h} ${pts} ${w},${h}`} fill="url(#spk)" />
-      <polyline points={pts} fill="none" stroke="var(--color-accent-solid)" strokeWidth="1.5" strokeLinejoin="round" />
+      <polyline points={pts} fill="none" stroke="var(--color-accent-solid)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
@@ -528,8 +550,8 @@ function Sparkline({ data }: { data: number[] }) {
 function Card({ title, children, delay = 0 }: { title?: string; children: React.ReactNode; delay?: number }) {
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.2 }}>
-      <div className="bg-card border border-border rounded-2xl p-5">
-        {title && <h3 className="text-[11px] text-muted uppercase tracking-wider font-medium mb-4">{title}</h3>}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        {title && <h3 className="text-[11px] text-muted uppercase tracking-wider font-medium mb-5">{title}</h3>}
         {children}
       </div>
     </motion.div>
