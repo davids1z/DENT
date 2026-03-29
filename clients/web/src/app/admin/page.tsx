@@ -706,10 +706,10 @@ function AnalysesTab() {
 /*  STATISTICS                                                         */
 /* ================================================================== */
 function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
-  const { data: recentIns } = useCachedFetch<Inspection[]>(
+  const { data: recentIns, loading: riLoading } = useCachedFetch<Inspection[]>(
     "admin-completed-100", () => getInspections(1, 100, "Completed"), 60_000,
   );
-  const { data: failedIns } = useCachedFetch<Inspection[]>(
+  const { data: failedIns, loading: fiLoading } = useCachedFetch<Inspection[]>(
     "admin-failed-50", () => getInspections(1, 50, "Failed"), 60_000,
   );
 
@@ -764,7 +764,7 @@ function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: 
     return data;
   }, [recentIns]);
 
-  if (loading || !stats) return <Spin />;
+  if (loading || !stats || riLoading || fiLoading) return <Spin />;
 
   return (
     <div className="space-y-6">
