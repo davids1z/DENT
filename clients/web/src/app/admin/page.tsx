@@ -17,13 +17,11 @@ import {
   type AdminStats,
   type Inspection,
 } from "@/lib/api";
-import { GlowCard } from "@/components/ui/GlowCard";
-import { GlassPanel } from "@/components/ui/GlassPanel";
 
 // ---------------------------------------------------------------------------
-// Count-up hook (from VerdictDashboard pattern)
+// Hooks
 // ---------------------------------------------------------------------------
-function useCountUp(target: number, enabled: boolean, duration = 1200) {
+function useCountUp(target: number, enabled: boolean, duration = 1000) {
   const [current, setCurrent] = useState(0);
   useEffect(() => {
     if (!enabled) { setCurrent(0); return; }
@@ -32,8 +30,7 @@ function useCountUp(target: number, enabled: boolean, duration = 1200) {
     function tick(now: number) {
       const elapsed = now - start;
       const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 4);
-      setCurrent(eased * target);
+      setCurrent((1 - Math.pow(1 - progress, 3)) * target);
       if (progress < 1) raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
@@ -43,64 +40,37 @@ function useCountUp(target: number, enabled: boolean, duration = 1200) {
 }
 
 // ---------------------------------------------------------------------------
-// Tab system
+// Tabs
 // ---------------------------------------------------------------------------
 const tabs = [
-  { id: "pregled", label: "Pregled", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" },
-  { id: "korisnici", label: "Korisnici", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" },
-  { id: "analize", label: "Analize", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-  { id: "statistika", label: "Statistika", icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" },
+  { id: "pregled", label: "Pregled" },
+  { id: "korisnici", label: "Korisnici" },
+  { id: "analize", label: "Analize" },
+  { id: "statistika", label: "Statistika" },
 ] as const;
-
 type TabId = (typeof tabs)[number]["id"];
 
-// Motion variants
-const cardEase = [0.25, 0.46, 0.45, 0.94] as const;
-const cardVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, delay: i * 0.06, ease: cardEase as unknown as [number, number, number, number] },
-  }),
-};
-
-const tabContentVariants = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-};
-
 // ---------------------------------------------------------------------------
-// Main page
+// Page
 // ---------------------------------------------------------------------------
 export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("pregled");
-
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user || user.role !== "Admin") {
-      router.replace("/");
-      return;
-    }
+    if (!user || user.role !== "Admin") { router.replace("/"); return; }
     loadStats();
   }, [user, authLoading, router]);
 
   async function loadStats() {
     try {
       setStatsLoading(true);
-      const data = await getAdminStats();
-      setAdminStats(data);
-    } catch {
-      // ignore
-    } finally {
-      setStatsLoading(false);
-    }
+      setAdminStats(await getAdminStats());
+    } catch { /* ignore */ } finally { setStatsLoading(false); }
   }
 
   if (authLoading || !user || user.role !== "Admin") {
@@ -112,66 +82,47 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-      {/* Header */}
-      <motion.div
-        className="mb-6"
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <h1 className="font-heading text-2xl font-bold">Admin panel</h1>
-        <p className="text-sm text-muted mt-1">
-          Upravljanje platformom, korisnicima i analizama
-        </p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+        <h1 className="font-heading text-3xl font-extrabold tracking-tight">Admin panel</h1>
+        <p className="text-muted mt-1">Upravljanje platformom, korisnicima i analizama</p>
       </motion.div>
 
-      {/* Tab navigation with sliding indicator */}
-      <div className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
+      {/* Tabs */}
+      <div className="flex gap-1 mt-6 mb-8 border-b border-border overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
             className={cn(
-              "relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors -mb-px whitespace-nowrap",
-              activeTab === t.id
-                ? "text-accent"
-                : "text-muted hover:text-foreground"
+              "relative px-5 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
+              activeTab === t.id ? "text-foreground" : "text-muted hover:text-foreground"
             )}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d={t.icon} />
-            </svg>
             {t.label}
             {activeTab === t.id && (
               <motion.div
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"
-                layoutId="admin-tab-indicator"
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full"
+                layoutId="admin-tab"
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
               />
             )}
           </button>
         ))}
       </div>
 
-      {/* Tab content with crossfade */}
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
-          variants={tabContentVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ duration: 0.15 }}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.12 }}
         >
-          {activeTab === "pregled" && (
-            <OverviewTab stats={adminStats} loading={statsLoading} />
-          )}
+          {activeTab === "pregled" && <OverviewTab stats={adminStats} loading={statsLoading} />}
           {activeTab === "korisnici" && <UsersTab />}
           {activeTab === "analize" && <AnalysesTab />}
-          {activeTab === "statistika" && (
-            <StatisticsTab stats={adminStats} loading={statsLoading} />
-          )}
+          {activeTab === "statistika" && <StatisticsTab stats={adminStats} loading={statsLoading} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -179,125 +130,85 @@ export default function AdminPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Overview Tab
+// Overview
 // ---------------------------------------------------------------------------
 function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
-  if (loading || !stats) {
-    return <ShimmerGrid count={8} />;
-  }
+  if (loading || !stats) return <Loader />;
 
-  const avgSeconds = stats.averageProcessingTimeMs / 1000;
-  const timeColor = avgSeconds < 15 ? "#22c55e" : avgSeconds < 45 ? "#f59e0b" : "#ef4444";
+  const avgSec = stats.averageProcessingTimeMs / 1000;
+  const timeColor = avgSec < 15 ? "#22c55e" : avgSec < 45 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div className="space-y-6">
-      {/* Row 1: Primary metrics */}
+    <div className="space-y-8">
+      {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {([
-          { label: "Korisnici", value: stats.totalUsers, sub: `${stats.activeUsers} aktivnih`, icon: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-1.997M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" },
-          { label: "Ukupno analiza", value: stats.totalInspections, icon: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" },
-          { label: "Dovrseno", value: stats.completedInspections, color: "text-green-500" as const, icon: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-          { label: "U redu cekanja", value: stats.queuePending, sub: `${stats.queueActiveUsers} korisnika`, live: stats.queuePending > 0, icon: "M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" },
-        ] as const).map((card, i) => (
-          <motion.div key={card.label} custom={i} variants={cardVariants} initial="hidden" animate="visible">
-            <StatCard {...card} />
-          </motion.div>
-        ))}
+        <KPI i={0} label="Korisnici" value={stats.totalUsers} sub={`${stats.activeUsers} aktivnih`} accent="text-accent" />
+        <KPI i={1} label="Ukupno analiza" value={stats.totalInspections} />
+        <KPI i={2} label="Dovrseno" value={stats.completedInspections} accent="text-green-500" />
+        <KPI i={3} label="Neuspjelo" value={stats.failedInspections} accent={stats.failedInspections > 0 ? "text-red-500" : undefined} />
       </div>
 
-      {/* Row 2: Secondary metrics */}
+      {/* Secondary row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {([
-          { label: "Novi danas", value: stats.usersRegisteredToday, color: "text-blue-500" as const },
-          { label: "Novi tjedan", value: stats.usersRegisteredThisWeek, color: "text-blue-500" as const },
-          { label: "U analizi", value: stats.analyzingInspections, dot: stats.analyzingInspections > 0 ? "bg-blue-400 animate-pulse" : undefined },
-          { label: "Neuspjelo", value: stats.failedInspections, color: stats.failedInspections > 0 ? ("text-red-500" as const) : undefined },
-        ]).map((card, i) => (
-          <motion.div key={card.label} custom={i + 4} variants={cardVariants} initial="hidden" animate="visible">
-            <StatCard {...card} />
-          </motion.div>
-        ))}
+        <KPI i={0} label="Novi danas" value={stats.usersRegisteredToday} accent="text-blue-400" />
+        <KPI i={1} label="Novi tjedan" value={stats.usersRegisteredThisWeek} accent="text-blue-400" />
+        <KPI i={2} label="U analizi" value={stats.analyzingInspections} live={stats.analyzingInspections > 0} />
+        <KPI i={3} label="Red cekanja" value={stats.queuePending} live={stats.queuePending > 0} sub={`${stats.queueActiveUsers} korisnika`} />
       </div>
 
-      {/* Row 3: Processing ring + System status */}
+      {/* Processing + Status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <motion.div custom={8} variants={cardVariants} initial="hidden" animate="visible">
-          <GlowCard>
-            <div className="flex items-center gap-4">
-              <MiniRingGauge value={avgSeconds} maxValue={60} color={timeColor} />
-              <div>
-                <div className="text-xs text-muted uppercase tracking-wider">Prosjecno vrijeme obrade</div>
-                <div className="text-lg font-stat font-bold mt-0.5">
-                  <AnimatedNumber value={avgSeconds} decimals={1} suffix="s" />
-                </div>
-              </div>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+          <div className="bg-card border border-border rounded-2xl p-5 flex items-center gap-4">
+            <Ring value={avgSec} max={60} color={timeColor} size={52} />
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wider">Prosjecno vrijeme</div>
+              <div className="text-xl font-stat font-bold mt-0.5"><Num value={avgSec} d={1} />s</div>
             </div>
-          </GlowCard>
+          </div>
         </motion.div>
-        <motion.div custom={9} variants={cardVariants} initial="hidden" animate="visible">
-          <GlowCard>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center relative">
-                <div className="w-3 h-3 rounded-full bg-green-400 relative z-10" />
-                <div className="absolute w-3 h-3 rounded-full bg-green-400 animate-ping opacity-40" />
-              </div>
-              <div>
-                <div className="text-xs text-muted uppercase tracking-wider">Status sustava</div>
-                <div className="text-lg font-stat font-bold text-green-500 mt-0.5">Aktivan</div>
-              </div>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <div className="bg-card border border-border rounded-2xl p-5 flex items-center gap-4">
+            <div className="w-[52px] h-[52px] rounded-xl bg-green-500/10 flex items-center justify-center relative">
+              <div className="w-3 h-3 rounded-full bg-green-400 z-10" />
+              <div className="absolute w-3 h-3 rounded-full bg-green-400 animate-ping opacity-30" />
             </div>
-          </GlowCard>
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wider">Sustav</div>
+              <div className="text-xl font-stat font-bold text-green-500 mt-0.5">Aktivan</div>
+            </div>
+          </div>
         </motion.div>
       </div>
 
-      {/* Row 4: Recent failures */}
-      {stats.recentFailures.length > 0 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-          <GlassPanel>
-            <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-              Nedavni neuspjesi
-            </h3>
-            <div className="space-y-1">
-              {stats.recentFailures.slice(0, 5).map((f, i) => (
-                <motion.div
-                  key={f.id}
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.55 + i * 0.05, duration: 0.3 }}
-                >
-                  <Link
-                    href={`/inspections/${f.id}`}
-                    className="flex items-center justify-between p-2.5 rounded-lg hover:bg-card-hover transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{f.originalFileName}</div>
-                        <div className="text-xs text-muted truncate">
-                          {f.userFullName || "Nepoznat"} &middot; {f.errorMessage?.slice(0, 60) || "Nepoznata greska"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted shrink-0 ml-3">
-                      {formatDate(f.createdAt)}
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          </GlassPanel>
+      {/* Chart */}
+      {stats.analysesPerDay.length > 0 && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
+          <Panel title="Analize — zadnjih 30 dana">
+            <BarChart data={stats.analysesPerDay} />
+          </Panel>
         </motion.div>
       )}
 
-      {/* 30-day chart */}
-      {stats.analysesPerDay.length > 0 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
-          <GlassPanel>
-            <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-              Analize zadnjih 30 dana
-            </h3>
-            <AnimatedBarChart data={stats.analysesPerDay} />
-          </GlassPanel>
+      {/* Recent failures */}
+      {stats.recentFailures.length > 0 && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
+          <Panel title="Nedavni neuspjesi">
+            <div className="divide-y divide-border">
+              {stats.recentFailures.slice(0, 5).map((f) => (
+                <Link key={f.id} href={`/inspections/${f.id}`} className="flex items-center justify-between py-3 px-1 hover:bg-card-hover -mx-1 px-2 rounded-lg transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium truncate block">{f.originalFileName}</span>
+                      <span className="text-xs text-muted">{f.userFullName || "—"}</span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted shrink-0 ml-3">{formatDate(f.createdAt)}</span>
+                </Link>
+              ))}
+            </div>
+          </Panel>
         </motion.div>
       )}
     </div>
@@ -305,39 +216,27 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
 }
 
 // ---------------------------------------------------------------------------
-// Users Tab
+// Users (expandable cards)
 // ---------------------------------------------------------------------------
 function UsersTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  useEffect(() => { loadUsers(); }, []);
 
   async function loadUsers() {
-    try {
-      const data = await getAdminUsers();
-      setUsers(data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
+    try { setUsers(await getAdminUsers()); }
+    catch { /* ignore */ }
+    finally { setLoading(false); }
   }
 
   async function handleToggle(u: AdminUser) {
     try {
-      if (u.isActive) {
-        await deactivateUser(u.id);
-      } else {
-        await activateUser(u.id);
-      }
+      u.isActive ? await deactivateUser(u.id) : await activateUser(u.id);
       await loadUsers();
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }
 
   const filtered = users.filter((u) => {
@@ -346,98 +245,190 @@ function UsersTab() {
     return u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
 
-  if (loading) return <ShimmerGrid count={3} rows />;
+  if (loading) return <Loader />;
 
   return (
     <div>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Pretrazi korisnike..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-sm px-3 py-2 rounded-lg border border-border bg-card text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30"
-        />
-      </div>
+      <input
+        type="text"
+        placeholder="Pretrazi korisnike..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full max-w-sm px-4 py-2.5 rounded-xl border border-border bg-card text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 mb-5"
+      />
 
-      <div className="border border-border rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-card border-b border-border">
-              <th className="text-left px-4 py-3 font-medium text-muted">Korisnik</th>
-              <th className="text-left px-4 py-3 font-medium text-muted hidden sm:table-cell">Uloga</th>
-              <th className="text-left px-4 py-3 font-medium text-muted hidden md:table-cell">Registriran</th>
-              <th className="text-left px-4 py-3 font-medium text-muted hidden md:table-cell">Zadnja prijava</th>
-              <th className="text-center px-4 py-3 font-medium text-muted">Analiza</th>
-              <th className="text-center px-4 py-3 font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 font-medium text-muted">Akcija</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((u) => (
-              <tr key={u.id} className="border-b border-border last:border-0 hover:bg-card/50 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="font-medium">{u.fullName}</div>
-                  <div className="text-xs text-muted">{u.email}</div>
-                </td>
-                <td className="px-4 py-3 hidden sm:table-cell">
-                  <span className={cn(
-                    "inline-flex px-2 py-0.5 rounded-md text-xs font-medium border",
-                    u.role === "Admin"
-                      ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                      : "bg-card text-muted border-border"
-                  )}>
-                    {u.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-muted hidden md:table-cell">{formatDate(u.createdAt)}</td>
-                <td className="px-4 py-3 text-muted hidden md:table-cell">{u.lastLoginAt ? formatDate(u.lastLoginAt) : "—"}</td>
-                <td className="px-4 py-3 text-center">{u.inspectionCount}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className={cn(
-                    "inline-flex px-2 py-0.5 rounded-md text-xs font-medium border",
-                    u.isActive
-                      ? "bg-green-500/10 text-green-400 border-green-500/20"
-                      : "bg-red-500/10 text-red-400 border-red-500/20"
-                  )}>
-                    {u.isActive ? "Aktivan" : "Neaktivan"}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {u.role !== "Admin" && (
-                    <button
-                      onClick={() => handleToggle(u)}
-                      className={cn(
-                        "text-xs font-medium px-3 py-1.5 rounded-lg transition-colors",
-                        u.isActive
-                          ? "text-red-400 hover:bg-red-500/10"
-                          : "text-green-400 hover:bg-green-500/10"
-                      )}
-                    >
-                      {u.isActive ? "Deaktiviraj" : "Aktiviraj"}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted">Nema rezultata</div>
-        )}
+      <div className="space-y-3">
+        {filtered.map((u) => (
+          <UserCard
+            key={u.id}
+            user={u}
+            expanded={expanded === u.id}
+            onToggleExpand={() => setExpanded(expanded === u.id ? null : u.id)}
+            onToggleActive={() => handleToggle(u)}
+          />
+        ))}
+        {filtered.length === 0 && <div className="py-12 text-center text-muted">Nema rezultata</div>}
       </div>
     </div>
   );
 }
 
+function UserCard({ user: u, expanded, onToggleExpand, onToggleActive }: {
+  user: AdminUser; expanded: boolean; onToggleExpand: () => void; onToggleActive: () => void;
+}) {
+  const [inspections, setInspections] = useState<Inspection[] | null>(null);
+  const [insLoading, setInsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || inspections !== null) return;
+    setInsLoading(true);
+    // Fetch all inspections and filter by owner email client-side
+    // (the API filters by UserId server-side for non-admins, but admin sees all)
+    getInspections(1, 100).then((data) => {
+      setInspections(data.filter((i) => i.ownerEmail === u.email));
+    }).catch(() => setInspections([])).finally(() => setInsLoading(false));
+  }, [expanded, inspections, u.email]);
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden transition-colors">
+      {/* Header row — clickable */}
+      <button onClick={onToggleExpand} className="w-full flex items-center gap-4 p-4 text-left hover:bg-card-hover transition-colors">
+        {/* Avatar */}
+        <div className={cn(
+          "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0",
+          u.role === "Admin" ? "bg-purple-500/15 text-purple-400" : "bg-accent/10 text-accent"
+        )}>
+          {u.fullName.charAt(0).toUpperCase()}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{u.fullName}</span>
+            {u.role === "Admin" && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 uppercase">Admin</span>
+            )}
+            {!u.isActive && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 uppercase">Neaktivan</span>
+            )}
+          </div>
+          <div className="text-xs text-muted truncate">{u.email}</div>
+        </div>
+
+        {/* Stats */}
+        <div className="hidden sm:flex items-center gap-6 text-xs text-muted shrink-0">
+          <div className="text-center">
+            <div className="font-stat font-bold text-lg text-foreground">{u.inspectionCount}</div>
+            <div>analiza</div>
+          </div>
+          <div className="text-center hidden md:block">
+            <div className="font-medium text-foreground">{formatDate(u.createdAt).split(" ")[0]}</div>
+            <div>registriran</div>
+          </div>
+          <div className="text-center hidden lg:block">
+            <div className="font-medium text-foreground">{u.lastLoginAt ? formatDate(u.lastLoginAt).split(" ")[0] : "—"}</div>
+            <div>zadnja prijava</div>
+          </div>
+        </div>
+
+        {/* Chevron */}
+        <svg className={cn("w-4 h-4 text-muted transition-transform shrink-0", expanded && "rotate-180")}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+
+      {/* Expanded detail */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-4 py-4 space-y-4">
+              {/* Detail grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <DetailCell label="Email" value={u.email} />
+                <DetailCell label="Uloga" value={u.role} />
+                <DetailCell label="Registriran" value={formatDate(u.createdAt)} />
+                <DetailCell label="Zadnja prijava" value={u.lastLoginAt ? formatDate(u.lastLoginAt) : "Nikad"} />
+                <DetailCell label="Status" value={u.isActive ? "Aktivan" : "Neaktivan"} color={u.isActive ? "text-green-400" : "text-red-400"} />
+                <DetailCell label="Ukupno analiza" value={String(u.inspectionCount)} />
+              </div>
+
+              {/* Action button */}
+              {u.role !== "Admin" && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleActive(); }}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-xs font-medium border transition-colors",
+                    u.isActive
+                      ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
+                      : "border-green-500/20 text-green-400 hover:bg-green-500/10"
+                  )}
+                >
+                  {u.isActive ? "Deaktiviraj korisnika" : "Aktiviraj korisnika"}
+                </button>
+              )}
+
+              {/* User's inspections */}
+              {insLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted py-2">
+                  <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin" />
+                  Ucitavanje analiza...
+                </div>
+              ) : inspections && inspections.length > 0 ? (
+                <div>
+                  <div className="text-xs text-muted uppercase tracking-wider mb-2">Nedavne analize</div>
+                  <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+                    {inspections.slice(0, 8).map((ins) => (
+                      <Link key={ins.id} href={`/inspections/${ins.id}`}
+                        className="flex items-center justify-between px-3 py-2.5 hover:bg-card-hover transition-colors text-sm">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Badge status={ins.status} />
+                          <span className="truncate max-w-[200px]">{ins.originalFileName}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 ml-2">
+                          {ins.forensicResult && (
+                            <RiskDot level={ins.forensicResult.overallRiskLevel} />
+                          )}
+                          <span className="text-xs text-muted">{formatDate(ins.createdAt).split(" ")[0]}</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : inspections ? (
+                <div className="text-xs text-muted py-1">Nema analiza</div>
+              ) : null}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function DetailCell({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <div className="text-[10px] text-muted uppercase tracking-wider">{label}</div>
+      <div className={cn("text-sm font-medium mt-0.5 truncate", color)}>{value}</div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Analyses Tab
+// Analyses
 // ---------------------------------------------------------------------------
 const statusFilters = [
   { value: "", label: "Sve" },
   { value: "Completed", label: "Zavrseno" },
   { value: "Analyzing", label: "U analizi" },
-  { value: "Pending", label: "Na cekanju" },
+  { value: "Pending", label: "Cekanje" },
   { value: "Failed", label: "Neuspjelo" },
 ] as const;
 
@@ -450,15 +441,9 @@ function AnalysesTab() {
   const pageSize = 20;
 
   const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await getInspections(page, pageSize, status || undefined);
-      setInspections(data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
+    try { setLoading(true); setInspections(await getInspections(page, pageSize, status || undefined)); }
+    catch { /* ignore */ }
+    finally { setLoading(false); }
   }, [page, status]);
 
   useEffect(() => { load(); }, [load]);
@@ -467,110 +452,55 @@ function AnalysesTab() {
   const filtered = inspections.filter((i) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (
-      i.originalFileName.toLowerCase().includes(q) ||
-      (i.ownerFullName?.toLowerCase().includes(q) ?? false) ||
-      (i.ownerEmail?.toLowerCase().includes(q) ?? false)
-    );
+    return i.originalFileName.toLowerCase().includes(q) || (i.ownerFullName?.toLowerCase().includes(q) ?? false) || (i.ownerEmail?.toLowerCase().includes(q) ?? false);
   });
-
-  function getVerdict(i: Inspection): string {
-    const probs = i.forensicResult?.verdictProbabilities;
-    if (!probs) return "—";
-    const entries = Object.entries(probs);
-    if (entries.length === 0) return "—";
-    const [winner] = entries.sort((a, b) => b[1] - a[1])[0];
-    return verdictLabel(winner);
-  }
-
-  function getProcessingTime(i: Inspection): string {
-    if (!i.completedAt) return "—";
-    const ms = new Date(i.completedAt).getTime() - new Date(i.createdAt).getTime();
-    return `${(ms / 1000).toFixed(1)}s`;
-  }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="flex gap-1 bg-card border border-border rounded-xl p-1">
           {statusFilters.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatus(f.value)}
+            <button key={f.value} onClick={() => setStatus(f.value)}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                status === f.value
-                  ? "bg-accent text-white"
-                  : "text-muted hover:text-foreground hover:bg-card"
-              )}
-            >
+                status === f.value ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground"
+              )}>
               {f.label}
             </button>
           ))}
         </div>
-        <input
-          type="text"
-          placeholder="Pretrazi..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-border bg-card text-xs placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 w-48"
-        />
+        <input type="text" placeholder="Pretrazi..." value={search} onChange={(e) => setSearch(e.target.value)}
+          className="px-4 py-2 rounded-xl border border-border bg-card text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 w-52" />
       </div>
 
-      {loading ? (
-        <ShimmerGrid count={5} rows />
-      ) : (
+      {loading ? <Loader /> : (
         <>
-          <div className="border border-border rounded-2xl overflow-hidden overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-card border-b border-border">
-                  <th className="text-left px-4 py-3 font-medium text-muted">Korisnik</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted">Datoteka</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted">Status</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted hidden md:table-cell">Rizik</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted hidden lg:table-cell">Verdikt</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted hidden md:table-cell">Vrijeme</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted">Datum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((i) => (
-                  <tr key={i.id} className="border-b border-border last:border-0 hover:bg-card/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="text-sm">{i.ownerFullName || "—"}</div>
-                      <div className="text-xs text-muted">{i.ownerEmail || ""}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link href={`/inspections/${i.id}`} className="text-accent hover:underline text-sm truncate block max-w-[200px]">
-                        {i.originalFileName}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-center"><StatusBadge status={i.status} /></td>
-                    <td className="px-4 py-3 text-center hidden md:table-cell"><RiskBadge level={i.forensicResult?.overallRiskLevel} /></td>
-                    <td className="px-4 py-3 text-center hidden lg:table-cell text-xs">{getVerdict(i)}</td>
-                    <td className="px-4 py-3 text-right text-muted text-xs hidden md:table-cell font-mono">{getProcessingTime(i)}</td>
-                    <td className="px-4 py-3 text-right text-muted text-xs">{formatDate(i.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filtered.length === 0 && (
-              <div className="py-8 text-center text-sm text-muted">Nema rezultata</div>
-            )}
+          <div className="space-y-2">
+            {filtered.map((i) => (
+              <Link key={i.id} href={`/inspections/${i.id}`}
+                className="flex items-center gap-4 bg-card border border-border rounded-xl px-4 py-3 hover:border-accent/30 transition-colors group">
+                <Badge status={i.status} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate group-hover:text-accent transition-colors">{i.originalFileName}</div>
+                  <div className="text-xs text-muted">{i.ownerFullName || "—"}</div>
+                </div>
+                {i.forensicResult && (
+                  <div className="hidden sm:block"><RiskDot level={i.forensicResult.overallRiskLevel} withLabel /></div>
+                )}
+                <div className="hidden md:block text-xs text-muted font-mono shrink-0">
+                  {i.completedAt ? `${((new Date(i.completedAt).getTime() - new Date(i.createdAt).getTime()) / 1000).toFixed(1)}s` : "—"}
+                </div>
+                <div className="text-xs text-muted shrink-0">{formatDate(i.createdAt).split(" ")[0]}</div>
+              </Link>
+            ))}
           </div>
+          {filtered.length === 0 && <div className="py-12 text-center text-muted">Nema rezultata</div>}
 
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-xs text-muted">Stranica {page}</div>
+          <div className="flex items-center justify-between mt-5">
+            <span className="text-xs text-muted">Stranica {page}</span>
             <div className="flex gap-2">
-              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                Prethodna
-              </button>
-              <button onClick={() => setPage(page + 1)} disabled={inspections.length < pageSize}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                Sljedeca
-              </button>
+              <PagBtn onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>Prethodna</PagBtn>
+              <PagBtn onClick={() => setPage(page + 1)} disabled={inspections.length < pageSize}>Sljedeca</PagBtn>
             </div>
           </div>
         </>
@@ -580,140 +510,101 @@ function AnalysesTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Statistics Tab
+// Statistics
 // ---------------------------------------------------------------------------
 function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
-  if (loading || !stats) {
-    return <ShimmerGrid count={4} />;
-  }
+  if (loading || !stats) return <Loader />;
 
   return (
     <div className="space-y-6">
       {stats.analysesPerDay.length > 0 && (
-        <GlassPanel>
-          <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">
-            Analize po danu (30 dana)
-          </h3>
-          <AnimatedBarChart data={stats.analysesPerDay} tall />
-        </GlassPanel>
+        <Panel title="Analize po danu — zadnjih 30 dana">
+          <BarChart data={stats.analysesPerDay} tall />
+        </Panel>
       )}
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AnimatedDistribution title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
-        <AnimatedDistribution title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
-        <AnimatedDistribution title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
-        <AnimatedDistribution title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={() => "var(--color-accent-solid)"} labelFn={(k) => k.toUpperCase()} />
+        <DistPanel title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
+        <DistPanel title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
+        <DistPanel title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
+        <DistPanel title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={() => "var(--color-accent-solid)"} labelFn={(k) => k.toUpperCase()} />
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Animated components
+// Shared components
 // ---------------------------------------------------------------------------
 
-function AnimatedNumber({ value, decimals = 0, suffix = "" }: { value: number; decimals?: number; suffix?: string }) {
-  const display = useCountUp(value, true, 1200);
-  return <>{display.toFixed(decimals)}{suffix}</>;
-}
-
-function StatCard({
-  label, value, sub, color, icon, dot, live,
-}: {
-  label: string; value: number; sub?: string; color?: string; icon?: string; dot?: string; live?: boolean;
+function KPI({ i, label, value, sub, accent, live }: {
+  i: number; label: string; value: number; sub?: string; accent?: string; live?: boolean;
 }) {
-  const display = useCountUp(value, true, 1200);
-
+  const display = useCountUp(value, true);
   return (
-    <GlowCard>
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-xs text-muted uppercase tracking-wider mb-1.5">{label}</div>
-          <div className={cn("text-2xl font-stat font-bold tabular-nums", color)}>
-            {Math.round(display)}
-          </div>
-          {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
-        </div>
-        <div className="flex items-center gap-2">
-          {live && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
-              </span>
-              <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Live</span>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: i * 0.05 }}
+    >
+      <div className="bg-card border border-border rounded-2xl p-4 relative overflow-hidden">
+        {live && (
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-60" />
+              <span className="relative rounded-full h-2 w-2 bg-blue-500" />
             </span>
-          )}
-          {dot && !live && <div className={cn("w-2 h-2 rounded-full", dot)} />}
-          {icon && (
-            <div className="w-8 h-8 rounded-lg bg-card-hover flex items-center justify-center">
-              <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
-              </svg>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+        <div className="text-[11px] text-muted uppercase tracking-wider">{label}</div>
+        <div className={cn("text-3xl font-stat font-bold tabular-nums mt-1", accent)}>{Math.round(display)}</div>
+        {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
       </div>
-    </GlowCard>
+    </motion.div>
   );
 }
 
-function MiniRingGauge({ value, maxValue, color }: { value: number; maxValue: number; color: string }) {
-  const size = 48;
-  const stroke = 3;
-  const r = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * r;
-  const pct = Math.min(value / maxValue, 1);
-  const offset = circumference * (1 - pct);
+function Num({ value, d = 0 }: { value: number; d?: number }) {
+  const display = useCountUp(value, true);
+  return <>{display.toFixed(d)}</>;
+}
 
+function Ring({ value, max, color, size = 48 }: { value: number; max: number; color: string; size?: number }) {
+  const s = 3;
+  const r = (size - s) / 2;
+  const c = 2 * Math.PI * r;
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90" style={{ overflow: "visible" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-border opacity-30" />
-        <circle
-          cx={size / 2} cy={size / 2} r={r}
-          fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          style={{
-            transition: "stroke-dashoffset 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-            filter: `drop-shadow(0 0 4px ${color}40)`,
-          }}
+    <div className="shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={s} className="text-border opacity-20" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={s} strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - Math.min(value / max, 1))}
+          style={{ transition: "stroke-dashoffset 1.2s cubic-bezier(.25,.46,.45,.94)", filter: `drop-shadow(0 0 3px ${color}50)` }}
         />
       </svg>
     </div>
   );
 }
 
-function AnimatedBarChart({ data, tall }: { data: { date: string; count: number }[]; tall?: boolean }) {
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const [animate, setAnimate] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setAnimate(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
+function BarChart({ data, tall }: { data: { date: string; count: number }[]; tall?: boolean }) {
+  const max = Math.max(...data.map((d) => d.count), 1);
+  const [go, setGo] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setGo(true), 80); return () => clearTimeout(t); }, []);
 
   return (
     <div>
-      <div className={cn("flex items-end gap-[2px]", tall ? "h-48" : "h-32")}>
+      <div className={cn("flex items-end gap-px", tall ? "h-52" : "h-36")}>
         {data.map((d, i) => {
-          const heightPct = (d.count / maxCount) * 100;
-          const targetH = Math.max(heightPct, d.count > 0 ? 3 : 0);
+          const pct = Math.max((d.count / max) * 100, d.count > 0 ? 2 : 0);
           return (
-            <div key={d.date} className="flex-1 group relative" style={{ height: "100%" }}>
+            <div key={d.date} className="flex-1 group relative h-full">
               <motion.div
-                className="absolute bottom-0 left-0 right-0 rounded-t"
+                className="absolute bottom-0 left-[1px] right-[1px] rounded-t-sm bg-accent/70 hover:bg-accent transition-colors"
                 initial={{ height: 0 }}
-                animate={animate ? { height: `${targetH}%` } : {}}
-                transition={{ duration: 0.5, delay: 0.2 + i * 0.018, ease: [0.25, 0.46, 0.45, 0.94] }}
-                style={{
-                  background: `linear-gradient(to top, var(--color-accent-solid) 0%, color-mix(in srgb, var(--color-accent-solid) 70%, white) 100%)`,
-                }}
-                whileHover={{ filter: "brightness(1.2)", transition: { duration: 0.15 } }}
+                animate={go ? { height: `${pct}%` } : {}}
+                transition={{ duration: 0.45, delay: i * 0.015 }}
               />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
-                <div className="bg-foreground text-background text-[10px] px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                <div className="bg-foreground text-background text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap">
                   {d.date.slice(5)}: {d.count}
                 </div>
               </div>
@@ -721,7 +612,7 @@ function AnimatedBarChart({ data, tall }: { data: { date: string; count: number 
           );
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-muted mt-2 px-0.5">
+      <div className="flex justify-between text-[10px] text-muted mt-2">
         {data.length > 0 && <span>{data[0].date.slice(5)}</span>}
         {data.length > 14 && <span>{data[Math.floor(data.length / 2)].date.slice(5)}</span>}
         {data.length > 1 && <span>{data[data.length - 1].date.slice(5)}</span>}
@@ -730,157 +621,89 @@ function AnimatedBarChart({ data, tall }: { data: { date: string; count: number 
   );
 }
 
-function AnimatedDistribution({
-  title, data, colorFn, labelFn,
-}: {
-  title: string; data: Record<string, number>; colorFn: (key: string) => string; labelFn: (key: string) => string;
+function DistPanel({ title, data, colorFn, labelFn }: {
+  title: string; data: Record<string, number>; colorFn: (k: string) => string; labelFn: (k: string) => string;
 }) {
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
-  const total = entries.reduce((sum, [, c]) => sum + c, 0);
-
-  if (entries.length === 0) {
-    return (
-      <GlassPanel>
-        <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">{title}</h3>
-        <div className="text-sm text-muted py-4 text-center">Nema podataka</div>
-      </GlassPanel>
-    );
-  }
-
+  const total = entries.reduce((s, [, c]) => s + c, 0);
   return (
-    <GlassPanel>
-      <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-4">{title}</h3>
-      <div className="space-y-3">
-        {entries.map(([key, count], i) => {
-          const pct = total > 0 ? (count / total) * 100 : 0;
-          return (
-            <div key={key} className="flex items-center gap-3">
-              <div className="w-24 text-sm truncate">{labelFn(key)}</div>
-              <div className="flex-1 h-2 bg-card-hover rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.7, delay: 0.1 + i * 0.08, ease: [0.25, 0.46, 0.45, 0.94] }}
-                  style={{ backgroundColor: colorFn(key) }}
-                />
+    <Panel title={title}>
+      {entries.length === 0 ? <div className="text-sm text-muted py-4 text-center">Nema podataka</div> : (
+        <div className="space-y-3">
+          {entries.map(([key, count], i) => {
+            const pct = total > 0 ? (count / total) * 100 : 0;
+            return (
+              <div key={key} className="flex items-center gap-3">
+                <div className="w-24 text-sm truncate">{labelFn(key)}</div>
+                <div className="flex-1 h-1.5 bg-border/30 rounded-full overflow-hidden">
+                  <motion.div className="h-full rounded-full"
+                    initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.6, delay: 0.1 + i * 0.06 }}
+                    style={{ backgroundColor: colorFn(key) }}
+                  />
+                </div>
+                <div className="text-xs text-muted w-8 text-right font-mono tabular-nums">{count}</div>
               </div>
-              <div className="text-sm text-muted w-10 text-right font-mono tabular-nums">
-                <AnimatedNumber value={count} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </GlassPanel>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Completed: "bg-green-500/10 text-green-400 border-green-500/20",
-    Analyzing: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    Pending: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    Failed: "bg-red-500/10 text-red-400 border-red-500/20",
-  };
-  const labels: Record<string, string> = {
-    Completed: "Zavrseno", Analyzing: "U analizi", Pending: "Cekanje", Failed: "Neuspjelo",
-  };
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <span className={cn("inline-flex px-2 py-0.5 rounded-md text-xs font-medium border", styles[status] || "bg-card text-muted border-border")}>
-      {labels[status] || status}
-    </span>
+    <div className="bg-card border border-border rounded-2xl p-5">
+      <h3 className="text-[11px] text-muted uppercase tracking-wider font-medium mb-4">{title}</h3>
+      {children}
+    </div>
   );
 }
 
-function RiskBadge({ level }: { level?: string }) {
-  if (!level) return <span className="text-xs text-muted">—</span>;
-  const styles: Record<string, string> = {
-    Low: "bg-green-500/10 text-green-400 border-green-500/20",
-    Medium: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    High: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-    Critical: "bg-red-500/10 text-red-400 border-red-500/20",
+function Badge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    Completed: "bg-green-500", Analyzing: "bg-blue-500", Pending: "bg-amber-500", Failed: "bg-red-500",
+  };
+  return <div className={cn("w-2 h-2 rounded-full shrink-0", colors[status] || "bg-muted")} />;
+}
+
+function RiskDot({ level, withLabel }: { level: string; withLabel?: boolean }) {
+  const colors: Record<string, string> = {
+    Low: "bg-green-500", Medium: "bg-amber-500", High: "bg-orange-500", Critical: "bg-red-500",
   };
   const labels: Record<string, string> = { Low: "Nizak", Medium: "Srednji", High: "Visok", Critical: "Kritican" };
   return (
-    <span className={cn("inline-flex px-2 py-0.5 rounded-md text-xs font-medium border", styles[level] || "bg-card text-muted border-border")}>
-      {labels[level] || level}
-    </span>
+    <div className="flex items-center gap-1.5">
+      <div className={cn("w-2 h-2 rounded-full", colors[level] || "bg-muted")} />
+      {withLabel && <span className="text-xs text-muted">{labels[level] || level}</span>}
+    </div>
   );
 }
 
-function ShimmerGrid({ count, rows }: { count: number; rows?: boolean }) {
-  const shimmerStyle: React.CSSProperties = {
-    backgroundImage: "linear-gradient(90deg, transparent 0%, var(--color-card-hover) 50%, transparent 100%)",
-    backgroundSize: "200% 100%",
-    animation: "shimmer 1.5s ease-in-out infinite",
-  };
-
-  if (rows) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: count }).map((_, i) => (
-          <div key={i} className="h-14 rounded-xl overflow-hidden bg-card">
-            <div className="h-full w-full" style={shimmerStyle} />
-          </div>
-        ))}
-      </div>
-    );
-  }
+function PagBtn({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="h-24 rounded-xl overflow-hidden bg-card">
-          <div className="h-full w-full" style={shimmerStyle} />
-        </div>
-      ))}
+    <button {...props}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      {children}
+    </button>
+  );
+}
+
+function Loader() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Label/color helpers
+// Helpers
 // ---------------------------------------------------------------------------
-
-function riskColor(level: string): string {
-  switch (level) {
-    case "Low": return "#22c55e";
-    case "Medium": return "#f59e0b";
-    case "High": return "#f97316";
-    case "Critical": return "#ef4444";
-    default: return "#71717a";
-  }
-}
-
-function riskLabel(level: string): string {
-  const labels: Record<string, string> = { Low: "Nizak", Medium: "Srednji", High: "Visok", Critical: "Kritican" };
-  return labels[level] || level;
-}
-
-function verdictColor(verdict: string): string {
-  switch (verdict) {
-    case "authentic": return "#22c55e";
-    case "ai_generated": return "#a855f7";
-    case "tampered": return "#ef4444";
-    default: return "#71717a";
-  }
-}
-
-function verdictLabel(verdict: string): string {
-  const labels: Record<string, string> = { authentic: "Autenticno", ai_generated: "AI generirano", tampered: "Manipulirano" };
-  return labels[verdict] || verdict;
-}
-
-function decisionColor(outcome: string): string {
-  switch (outcome) {
-    case "AutoApprove": return "#22c55e";
-    case "HumanReview": return "#f59e0b";
-    case "Escalate": return "#ef4444";
-    default: return "#71717a";
-  }
-}
-
-function decisionLabel(outcome: string): string {
-  const labels: Record<string, string> = { AutoApprove: "Autenticno", HumanReview: "Pregled", Escalate: "Eskalacija" };
-  return labels[outcome] || outcome;
-}
+function riskColor(l: string) { return ({ Low: "#22c55e", Medium: "#f59e0b", High: "#f97316", Critical: "#ef4444" })[l] || "#71717a"; }
+function riskLabel(l: string) { return ({ Low: "Nizak", Medium: "Srednji", High: "Visok", Critical: "Kritican" })[l] || l; }
+function verdictColor(v: string) { return ({ authentic: "#22c55e", ai_generated: "#a855f7", tampered: "#ef4444" })[v] || "#71717a"; }
+function verdictLabel(v: string) { return ({ authentic: "Autenticno", ai_generated: "AI generirano", tampered: "Manipulirano" })[v] || v; }
+function decisionColor(o: string) { return ({ AutoApprove: "#22c55e", HumanReview: "#f59e0b", Escalate: "#ef4444" })[o] || "#71717a"; }
+function decisionLabel(o: string) { return ({ AutoApprove: "Autenticno", HumanReview: "Pregled", Escalate: "Eskalacija" })[o] || o; }
