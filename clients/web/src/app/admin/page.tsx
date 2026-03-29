@@ -431,6 +431,39 @@ function UsersTab({ onSelect }: { onSelect: (u: AdminUser) => void }) {
         </table>
         {filtered.length === 0 && <div className="py-16 text-center text-sm text-muted">Nema rezultata</div>}
       </div>
+
+      {/* Top users leaderboard */}
+      {(users || []).length > 0 && (
+        <div className="mt-6">
+          <Card title="Najaktivniji korisnici">
+            <div className="space-y-2">
+              {[...(users || [])].sort((a, b) => b.inspectionCount - a.inspectionCount).slice(0, 5).map((u, idx) => {
+                const maxCount = Math.max(...(users || []).map((x) => x.inspectionCount), 1);
+                const pct = (u.inspectionCount / maxCount) * 100;
+                const medals = ["text-amber-400", "text-muted-light", "text-orange-700"];
+                return (
+                  <div key={u.id} className="flex items-center gap-3 p-2 -mx-1 rounded-lg">
+                    <span className={cn("w-5 text-center text-xs font-stat font-bold", medals[idx] || "text-muted")}>{idx + 1}</span>
+                    <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0",
+                      u.role === "Admin" ? "bg-purple-500/10 text-purple-400" : "bg-accent/10 text-accent")}>
+                      {u.fullName.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium truncate">{u.fullName}</span>
+                        <span className="text-sm font-stat font-bold tabular-nums shrink-0 ml-2">{u.inspectionCount}</span>
+                      </div>
+                      <div className="h-1.5 bg-border/15 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-accent/50 transition-all duration-700" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -673,13 +706,16 @@ function AnalysesTab() {
 /*  STATISTICS                                                         */
 /* ================================================================== */
 function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
-  const { data: completedIns } = useCachedFetch<Inspection[]>(
+  const { data: recentIns } = useCachedFetch<Inspection[]>(
     "admin-completed-100", () => getInspections(1, 100, "Completed"), 60_000,
+  );
+  const { data: failedIns } = useCachedFetch<Inspection[]>(
+    "admin-failed-50", () => getInspections(1, 50, "Failed"), 60_000,
   );
 
   const timeStats = useMemo(() => {
-    if (!completedIns) return null;
-    const times = completedIns
+    if (!recentIns) return null;
+    const times = recentIns
       .filter((i) => i.completedAt)
       .map((i) => (new Date(i.completedAt!).getTime() - new Date(i.createdAt).getTime()) / 1000)
       .sort((a, b) => a - b);
@@ -687,7 +723,46 @@ function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: 
     const sum = times.reduce((a, b) => a + b, 0);
     const p95i = Math.floor(times.length * 0.95);
     return { min: times[0], avg: sum / times.length, p95: times[Math.min(p95i, times.length - 1)], max: times[times.length - 1], n: times.length };
-  }, [completedIns]);
+  }, [recentIns]);
+
+  // Time by file type
+  const timeByType = useMemo(() => {
+    if (!recentIns) return [];
+    const map: Record<string, number[]> = {};
+    for (const ins of recentIns) {
+      if (!ins.completedAt) continue;
+      const ext = ins.originalFileName.split(".").pop()?.toLowerCase() || "?";
+      const t = (new Date(ins.completedAt).getTime() - new Date(ins.createdAt).getTime()) / 1000;
+      (map[ext] ||= []).push(t);
+    }
+    return Object.entries(map).map(([ext, times]) => ({
+      ext: ext.toUpperCase(), avg: times.reduce((a, b) => a + b, 0) / times.length, count: times.length,
+    })).sort((a, b) => b.count - a.count);
+  }, [recentIns]);
+
+  // Top errors
+  const topErrors = useMemo(() => {
+    if (!failedIns) return [];
+    const map: Record<string, number> = {};
+    for (const ins of failedIns) {
+      const msg = ins.errorMessage || "Nepoznata greska";
+      const short = msg.length > 80 ? msg.slice(0, 80) + "..." : msg;
+      map[short] = (map[short] || 0) + 1;
+    }
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  }, [failedIns]);
+
+  // Risk by verdict cross-table
+  const riskByVerdict = useMemo(() => {
+    if (!recentIns) return null;
+    const data: Record<string, Record<string, number>> = {};
+    for (const ins of recentIns) {
+      const risk = ins.forensicResult?.overallRiskLevel || "Unknown";
+      const verdict = ins.forensicResult ? "authentic" : "unknown"; // simplified
+      (data[risk] ||= {})[verdict] = ((data[risk] ||= {})[verdict] || 0) + 1;
+    }
+    return data;
+  }, [recentIns]);
 
   if (loading || !stats) return <Spin />;
 
@@ -705,28 +780,51 @@ function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: 
         </Card>
       )}
 
-      {stats.analysesPerDay.length > 0 && (
-        <Card title="Analize po danu — 30 dana">
-          <div className="h-[260px] -mx-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
-                <defs>
-                  <linearGradient id="sGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(8)} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
-                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-border)", strokeDasharray: "3 3" }} />
-                <Area type="monotone" dataKey="count" stroke="var(--color-accent)" strokeWidth={2} fill="url(#sGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent)" }} />
-              </AreaChart>
-            </ResponsiveContainer>
+      {/* Time by file type */}
+      {timeByType.length > 0 && (
+        <Card title="Vrijeme obrade po tipu datoteke">
+          <div className="space-y-3">
+            {timeByType.map(({ ext, avg, count }) => {
+              const color = fileTypeColor(ext.toLowerCase());
+              const maxAvg = Math.max(...timeByType.map((t) => t.avg));
+              const pct = maxAvg > 0 ? (avg / maxAvg) * 100 : 0;
+              return (
+                <div key={ext}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-sm font-medium">{ext}</span>
+                      <span className="text-[11px] text-muted">({count})</span>
+                    </div>
+                    <span className="text-sm font-stat font-bold tabular-nums">{avg.toFixed(1)}s</span>
+                  </div>
+                  <div className="h-2 bg-border/15 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.7 }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
 
+      {/* Top errors */}
+      {topErrors.length > 0 && (
+        <Card title="Najcesce greske">
+          <div className="space-y-2">
+            {topErrors.map(([msg, count], idx) => (
+              <div key={idx} className="flex items-start gap-3 p-2.5 -mx-1 rounded-lg hover:bg-red-500/[0.03] transition-colors">
+                <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[11px] font-stat font-bold text-red-400">{count}</span>
+                </div>
+                <span className="text-sm text-muted leading-relaxed">{msg}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Distribution donuts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <MemoDistPanel title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
         <MemoDistPanel title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
