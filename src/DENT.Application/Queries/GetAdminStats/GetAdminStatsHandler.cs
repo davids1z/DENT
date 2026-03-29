@@ -156,13 +156,14 @@ public class GetAdminStatsHandler : IRequestHandler<GetAdminStatsQuery, AdminSta
             .ToListAsync(ct);
         var fraudRiskDist = fraudRiskRaw.ToDictionary(x => x.Level.ToString(), x => x.Count);
 
-        // --- Capture source distribution ---
+        // --- Capture source distribution (normalize case since DB has mixed casing) ---
         var captureSourceRaw = await _db.Inspections
             .Where(i => i.CaptureSource != null)
-            .GroupBy(i => i.CaptureSource!.Value)
-            .Select(g => new { Source = g.Key, Count = g.Count() })
+            .Select(i => i.CaptureSource!.Value)
             .ToListAsync(ct);
-        var captureSourceDist = captureSourceRaw.ToDictionary(x => x.Source.ToString(), x => x.Count);
+        var captureSourceDist = captureSourceRaw
+            .GroupBy(s => s)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count());
 
         // --- Processing time percentiles ---
         var procTimes = completedWithTime
