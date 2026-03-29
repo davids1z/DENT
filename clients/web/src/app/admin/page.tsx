@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
@@ -125,17 +125,18 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
         <Card title="Aktivnost — zadnjih 30 dana" delay={0.15}>
           <div className="h-[220px] -mx-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.analysesPerDay} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+              <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
                 <defs>
                   <linearGradient id="aGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-accent-solid)" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="var(--color-accent-solid)" stopOpacity={0.25} />
                     <stop offset="95%" stopColor="var(--color-accent-solid)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip content={<ChartTip />} />
-                <Area type="monotone" dataKey="count" stroke="var(--color-accent-solid)" strokeWidth={2} fill="url(#aGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "var(--color-accent-solid)" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.4} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(8)} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
+                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-border)", strokeDasharray: "3 3" }} />
+                <Area type="monotone" dataKey="count" stroke="var(--color-accent-solid)" strokeWidth={2} fill="url(#aGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent-solid)" }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -160,11 +161,16 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
   );
 }
 
-function ChartTip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) {
+function ChartTip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; color?: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-foreground text-background text-xs px-3 py-1.5 rounded-lg shadow-lg">
-      <span className="text-muted-light">{label?.slice(5)}</span>: <strong>{payload[0].value}</strong>
+    <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-xl">
+      <p className="text-[10px] text-muted mb-1">{label}</p>
+      <div className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+        <span className="text-sm font-stat font-bold">{payload[0].value}</span>
+        <span className="text-xs text-muted">analiza</span>
+      </div>
     </div>
   );
 }
@@ -420,75 +426,66 @@ function AnalysesTab() {
 function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
   if (loading || !stats) return <Spin />;
 
-  const distColors: Record<string, string> = { ...Object.fromEntries(Object.keys(stats.riskLevelDistribution).map((k) => [k, riskColor(k)])) };
-
   return (
     <div className="space-y-6">
-      {/* Recharts area chart */}
       {stats.analysesPerDay.length > 0 && (
         <Card title="Analize po danu — 30 dana">
-          <div className="h-[240px] -mx-2">
+          <div className="h-[260px] -mx-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.analysesPerDay} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+              <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
                 <defs>
-                  <linearGradient id="sGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-accent-solid)" stopOpacity={0.35} />
+                  <linearGradient id="aGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-accent-solid)" stopOpacity={0.25} />
                     <stop offset="95%" stopColor="var(--color-accent-solid)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip content={<ChartTip />} />
-                <Area type="monotone" dataKey="count" stroke="var(--color-accent-solid)" strokeWidth={2} fill="url(#sGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "var(--color-accent-solid)" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.4} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(8)} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
+                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-border)", strokeDasharray: "3 3" }} />
+                <Area type="monotone" dataKey="count" stroke="var(--color-accent-solid)" strokeWidth={2} fill="url(#aGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent-solid)" }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
       )}
 
-      {/* Recharts bar charts for distributions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DistChart title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
-        <DistChart title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
-        <DistChart title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
-        <DistChart title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={() => "var(--color-accent-solid)"} labelFn={(k) => k.toUpperCase()} />
+        <DistPanel title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
+        <DistPanel title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
+        <DistPanel title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
+        <DistPanel title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={() => "var(--color-accent-solid)"} labelFn={(k) => k.toUpperCase()} />
       </div>
     </div>
   );
 }
 
-function DistChart({ title, data, colorFn, labelFn }: { title: string; data: Record<string, number>; colorFn: (k: string) => string; labelFn: (k: string) => string }) {
+function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Record<string, number>; colorFn: (k: string) => string; labelFn: (k: string) => string }) {
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
   const total = entries.reduce((s, [, c]) => s + c, 0);
-  const chartData = entries.map(([key, count]) => ({ name: labelFn(key), value: count, key, pct: total > 0 ? Math.round((count / total) * 100) : 0 }));
-
   return (
     <Card title={title}>
-      {chartData.length === 0 ? <p className="text-sm text-muted py-4 text-center">Nema podataka</p> : (
-        <div className="h-[160px] -mx-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" tick={{ fill: "var(--color-foreground)", fontSize: 12 }} axisLine={false} tickLine={false} width={90} />
-              <Tooltip content={<DistTip />} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14}>
-                {chartData.map((d) => <Cell key={d.key} fill={colorFn(d.key)} fillOpacity={0.8} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      {entries.length === 0 ? <p className="text-sm text-muted py-4 text-center">Nema podataka</p> : (
+        <div className="space-y-4">
+          {entries.map(([key, count]) => {
+            const pct = total > 0 ? (count / total) * 100 : 0;
+            return (
+              <div key={key}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-medium">{labelFn(key)}</span>
+                  <span className="text-xs text-muted tabular-nums">{count} <span className="text-muted/50">({pct.toFixed(0)}%)</span></span>
+                </div>
+                <div className="h-2 bg-border/20 rounded-full overflow-hidden">
+                  <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    style={{ backgroundColor: colorFn(key) }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>
-  );
-}
-
-function DistTip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; value: number; pct: number } }> }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="bg-foreground text-background text-xs px-3 py-1.5 rounded-lg shadow-lg">
-      {d.name}: <strong>{d.value}</strong> ({d.pct}%)
-    </div>
   );
 }
 
