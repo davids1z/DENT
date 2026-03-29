@@ -149,18 +149,20 @@ public class GetAdminStatsHandler : IRequestHandler<GetAdminStatsQuery, AdminSta
             .ToDictionary(g => g.Key, g => g.Count());
 
         // --- Fraud risk distribution ---
-        var fraudRiskDist = await _db.Inspections
+        var fraudRiskRaw = await _db.Inspections
             .Where(i => i.FraudRiskLevel != null)
             .GroupBy(i => i.FraudRiskLevel!.Value)
-            .Select(g => new { Level = g.Key.ToString(), Count = g.Count() })
-            .ToDictionaryAsync(x => x.Level, x => x.Count, ct);
+            .Select(g => new { Level = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var fraudRiskDist = fraudRiskRaw.ToDictionary(x => x.Level.ToString(), x => x.Count);
 
         // --- Capture source distribution ---
-        var captureSourceDist = await _db.Inspections
+        var captureSourceRaw = await _db.Inspections
             .Where(i => i.CaptureSource != null)
             .GroupBy(i => i.CaptureSource!.Value)
-            .Select(g => new { Source = g.Key.ToString(), Count = g.Count() })
-            .ToDictionaryAsync(x => x.Source, x => x.Count, ct);
+            .Select(g => new { Source = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var captureSourceDist = captureSourceRaw.ToDictionary(x => x.Source.ToString(), x => x.Count);
 
         // --- Processing time percentiles ---
         var procTimes = completedWithTime
