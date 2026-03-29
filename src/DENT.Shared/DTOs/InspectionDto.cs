@@ -10,6 +10,10 @@ public record InspectionDto
     public DateTime CreatedAt { get; init; }
     public DateTime? CompletedAt { get; init; }
 
+    // Owner info (populated for admin queries)
+    public string? OwnerEmail { get; init; }
+    public string? OwnerFullName { get; init; }
+
     // User-provided vehicle context
     public string? UserProvidedMake { get; init; }
     public string? UserProvidedModel { get; init; }
@@ -249,4 +253,54 @@ public record DashboardStatsDto
     public Dictionary<string, int> CarPartDistribution { get; init; } = [];
     public Dictionary<string, int> DecisionOutcomeDistribution { get; init; } = [];
     public List<InspectionDto> RecentInspections { get; init; } = [];
+}
+
+public record AdminStatsDto
+{
+    // Users
+    public int TotalUsers { get; init; }
+    public int ActiveUsers { get; init; }
+    public int UsersRegisteredToday { get; init; }
+    public int UsersRegisteredThisWeek { get; init; }
+
+    // Inspections by status
+    public int TotalInspections { get; init; }
+    public int CompletedInspections { get; init; }
+    public int PendingInspections { get; init; }
+    public int AnalyzingInspections { get; init; }
+    public int FailedInspections { get; init; }
+
+    // Processing
+    public double AverageProcessingTimeMs { get; init; }
+
+    // Queue
+    public int QueuePending { get; init; }
+    public int QueueActiveUsers { get; init; }
+
+    // Time-series: analyses per day (last 30 days)
+    public List<DailyCountDto> AnalysesPerDay { get; init; } = [];
+
+    // Distributions
+    public Dictionary<string, int> RiskLevelDistribution { get; init; } = [];
+    public Dictionary<string, int> VerdictDistribution { get; init; } = [];
+    public Dictionary<string, int> DecisionOutcomeDistribution { get; init; } = [];
+    public Dictionary<string, int> FileTypeDistribution { get; init; } = [];
+
+    // Recent failures
+    public List<AdminFailedInspectionDto> RecentFailures { get; init; } = [];
+}
+
+public record DailyCountDto
+{
+    public string Date { get; init; } = "";
+    public int Count { get; init; }
+}
+
+public record AdminFailedInspectionDto
+{
+    public Guid Id { get; init; }
+    public string OriginalFileName { get; init; } = "";
+    public string? ErrorMessage { get; init; }
+    public string? UserFullName { get; init; }
+    public DateTime CreatedAt { get; init; }
 }

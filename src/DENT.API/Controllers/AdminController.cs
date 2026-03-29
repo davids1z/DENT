@@ -1,4 +1,6 @@
 using DENT.Application.Interfaces;
+using DENT.Application.Queries.GetAdminStats;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -13,8 +15,20 @@ namespace DENT.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IDentDbContext _db;
+    private readonly IMediator _mediator;
 
-    public AdminController(IDentDbContext db) => _db = db;
+    public AdminController(IDentDbContext db, IMediator mediator)
+    {
+        _db = db;
+        _mediator = mediator;
+    }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStats(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetAdminStatsQuery(), ct);
+        return Ok(result);
+    }
 
     [HttpGet("users")]
     public async Task<IActionResult> GetUsers(CancellationToken ct)

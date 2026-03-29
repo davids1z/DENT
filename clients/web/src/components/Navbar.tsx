@@ -117,7 +117,7 @@ export function Navbar() {
                           onClick={() => setMenuOpen(false)}
                           className="block px-4 py-2 text-sm text-muted hover:text-foreground hover:bg-card transition-colors"
                         >
-                          Upravljanje korisnicima
+                          Admin panel
                         </Link>
                       )}
                       <button

@@ -1,5 +1,5 @@
 import { API_BASE, authFetch, setTokens } from "./client";
-import type { AdminUser, AuthResponse, AuthUser } from "./types";
+import type { AdminStats, AdminUser, AuthResponse, AuthUser } from "./types";
 
 export async function loginApi(email: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/auth/login`, {
@@ -57,4 +57,10 @@ export async function deactivateUser(id: string): Promise<void> {
 export async function activateUser(id: string): Promise<void> {
   const res = await authFetch(`${API_BASE}/admin/users/${id}/activate`, { method: "POST" });
   if (!res.ok) throw new Error("Failed to activate user");
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  const res = await authFetch(`${API_BASE}/admin/stats`);
+  if (!res.ok) throw new Error(`Failed to fetch admin stats: ${res.status}`);
+  return res.json();
 }

@@ -179,6 +179,8 @@ export interface Inspection {
   status: string;
   createdAt: string;
   completedAt: string | null;
+  ownerEmail: string | null;
+  ownerFullName: string | null;
   userProvidedMake: string | null;
   userProvidedModel: string | null;
   userProvidedYear: number | null;
@@ -259,4 +261,31 @@ export interface VehicleContext {
   vehicleModel?: string;
   vehicleYear?: number;
   mileage?: number;
+}
+
+export interface AdminStats {
+  totalUsers: number;
+  activeUsers: number;
+  usersRegisteredToday: number;
+  usersRegisteredThisWeek: number;
+  totalInspections: number;
+  completedInspections: number;
+  pendingInspections: number;
+  analyzingInspections: number;
+  failedInspections: number;
+  averageProcessingTimeMs: number;
+  queuePending: number;
+  queueActiveUsers: number;
+  analysesPerDay: { date: string; count: number }[];
+  riskLevelDistribution: Record<string, number>;
+  verdictDistribution: Record<string, number>;
+  decisionOutcomeDistribution: Record<string, number>;
+  fileTypeDistribution: Record<string, number>;
+  recentFailures: {
+    id: string;
+    originalFileName: string;
+    errorMessage: string | null;
+    userFullName: string | null;
+    createdAt: string;
+  }[];
 }

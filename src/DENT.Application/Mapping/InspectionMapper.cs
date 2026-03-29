@@ -13,6 +13,8 @@ public static class InspectionMapper
         OriginalFileName = i.OriginalFileName,
         ThumbnailUrl = i.ThumbnailUrl,
         Status = i.Status.ToString(),
+        OwnerEmail = i.User?.Email,
+        OwnerFullName = i.User?.FullName,
         CreatedAt = i.CreatedAt,
         CompletedAt = i.CompletedAt,
         UserProvidedMake = i.UserProvidedMake,

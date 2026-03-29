@@ -26,6 +26,8 @@ public class GetInspectionsHandler : IRequestHandler<GetInspectionsQuery, List<I
 
         if (request.UserId.HasValue)
             query = query.Where(i => i.UserId == request.UserId.Value);
+        else
+            query = query.Include(i => i.User); // Admin: include owner info
 
         if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<InspectionStatus>(request.Status, true, out var status))
             query = query.Where(i => i.Status == status);
