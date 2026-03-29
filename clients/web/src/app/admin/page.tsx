@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -17,23 +17,59 @@ import {
 } from "@/lib/api";
 
 /* ------------------------------------------------------------------ */
+/*  Cache infrastructure                                               */
+/* ------------------------------------------------------------------ */
+const _cache = new Map<string, { data: unknown; ts: number }>();
+function getCached<T>(key: string, ttl: number): T | null {
+  const e = _cache.get(key);
+  if (!e || Date.now() - e.ts > ttl) return null;
+  return e.data as T;
+}
+function setCache<T>(key: string, data: T) { _cache.set(key, { data, ts: Date.now() }); }
+function invalidateCache(prefix: string) {
+  for (const k of _cache.keys()) if (k.startsWith(prefix)) _cache.delete(k);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Hooks                                                              */
 /* ------------------------------------------------------------------ */
+function useCachedFetch<T>(key: string, fetcher: () => Promise<T>, ttl: number, deps: unknown[] = []) {
+  const [data, setData] = useState<T | null>(() => getCached<T>(key, ttl));
+  const [loading, setLoading] = useState(!getCached<T>(key, ttl));
+  const [refreshing, setRefreshing] = useState(false);
+
+  const doFetch = useCallback(async (bg = false) => {
+    if (bg) setRefreshing(true); else if (!getCached<T>(key, ttl)) setLoading(true);
+    try { const r = await fetcher(); setCache(key, r); setData(r); } catch {}
+    finally { setLoading(false); setRefreshing(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, ...deps]);
+
+  useEffect(() => {
+    const c = getCached<T>(key, ttl);
+    if (c) { setData(c); setLoading(false); doFetch(true); } else doFetch();
+  }, [doFetch, key, ttl]);
+
+  return { data, loading, refreshing, refresh: useCallback(() => doFetch(true), [doFetch]) };
+}
+
 function useCountUp(target: number, on: boolean, dur = 900) {
   const [v, setV] = useState(0);
   useEffect(() => {
     if (!on) { setV(0); return; }
     const t0 = performance.now();
     let id: number;
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / dur, 1);
-      setV((1 - (1 - p) ** 3) * target);
-      if (p < 1) id = requestAnimationFrame(tick);
-    };
+    const tick = (now: number) => { const p = Math.min((now - t0) / dur, 1); setV((1 - (1 - p) ** 3) * target); if (p < 1) id = requestAnimationFrame(tick); };
     id = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(id);
   }, [target, on, dur]);
   return v;
+}
+
+function useDebouncedValue<T>(value: T, ms: number): T {
+  const [d, setD] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setD(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return d;
 }
 
 /* ------------------------------------------------------------------ */
@@ -66,19 +102,18 @@ export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [view, setView] = useState<View>("pregled");
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
   const [selUser, setSelUser] = useState<AdminUser | null>(null);
+  const [visited, setVisited] = useState<Set<string>>(() => new Set(["pregled"]));
+
+  const { data: stats, loading: statsLoading, refreshing: statsRefreshing, refresh: refreshStats } =
+    useCachedFetch<AdminStats>("admin-stats", getAdminStats, 60_000);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user || user.role !== "Admin") { router.replace("/"); return; }
-    loadStats();
   }, [user, authLoading, router]);
 
-  async function loadStats() {
-    try { setStatsLoading(true); setStats(await getAdminStats()); } catch {} finally { setStatsLoading(false); }
-  }
+  useEffect(() => { setVisited((p) => p.has(view) ? p : new Set([...p, view])); }, [view]);
 
   function openUser(u: AdminUser) { setSelUser(u); setView("user"); }
   function closeUser() { setView("korisnici"); setSelUser(null); }
@@ -141,12 +176,15 @@ export default function AdminPage() {
         </div>
 
         <div className="p-4 sm:p-6 lg:p-8 max-w-6xl">
-          {/* Page header */}
+          {/* Page header with refresh */}
           {view !== "user" && (
-            <motion.div key={`hdr-${view}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
-              <h2 className="font-heading text-2xl font-bold tracking-tight">{viewMeta[view]?.title}</h2>
-              <p className="text-sm text-muted mt-1">{viewMeta[view]?.desc}</p>
-            </motion.div>
+            <div className="flex items-start justify-between mb-8">
+              <div>
+                <h2 className="font-heading text-2xl font-bold tracking-tight">{viewMeta[view]?.title}</h2>
+                <p className="text-sm text-muted mt-1">{viewMeta[view]?.desc}</p>
+              </div>
+              {view === "pregled" && <RefreshBtn spinning={statsRefreshing} onClick={refreshStats} />}
+            </div>
           )}
           {view === "user" && selUser && (
             <button onClick={closeUser} className="flex items-center gap-2 text-sm text-accent hover:underline mb-6 group">
@@ -157,13 +195,33 @@ export default function AdminPage() {
             </button>
           )}
 
-          {/* Content */}
-          <div key={view} className="fade-up">
-            {view === "pregled" && <OverviewTab stats={stats} loading={statsLoading} />}
-            {view === "korisnici" && <UsersTab onSelect={openUser} />}
-            {view === "analize" && <AnalysesTab />}
-            {view === "statistika" && <StatisticsTab stats={stats} loading={statsLoading} />}
-            {view === "user" && selUser && <UserDetail user={selUser} onBack={closeUser} />}
+          {/* Content — keep-alive tabs */}
+          <div className="relative">
+            {visited.has("pregled") && (
+              <div className={view === "pregled" ? "block" : "hidden"}>
+                <OverviewTab stats={stats} loading={statsLoading} />
+              </div>
+            )}
+            {visited.has("korisnici") && (
+              <div className={view === "korisnici" ? "block" : "hidden"}>
+                <UsersTab onSelect={openUser} />
+              </div>
+            )}
+            {visited.has("analize") && (
+              <div className={view === "analize" ? "block" : "hidden"}>
+                <AnalysesTab />
+              </div>
+            )}
+            {visited.has("statistika") && (
+              <div className={view === "statistika" ? "block" : "hidden"}>
+                <StatisticsTab stats={stats} loading={statsLoading} />
+              </div>
+            )}
+            {view === "user" && selUser && (
+              <div className="fade-up">
+                <UserDetail user={selUser} onBack={closeUser} />
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -176,7 +234,25 @@ export default function AdminPage() {
 /* ================================================================== */
 function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
   if (loading || !stats) return <Spin />;
-  const avgSec = (stats.averageProcessingTimeMs / 1000).toFixed(1);
+
+  const health = useMemo(() => {
+    const t = stats.totalInspections || 1;
+    const compRate = stats.completedInspections / t * 100;
+    const failRate = stats.failedInspections / t * 100;
+    const avgSec = stats.averageProcessingTimeMs / 1000;
+    return {
+      compRate, failRate, avgSec,
+      compColor: compRate > 90 ? "#10b981" : compRate > 70 ? "#f59e0b" : "#ef4444",
+      failColor: failRate < 5 ? "#10b981" : failRate < 15 ? "#f59e0b" : "#ef4444",
+      speedColor: avgSec < 30 ? "#10b981" : avgSec < 60 ? "#f59e0b" : "#ef4444",
+    };
+  }, [stats]);
+
+  const successRing = useMemo(() => [
+    { name: "Dovrseno", value: stats.completedInspections },
+    { name: "Neuspjelo", value: stats.failedInspections },
+    { name: "U tijeku", value: stats.pendingInspections + stats.analyzingInspections },
+  ].filter((d) => d.value > 0), [stats]);
 
   return (
     <div className="space-y-6">
@@ -196,10 +272,33 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <QuickStat label="Novi danas" value={stats.usersRegisteredToday} />
         <QuickStat label="Novi tjedan" value={stats.usersRegisteredThisWeek} />
-        <QuickStat label="Obrada" value={`${avgSec}s`} />
+        <QuickStat label="Obrada" value={`${health.avgSec.toFixed(1)}s`} />
         <QuickStat label="U analizi" value={stats.analyzingInspections} live={stats.analyzingInspections > 0} />
         <QuickStat label="Red cekanja" value={stats.queuePending} live={stats.queuePending > 0} />
       </div>
+
+      {/* System health */}
+      <Card title="Zdravlje sustava" delay={0.1}>
+        <div className="flex items-center gap-6 flex-wrap justify-center sm:justify-start">
+          <HealthRing label="Dovrseno" value={`${health.compRate.toFixed(0)}%`} color={health.compColor} />
+          <HealthRing label="Neuspjelo" value={`${health.failRate.toFixed(1)}%`} color={health.failColor} />
+          <HealthRing label="Avg. obrada" value={`${health.avgSec.toFixed(1)}s`} color={health.speedColor} />
+          <div className="w-px h-12 bg-border/30 hidden sm:block" />
+          {/* Success breakdown donut */}
+          <div className="relative w-[72px] h-[72px] shrink-0">
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie data={successRing} cx="50%" cy="50%" innerRadius={22} outerRadius={32} paddingAngle={2} dataKey="value" stroke="none">
+                  {successRing.map((_, i) => <Cell key={i} fill={["#10b981", "#ef4444", "#f59e0b"][i]} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <span className="text-[11px] font-stat font-bold">{stats.totalInspections}</span>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Activity chart */}
       {stats.analysesPerDay.length > 0 && (
@@ -224,11 +323,11 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
         </Card>
       )}
 
-      {/* Recent failures */}
+      {/* Recent failures with error messages */}
       {stats.recentFailures.length > 0 && (
         <Card title="Nedavni neuspjesi" delay={0.2}>
           <div className="space-y-1">
-            {stats.recentFailures.slice(0, 5).map((f) => (
+            {stats.recentFailures.slice(0, 10).map((f) => (
               <Link key={f.id} href={`/inspections/${f.id}`}
                 className="flex items-center gap-3 p-3 -mx-2 hover:bg-red-500/[0.04] rounded-xl transition-colors group">
                 <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
@@ -239,6 +338,7 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{f.originalFileName}</div>
                   <div className="text-xs text-muted truncate">{f.userFullName || "Nepoznat"}</div>
+                  {f.errorMessage && <div className="text-[11px] text-red-400/80 truncate mt-0.5">{f.errorMessage}</div>}
                 </div>
                 <span className="text-xs text-muted shrink-0">{shortDate(f.createdAt)}</span>
                 <svg className="w-4 h-4 text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -257,24 +357,28 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
 /*  USERS TABLE                                                        */
 /* ================================================================== */
 function UsersTab({ onSelect }: { onSelect: (u: AdminUser) => void }) {
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: users, loading, refreshing, refresh } = useCachedFetch<AdminUser[]>("admin-users", getAdminUsers, 30_000);
   const [search, setSearch] = useState("");
+  const dSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { load(); }, []);
-  async function load() { try { setUsers(await getAdminUsers()); } catch {} finally { setLoading(false); } }
+  const filtered = useMemo(
+    () => (users || []).filter((u) => !dSearch || u.fullName.toLowerCase().includes(dSearch.toLowerCase()) || u.email.toLowerCase().includes(dSearch.toLowerCase())),
+    [users, dSearch],
+  );
 
-  const filtered = users.filter((u) => !search || u.fullName.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
   if (loading) return <Spin />;
 
   return (
     <div>
-      <div className="relative max-w-sm mb-5">
-        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-        </svg>
-        <input type="text" placeholder="Pretrazi korisnike..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border/60 bg-card/50 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/30" />
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative max-w-sm flex-1">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <input type="text" placeholder="Pretrazi korisnike..." value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border/60 bg-card/50 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/30" />
+        </div>
+        <RefreshBtn spinning={refreshing} onClick={refresh} />
       </div>
 
       <div className="bg-card border border-border/50 rounded-2xl shadow-sm overflow-hidden">
@@ -284,37 +388,45 @@ function UsersTab({ onSelect }: { onSelect: (u: AdminUser) => void }) {
               <th className="text-left px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium">Korisnik</th>
               <th className="text-left px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium hidden sm:table-cell">Uloga</th>
               <th className="text-left px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium hidden md:table-cell">Registriran</th>
-              <th className="text-left px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium hidden lg:table-cell">Zadnja prijava</th>
+              <th className="text-left px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium hidden lg:table-cell">Aktivnost</th>
               <th className="text-center px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium">Analiza</th>
               <th className="text-center px-5 py-3.5 text-[11px] text-muted uppercase tracking-wider font-medium">Status</th>
               <th className="w-10" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border/30">
-            {filtered.map((u) => (
-              <tr key={u.id} onClick={() => onSelect(u)} className="hover:bg-accent/[0.03] transition-colors cursor-pointer">
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0",
-                      u.role === "Admin" ? "bg-purple-500/10 text-purple-400" : "bg-accent/10 text-accent")}>
-                      {u.fullName.charAt(0).toUpperCase()}
+            {filtered.map((u) => {
+              const act = activityLabel(u.lastLoginAt);
+              return (
+                <tr key={u.id} onClick={() => onSelect(u)} className="hover:bg-accent/[0.03] transition-colors cursor-pointer">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0",
+                        u.role === "Admin" ? "bg-purple-500/10 text-purple-400" : "bg-accent/10 text-accent")}>
+                        {u.fullName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{u.fullName}</div>
+                        <div className="text-xs text-muted truncate">{u.email}</div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{u.fullName}</div>
-                      <div className="text-xs text-muted truncate">{u.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-4 hidden sm:table-cell"><Pill c={u.role === "Admin" ? "purple" : "gray"}>{u.role}</Pill></td>
-                <td className="px-5 py-4 text-muted text-xs hidden md:table-cell">{shortDate(u.createdAt)}</td>
-                <td className="px-5 py-4 text-muted text-xs hidden lg:table-cell">{u.lastLoginAt ? shortDate(u.lastLoginAt) : "—"}</td>
-                <td className="px-5 py-4 text-center font-stat font-bold">{u.inspectionCount}</td>
-                <td className="px-5 py-4 text-center"><Pill c={u.isActive ? "green" : "red"}>{u.isActive ? "Aktivan" : "Neaktivan"}</Pill></td>
-                <td className="px-5 py-4 text-right">
-                  <svg className="w-4 h-4 text-muted/50 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-5 py-4 hidden sm:table-cell"><Pill c={u.role === "Admin" ? "purple" : "gray"}>{u.role}</Pill></td>
+                  <td className="px-5 py-4 text-muted text-xs hidden md:table-cell">{shortDate(u.createdAt)}</td>
+                  <td className="px-5 py-4 hidden lg:table-cell">
+                    <span className={cn("text-xs font-medium", act.color)}>
+                      {act.dot && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle" />}
+                      {act.text}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-center font-stat font-bold">{u.inspectionCount}</td>
+                  <td className="px-5 py-4 text-center"><Pill c={u.isActive ? "green" : "red"}>{u.isActive ? "Aktivan" : "Neaktivan"}</Pill></td>
+                  <td className="px-5 py-4 text-right">
+                    <svg className="w-4 h-4 text-muted/50 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {filtered.length === 0 && <div className="py-16 text-center text-sm text-muted">Nema rezultata</div>}
@@ -327,20 +439,20 @@ function UsersTab({ onSelect }: { onSelect: (u: AdminUser) => void }) {
 /*  USER DETAIL                                                        */
 /* ================================================================== */
 function UserDetail({ user: u, onBack }: { user: AdminUser; onBack: () => void }) {
-  const [inspections, setInspections] = useState<Inspection[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: allIns, loading } = useCachedFetch<Inspection[]>(`admin-user-ins-${u.id}`, () => getInspections(1, 50), 30_000);
   const [busy, setBusy] = useState(false);
   const [localUser, setLocalUser] = useState(u);
 
-  useEffect(() => {
-    getInspections(1, 50).then((data) => setInspections(data.filter((i) => i.ownerEmail === u.email))).catch(() => {}).finally(() => setLoading(false));
-  }, [u.email]);
+  const inspections = useMemo(() => (allIns || []).filter((i) => i.ownerEmail === u.email), [allIns, u.email]);
+  const completed = useMemo(() => inspections.filter((i) => i.status === "Completed").length, [inspections]);
+  const failed = useMemo(() => inspections.filter((i) => i.status === "Failed").length, [inspections]);
 
   async function toggle() {
     setBusy(true);
     try {
       localUser.isActive ? await deactivateUser(u.id) : await activateUser(u.id);
       setLocalUser({ ...localUser, isActive: !localUser.isActive });
+      invalidateCache("admin-users"); invalidateCache("admin-stats");
     } catch {} finally { setBusy(false); }
   }
 
@@ -350,11 +462,9 @@ function UserDetail({ user: u, onBack }: { user: AdminUser; onBack: () => void }
     try {
       await changeUserRole(u.id, role);
       setLocalUser({ ...localUser, role });
+      invalidateCache("admin-users"); invalidateCache("admin-stats");
     } catch {} finally { setBusy(false); }
   }
-
-  const completed = inspections.filter((i) => i.status === "Completed").length;
-  const failed = inspections.filter((i) => i.status === "Failed").length;
 
   return (
     <div className="space-y-6">
@@ -404,9 +514,7 @@ function UserDetail({ user: u, onBack }: { user: AdminUser; onBack: () => void }
               </button>
             </div>
           </div>
-
           <div className="w-px h-7 bg-border/40 hidden sm:block" />
-
           <button onClick={toggle} disabled={busy}
             className={cn("px-4 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
               localUser.isActive
@@ -448,21 +556,46 @@ function UserDetail({ user: u, onBack }: { user: AdminUser; onBack: () => void }
 const sFilters = [{ v: "", l: "Sve" }, { v: "Completed", l: "Zavrseno" }, { v: "Analyzing", l: "U analizi" }, { v: "Pending", l: "Cekanje" }, { v: "Failed", l: "Neuspjelo" }] as const;
 
 function AnalysesTab() {
-  const [ins, setIns] = useState<Inspection[]>([]);
-  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const ps = 20;
 
-  const load = useCallback(async () => { try { setLoading(true); setIns(await getInspections(page, ps, status || undefined)); } catch {} finally { setLoading(false); } }, [page, status]);
-  useEffect(() => { load(); }, [load]);
+  const cacheKey = `admin-ins-${page}-${status}`;
+  const { data: ins, loading, refreshing, refresh } = useCachedFetch<Inspection[]>(
+    cacheKey, () => getInspections(page, ps, status || undefined), 15_000, [page, status],
+  );
   useEffect(() => { setPage(1); }, [status]);
 
-  const filtered = ins.filter((i) => !search || i.originalFileName.toLowerCase().includes(search.toLowerCase()) || (i.ownerFullName?.toLowerCase().includes(search.toLowerCase()) ?? false));
+  const dSearch = useDebouncedValue(search, 300);
+  const items = ins || [];
+  const filtered = useMemo(
+    () => items.filter((i) => !dSearch || i.originalFileName.toLowerCase().includes(dSearch.toLowerCase()) || (i.ownerFullName?.toLowerCase().includes(dSearch.toLowerCase()) ?? false)),
+    [items, dSearch],
+  );
+
+  // Bulk stats from current page
+  const bulk = useMemo(() => {
+    const done = items.filter((i) => i.status === "Completed");
+    const times = done.filter((i) => i.completedAt).map((i) => (new Date(i.completedAt!).getTime() - new Date(i.createdAt).getTime()) / 1000);
+    return {
+      total: items.length,
+      doneRate: items.length > 0 ? (done.length / items.length * 100) : 0,
+      avgTime: times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0,
+    };
+  }, [items]);
 
   return (
     <div>
+      {/* Bulk stats */}
+      {!loading && items.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <QuickStat label="Na stranici" value={bulk.total} />
+          <QuickStat label="Dovrseno" value={`${bulk.doneRate.toFixed(0)}%`} />
+          <QuickStat label="Avg. vrijeme" value={`${bulk.avgTime.toFixed(1)}s`} />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="flex bg-card border border-border/50 rounded-xl p-1 shadow-sm">
           {sFilters.map((f) => (
@@ -480,6 +613,7 @@ function AnalysesTab() {
           <input type="text" placeholder="Pretrazi..." value={search} onChange={(e) => setSearch(e.target.value)}
             className="pl-9 pr-3 py-2 rounded-xl border border-border/60 bg-card/50 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/30 w-44" />
         </div>
+        <RefreshBtn spinning={refreshing} onClick={refresh} />
       </div>
 
       {loading ? <Spin /> : (
@@ -500,7 +634,14 @@ function AnalysesTab() {
                 {filtered.map((i) => (
                   <tr key={i.id} className="hover:bg-accent/[0.03] transition-colors">
                     <td className="px-5 py-4">
-                      <Link href={`/inspections/${i.id}`} className="text-accent hover:underline truncate block max-w-[220px] font-medium">{i.originalFileName}</Link>
+                      <div className="relative group">
+                        <Link href={`/inspections/${i.id}`} className="text-accent hover:underline truncate block max-w-[220px] font-medium">{i.originalFileName}</Link>
+                        {i.status === "Failed" && i.errorMessage && (
+                          <div className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block bg-card border border-red-500/20 rounded-lg px-3 py-2 shadow-lg max-w-xs">
+                            <p className="text-[11px] text-red-400 whitespace-normal">{i.errorMessage}</p>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-4 text-muted text-xs hidden sm:table-cell truncate max-w-[150px]">{i.ownerFullName || "—"}</td>
                     <td className="px-5 py-4 text-center"><StatusPill s={i.status} /></td>
@@ -519,7 +660,7 @@ function AnalysesTab() {
             <span className="text-xs text-muted">Stranica {page}</span>
             <div className="flex gap-2">
               <PgBtn disabled={page === 1} onClick={() => setPage(page - 1)}>Prethodna</PgBtn>
-              <PgBtn disabled={ins.length < ps} onClick={() => setPage(page + 1)}>Sljedeca</PgBtn>
+              <PgBtn disabled={items.length < ps} onClick={() => setPage(page + 1)}>Sljedeca</PgBtn>
             </div>
           </div>
         </>
@@ -532,10 +673,38 @@ function AnalysesTab() {
 /*  STATISTICS                                                         */
 /* ================================================================== */
 function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
+  const { data: completedIns } = useCachedFetch<Inspection[]>(
+    "admin-completed-100", () => getInspections(1, 100, "Completed"), 60_000,
+  );
+
+  const timeStats = useMemo(() => {
+    if (!completedIns) return null;
+    const times = completedIns
+      .filter((i) => i.completedAt)
+      .map((i) => (new Date(i.completedAt!).getTime() - new Date(i.createdAt).getTime()) / 1000)
+      .sort((a, b) => a - b);
+    if (times.length === 0) return null;
+    const sum = times.reduce((a, b) => a + b, 0);
+    const p95i = Math.floor(times.length * 0.95);
+    return { min: times[0], avg: sum / times.length, p95: times[Math.min(p95i, times.length - 1)], max: times[times.length - 1], n: times.length };
+  }, [completedIns]);
+
   if (loading || !stats) return <Spin />;
 
   return (
     <div className="space-y-6">
+      {/* Processing time stats */}
+      {timeStats && (
+        <Card title={`Vrijeme obrade (${timeStats.n} analiza)`}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <MiniInfo label="Minimum" value={`${timeStats.min.toFixed(1)}s`} />
+            <MiniInfo label="Prosjek" value={`${timeStats.avg.toFixed(1)}s`} bold />
+            <MiniInfo label="P95" value={`${timeStats.p95.toFixed(1)}s`} />
+            <MiniInfo label="Maksimum" value={`${timeStats.max.toFixed(1)}s`} />
+          </div>
+        </Card>
+      )}
+
       {stats.analysesPerDay.length > 0 && (
         <Card title="Analize po danu — 30 dana">
           <div className="h-[260px] -mx-2">
@@ -559,26 +728,26 @@ function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: 
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DistPanel title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
-        <DistPanel title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
-        <DistPanel title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
-        <DistPanel title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={fileTypeColor} labelFn={(k) => k.toUpperCase()} />
+        <MemoDistPanel title="Razina rizika" data={stats.riskLevelDistribution} colorFn={riskColor} labelFn={riskLabel} />
+        <MemoDistPanel title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
+        <MemoDistPanel title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
+        <MemoDistPanel title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={fileTypeColor} labelFn={(k) => k.toUpperCase()} />
       </div>
     </div>
   );
 }
 
 function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Record<string, number>; colorFn: (k: string) => string; labelFn: (k: string) => string }) {
-  const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
-  const total = entries.reduce((s, [, c]) => s + c, 0);
-  const chartData = entries.map(([key, count]) => ({ name: labelFn(key), value: count }));
-  const chartColors = entries.map(([key]) => colorFn(key));
+  const { entries, total, chartData, chartColors } = useMemo(() => {
+    const e = Object.entries(data).sort((a, b) => b[1] - a[1]);
+    const t = e.reduce((s, [, c]) => s + c, 0);
+    return { entries: e, total: t, chartData: e.map(([k, v]) => ({ name: labelFn(k), value: v })), chartColors: e.map(([k]) => colorFn(k)) };
+  }, [data, colorFn, labelFn]);
 
   return (
     <Card title={title}>
       {entries.length === 0 ? <p className="text-sm text-muted py-6 text-center">Nema podataka</p> : (
         <div className="flex items-center gap-6">
-          {/* Donut chart */}
           <div className="relative w-[130px] h-[130px] shrink-0">
             <ResponsiveContainer>
               <PieChart>
@@ -594,8 +763,6 @@ function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Rec
               </div>
             </div>
           </div>
-
-          {/* Legend */}
           <div className="flex-1 space-y-2.5 min-w-0">
             {entries.map(([key, count]) => {
               const pct = total > 0 ? (count / total * 100).toFixed(0) : "0";
@@ -614,21 +781,20 @@ function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Rec
     </Card>
   );
 }
+const MemoDistPanel = memo(DistPanel);
 
 /* ================================================================== */
 /*  SHARED COMPONENTS                                                  */
 /* ================================================================== */
-function KpiCard({ i, label, value, sub, color, icon }: {
+const KpiCard = memo(function KpiCard({ i, label, value, sub, color, icon }: {
   i: number; label: string; value: number; sub?: string; color: string; icon: string;
 }) {
   const d = useCountUp(value, true);
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.06 }}>
       <div className="relative bg-card border border-border/50 rounded-2xl p-5 shadow-sm overflow-hidden group hover:shadow-md transition-shadow h-full">
-        {/* Decorative gradient orb */}
         <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full blur-3xl opacity-[0.12] transition-opacity group-hover:opacity-[0.2]"
           style={{ backgroundColor: color }} />
-
         <div className="relative">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
             style={{ backgroundColor: `${color}15` }}>
@@ -645,24 +811,44 @@ function KpiCard({ i, label, value, sub, color, icon }: {
       </div>
     </motion.div>
   );
-}
+});
 
 function QuickStat({ label, value, live }: { label: string; value: string | number; live?: boolean }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-      <div className="bg-card/60 border border-border/40 rounded-xl px-4 py-3">
-        <div className="text-[10px] text-muted uppercase tracking-wider font-medium">{label}</div>
-        <div className="flex items-center gap-1.5 mt-1">
-          <span className="text-lg font-stat font-bold leading-none">{value}</span>
-          {live && (
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-60" />
-              <span className="relative rounded-full h-1.5 w-1.5 bg-blue-500" />
-            </span>
-          )}
-        </div>
+    <div className="bg-card/60 border border-border/40 rounded-xl px-4 py-3">
+      <div className="text-[10px] text-muted uppercase tracking-wider font-medium">{label}</div>
+      <div className="flex items-center gap-1.5 mt-1">
+        <span className="text-lg font-stat font-bold leading-none">{value}</span>
+        {live && (
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-60" />
+            <span className="relative rounded-full h-1.5 w-1.5 bg-blue-500" />
+          </span>
+        )}
       </div>
-    </motion.div>
+    </div>
+  );
+}
+
+function HealthRing({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="text-center">
+      <div className="w-14 h-14 rounded-full mx-auto mb-2 flex items-center justify-center"
+        style={{ backgroundColor: `${color}12`, border: `2.5px solid ${color}` }}>
+        <span className="text-xs font-stat font-bold" style={{ color }}>{value}</span>
+      </div>
+      <div className="text-[11px] text-muted font-medium">{label}</div>
+    </div>
+  );
+}
+
+function RefreshBtn({ spinning, onClick }: { spinning: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="w-9 h-9 rounded-xl border border-border/50 bg-card/50 flex items-center justify-center text-muted hover:text-foreground hover:bg-card transition-all shadow-sm shrink-0" title="Osvjezi">
+      <svg className={cn("w-4 h-4", spinning && "animate-spin")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M20.016 4.356v4.992" />
+      </svg>
+    </button>
   );
 }
 
@@ -746,3 +932,15 @@ function verdictLabel(v: string) { return ({ authentic: "Autenticno", ai_generat
 function decisionColor(o: string) { return ({ AutoApprove: "#22c55e", HumanReview: "#f59e0b", Escalate: "#ef4444" })[o] || "#71717a"; }
 function decisionLabel(o: string) { return ({ AutoApprove: "Autenticno", HumanReview: "Pregled", Escalate: "Eskalacija" })[o] || o; }
 function fileTypeColor(t: string) { return ({ jpeg: "#3b82f6", jpg: "#3b82f6", png: "#8b5cf6", webp: "#f59e0b", pdf: "#ef4444", tiff: "#06b6d4", gif: "#10b981" })[t.toLowerCase()] || "#71717a"; }
+
+function activityLabel(lastLogin: string | null): { text: string; color: string; dot: boolean } {
+  if (!lastLogin) return { text: "Nikad", color: "text-muted", dot: false };
+  const diff = Date.now() - new Date(lastLogin).getTime();
+  const mins = diff / 60_000;
+  if (mins < 15) return { text: "Online", color: "text-emerald-400", dot: true };
+  if (mins < 60) return { text: `${Math.round(mins)}m`, color: "text-emerald-400/70", dot: false };
+  const hours = diff / 3_600_000;
+  if (hours < 24) return { text: `${Math.round(hours)}h`, color: "text-blue-400", dot: false };
+  if (new Date(lastLogin).toDateString() === new Date().toDateString()) return { text: "Danas", color: "text-blue-400", dot: false };
+  return { text: shortDate(lastLogin), color: "text-muted", dot: false };
+}
