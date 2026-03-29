@@ -137,17 +137,32 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
             self._onnx_session = None
 
     def _load_probe(self, cache_dir: str) -> None:
-        """Load pre-trained linear probe from disk."""
+        """Load pre-trained probe (MLP or linear) from disk."""
         probe_path = os.path.join(cache_dir, "dinov2_probe_weights.npz")
         if os.path.exists(probe_path):
             try:
-                data = np.load(probe_path)
-                bias_val = data["bias"]
-                self._probe = {
-                    "weights": data["weights"],
-                    "bias": float(bias_val.flat[0]) if hasattr(bias_val, "flat") else float(bias_val),
-                }
-                logger.info("DINOv2 probe loaded from %s", probe_path)
+                data = np.load(probe_path, allow_pickle=True)
+                probe_type = str(data.get("probe_type", "linear"))
+                if probe_type == "mlp" and "w1" in data:
+                    self._probe = {
+                        "type": "mlp",
+                        "w1": data["w1"],
+                        "b1": data["b1"],
+                        "w2": data["w2"],
+                        "b2": data["b2"],
+                    }
+                    logger.info("DINOv2 MLP probe loaded from %s (hidden=%d)",
+                                probe_path, data["w1"].shape[0])
+                elif "weights" in data:
+                    bias_val = data["bias"]
+                    self._probe = {
+                        "type": "linear",
+                        "weights": data["weights"],
+                        "bias": float(bias_val.flat[0]) if hasattr(bias_val, "flat") else float(bias_val),
+                    }
+                    logger.info("DINOv2 linear probe loaded from %s", probe_path)
+                else:
+                    self._probe = None
                 return
             except Exception as e:
                 logger.warning("Failed to load DINOv2 probe: %s", e)
@@ -210,7 +225,11 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
         else:
             embedding_normed = embedding
 
-        if self._probe is not None and "weights" in self._probe:
+        if self._probe is not None and self._probe.get("type") == "mlp":
+            h = np.maximum(0, self._probe["w1"] @ embedding_normed + self._probe["b1"])
+            logit = float((self._probe["w2"] @ h + self._probe["b2"]).item())
+            score = 1.0 / (1.0 + np.exp(-np.clip(logit, -500, 500)))
+        elif self._probe is not None and "weights" in self._probe:
             logit = float(
                 np.dot(self._probe["weights"], embedding_normed)
                 + self._probe["bias"]
