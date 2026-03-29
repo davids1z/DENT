@@ -5,8 +5,8 @@ logistic regression model that captures pairwise module interactions
 (e.g., PRNU x AI, spectral x AI) automatically from labeled data.
 
 Architecture:
-  - Input: 18 modules → (risk_score, avg_confidence, num_findings_norm) each
-  - Feature engineering: 54 base + 153 pairwise interactions + 18 squared = 225 features
+  - Input: 22 modules → (risk_score, avg_confidence, num_findings_norm) each
+  - Feature engineering: 66 base + 231 pairwise interactions + 22 squared = 319 features
   - Model: Ridge-regularized logistic regression (numpy only)
   - Output: sigmoid probability in [0, 1]
 
@@ -36,6 +36,8 @@ MODULE_ORDER: list[str] = [
     "efficientnet_ai_detection",
     "safe_ai_detection",
     "dinov2_ai_detection",
+    "bfree_detection",
+    "spai_detection",
     # Authenticity / sensor
     "prnu_detection",
     # Tampering detection
@@ -54,15 +56,15 @@ MODULE_ORDER: list[str] = [
     "content_validation",
 ]
 
-N_MODULES = len(MODULE_ORDER)  # 17
-N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module = 51
-N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # C(17,2) = 136
-N_SQUARED = N_MODULES  # 17
-N_FEATURES = N_BASE + N_INTERACTIONS + N_SQUARED  # 51 + 136 + 17 = 204
+N_MODULES = len(MODULE_ORDER)  # 22
+N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module = 66
+N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # C(22,2) = 231
+N_SQUARED = N_MODULES  # 22
+N_FEATURES = N_BASE + N_INTERACTIONS + N_SQUARED  # 66 + 231 + 22 = 319
 
 
 def feature_names() -> list[str]:
-    """Return the 147 feature names (useful for interpretability)."""
+    """Return the feature names (useful for interpretability)."""
     names: list[str] = []
     # Base features
     for mod in MODULE_ORDER:
@@ -80,7 +82,7 @@ def feature_names() -> list[str]:
 
 
 def extract_features(modules: list[ModuleResult]) -> np.ndarray:
-    """Extract the 147-dim feature vector from module results.
+    """Extract the feature vector from module results.
 
     Missing or errored modules contribute zeros (= no signal).
     """

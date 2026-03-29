@@ -158,17 +158,19 @@ else
     echo "[entrypoint] TruFor weights already cached"
 fi
 
-# ── Ensure probe weights are in the volume ───────────────────────────
-if [ -f "/app/models_stage/clip_ai/probe_weights.npz" ] && [ ! -f "/app/models/clip_ai/probe_weights.npz" ]; then
-    echo "[entrypoint] Copying CLIP probe weights to volume"
+# ── Always update probe weights from staged copies ───────────────────
+# Force-copy ensures new Docker builds always deploy new probe weights,
+# even when the persistent volume already has older versions cached.
+if [ -f "/app/models_stage/clip_ai/probe_weights.npz" ]; then
+    echo "[entrypoint] Updating CLIP probe weights"
     mkdir -p /app/models/clip_ai
-    cp /app/models_stage/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
+    cp -f /app/models_stage/clip_ai/probe_weights.npz /app/models/clip_ai/probe_weights.npz
 fi
 
-if [ -f "/app/models_stage/dinov2/dinov2_probe_weights.npz" ] && [ ! -f "/app/models/dinov2/dinov2_probe_weights.npz" ]; then
-    echo "[entrypoint] Copying DINOv2 probe weights to volume"
+if [ -f "/app/models_stage/dinov2/dinov2_probe_weights.npz" ]; then
+    echo "[entrypoint] Updating DINOv2 probe weights"
     mkdir -p /app/models/dinov2
-    cp /app/models_stage/dinov2/dinov2_probe_weights.npz /app/models/dinov2/dinov2_probe_weights.npz
+    cp -f /app/models_stage/dinov2/dinov2_probe_weights.npz /app/models/dinov2/dinov2_probe_weights.npz
 fi
 
 # EfficientNet-B4 AI detector (~75 MB, public HuggingFace repo)

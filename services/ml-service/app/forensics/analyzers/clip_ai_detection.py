@@ -148,28 +148,40 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
 
     def _load_probe(self, cache_dir: str) -> None:
         """
-        Load a pre-trained linear probe (numpy weights) from disk.
-        If none exists, initialise default centroid-based scoring that
-        uses known statistical properties of CLIP embeddings for real
-        vs. AI images.
+        Load a pre-trained probe (MLP or linear) from disk.
+        Supports both formats:
+          - MLP: probe_type="mlp", w1, b1, w2, b2
+          - Linear: weights, bias (backward compatible)
         """
         probe_path = os.path.join(cache_dir, "probe_weights.npz")
         if os.path.exists(probe_path):
             try:
-                data = np.load(probe_path)
-                bias_val = data["bias"]
-                self._probe = {
-                    "weights": data["weights"],
-                    "bias": float(bias_val.flat[0]) if hasattr(bias_val, "flat") else float(bias_val),
-                }
-                logger.info("CLIP probe loaded from %s", probe_path)
+                data = np.load(probe_path, allow_pickle=True)
+                probe_type = str(data.get("probe_type", "linear"))
+                if probe_type == "mlp" and "w1" in data:
+                    self._probe = {
+                        "type": "mlp",
+                        "w1": data["w1"],  # (hidden, input)
+                        "b1": data["b1"],  # (hidden,)
+                        "w2": data["w2"],  # (1, hidden)
+                        "b2": data["b2"],  # (1,)
+                    }
+                    logger.info("CLIP MLP probe loaded from %s (hidden=%d)",
+                                probe_path, data["w1"].shape[0])
+                elif "weights" in data:
+                    bias_val = data["bias"]
+                    self._probe = {
+                        "type": "linear",
+                        "weights": data["weights"],
+                        "bias": float(bias_val.flat[0]) if hasattr(bias_val, "flat") else float(bias_val),
+                    }
+                    logger.info("CLIP linear probe loaded from %s", probe_path)
+                else:
+                    self._probe = None
                 return
             except Exception as e:
                 logger.warning("Failed to load probe: %s", e)
 
-        # Default probe: uses empirically-derived bias.
-        # The CLIP image embedding norm and specific dimensions correlate
-        # with synthetic content.  This is a lightweight fallback.
         self._probe = None
         logger.info("CLIP probe not found — using norm-based heuristic")
 
@@ -231,16 +243,18 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
         else:
             embedding_normed = embedding
 
-        if self._probe is not None and "weights" in self._probe:
+        if self._probe is not None and self._probe.get("type") == "mlp":
+            h = np.maximum(0, self._probe["w1"] @ embedding_normed + self._probe["b1"])
+            logit = float((self._probe["w2"] @ h + self._probe["b2"]).item())
+            score = 1.0 / (1.0 + np.exp(-logit))
+        elif self._probe is not None and "weights" in self._probe:
             logit = float(np.dot(self._probe["weights"], embedding_normed)
                           + float(self._probe["bias"]))
             score = 1.0 / (1.0 + np.exp(-logit))
         else:
             score = self._heuristic_score(embedding, embedding_normed, norm)
 
-        nsnet_score = self._nsnet_residual_score(embedding_normed)
-        combined = score * 0.65 + nsnet_score * 0.35
-        return float(np.clip(combined, 0.0, 1.0))
+        return float(np.clip(score, 0.0, 1.0))
 
     def _extract_embedding(self, img: Image.Image) -> np.ndarray:
         """Extract 768-dim CLIP embedding. Uses ONNX if available."""
@@ -261,59 +275,6 @@ class ClipAiDetectionAnalyzer(BaseAnalyzer):
             pooled = vision_out.pooler_output
             projected = self._model.visual_projection(pooled)
             return projected.squeeze(0).cpu().numpy()
-
-    @staticmethod
-    def _nsnet_residual_score(embedding_normed: np.ndarray, top_k: int = 50) -> float:
-        """NS-Net inspired: strip top-K semantic dimensions, analyze residual.
-
-        The top-K dimensions (by absolute magnitude) carry most of the
-        semantic meaning (what the image depicts). By zeroing them out,
-        we examine the "texture" of the embedding — the low-level
-        artifacts that differ between real and AI-generated images.
-
-        AI-generated images tend to have:
-        - Lower residual energy (fewer fine-grained details)
-        - Higher kurtosis in residual (more peaked distribution)
-        - Different entropy patterns in the residual vector
-        """
-        abs_vals = np.abs(embedding_normed)
-        # Find top-K indices (semantic dimensions to strip)
-        top_indices = np.argsort(abs_vals)[-top_k:]
-
-        # Create residual: zero out semantic dimensions
-        residual = embedding_normed.copy()
-        residual[top_indices] = 0.0
-
-        signals: list[float] = []
-
-        # Signal 1: Residual energy (L2 norm of remaining dimensions)
-        # AI images: lower residual energy (0.15-0.35)
-        # Real images: higher residual energy (0.35-0.60)
-        res_energy = float(np.linalg.norm(residual))
-        energy_score = float(np.clip((0.45 - res_energy) / 0.25, 0.0, 1.0))
-        signals.append(energy_score)
-
-        # Signal 2: Residual kurtosis
-        # AI residuals are more peaked (higher kurtosis)
-        res_std = float(residual[residual != 0].std()) if np.any(residual != 0) else 1e-8
-        if res_std > 1e-8:
-            non_zero = residual[residual != 0]
-            res_mean = float(non_zero.mean())
-            kurtosis = float(np.mean(((non_zero - res_mean) / res_std) ** 4))
-            kurt_score = float(np.clip((kurtosis - 3.0) / 8.0, 0.0, 1.0))
-            signals.append(kurt_score)
-
-        # Signal 3: Sparsity of residual
-        # AI images have sparser residuals (more near-zero values)
-        threshold = 0.01
-        non_zero_ratio = float(np.sum(np.abs(residual) > threshold) / len(residual))
-        sparsity_score = float(np.clip((0.70 - non_zero_ratio) / 0.30, 0.0, 1.0))
-        signals.append(sparsity_score * 0.7)
-
-        if not signals:
-            return 0.0
-
-        return float(np.clip(sum(signals) / len(signals), 0.0, 1.0))
 
     @staticmethod
     def _heuristic_score(

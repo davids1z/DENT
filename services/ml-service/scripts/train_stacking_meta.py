@@ -5,7 +5,7 @@ Dual-judge architecture using sklearn L-BFGS (superior convergence):
   1. Binary LogReg (authentic vs manipulated) → overall risk_score
   2. 3-class LogReg (authentic/ai_generated/tampered) → verdict breakdown
 
-17 modules → 204 features (51 base + 136 pairwise + 17 squared).
+22 modules → 319 features (66 base + 231 pairwise + 22 squared).
 Both models saved in same .npz. stacking_meta.py loads both:
   - predict() uses binary weights → sigmoid → risk score for gauge
   - predict_proba() uses multinomial weights → softmax → 3 bars

@@ -60,10 +60,12 @@ _AI_DETECTOR_MODULES = frozenset({
 # CLIP: retrained probe F1=0.746
 # Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.30,
-    "dinov2_ai_detection": 0.25,
-    "community_forensics_detection": 0.25,
-    "clip_ai_detection": 0.15,
+    "safe_ai_detection": 0.25,
+    "dinov2_ai_detection": 0.20,
+    "community_forensics_detection": 0.20,
+    "spai_detection": 0.15,              # FFT+ViT, independent architecture
+    "clip_ai_detection": 0.10,
+    "bfree_detection": 0.05,             # DINOv2-family (bias-free)
     "ai_generation_detection": 0.05,
 }
 
@@ -128,11 +130,12 @@ def fuse_scores(
     #
     # For DAMPENING: check if method-diverse detectors confirm (SAFE/CommFor/CLIP).
     # EfficientNet and DINOv2 are both CNN-family for dampening purposes.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection"}
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection"}
     _DAMPENING_INDEPENDENT = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",              # Language-vision embedding
+        "spai_detection",                 # FFT spectral (CVPR 2025)
     }
 
     max_independent_score = max(
@@ -259,6 +262,8 @@ def fuse_scores(
         "community_forensics_detection",
         "efficientnet_ai_detection",
         "clip_ai_detection",
+        "spai_detection",
+        "bfree_detection",
     }
     # For CONSENSUS: method-diverse detectors that must confirm.
     # EfficientNet is CNN-architecture (like DINOv2) — when both fire high
@@ -268,6 +273,7 @@ def fuse_scores(
         "safe_ai_detection",           # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
         "clip_ai_detection",           # Language-vision embedding
+        "spai_detection",              # FFT spectral (CVPR 2025)
     }
 
     ai_gen = _get_module(active, "ai_generation_detection")

@@ -2,8 +2,9 @@
 """
 Fast calibration — runs forensic pipeline DIRECTLY (no HTTP overhead).
 
-Runs ALL 17 modules (including CommFor, NPR, Mesorch, CNN/TruFor, VAE)
-except Gemini VLM (API cost). Direct pipeline call = ~2-10s/image on GPU.
+Module config matches production (docker-compose.server.yml):
+  Enabled: CLIP, CommFor, EfficientNet, SAFE, DINOv2, B-Free, SPAI, Mesorch, PRNU
+  Disabled: CNN/TruFor, optical, semantic, spectral, VAE, aigen, NPR
 
 Usage:
   cd /root/DENT/services/ml-service
@@ -38,7 +39,7 @@ except ImportError:
                 print(f"  [{i}/{total}]", flush=True)
             yield x
 
-S3_PREFIX = "processed"
+S3_PREFIX = "train_v7"
 VALID_CLASSES = {"authentic", "ai_generated", "tampered"}
 
 
@@ -107,19 +108,6 @@ async def main():
     models_dir.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("DENT_FORENSICS_MODEL_CACHE_DIR", str(models_dir))
 
-    # NPR weights (~6MB, from GitHub)
-    npr_dir = models_dir / "npr"
-    npr_dir.mkdir(parents=True, exist_ok=True)
-    npr_path = npr_dir / "NPR.pth"
-    if not npr_path.exists():
-        print("Downloading NPR weights (~6MB)...")
-        import urllib.request
-        urllib.request.urlretrieve(
-            "https://github.com/chuangchuangtan/NPR-DeepfakeDetection/raw/main/NPR.pth",
-            str(npr_path),
-        )
-        print(f"NPR weights saved to {npr_path}")
-
     # Mesorch weights (~976MB, from Google Drive)
     mesorch_dir = models_dir / "cnn" / "mesorch"
     mesorch_dir.mkdir(parents=True, exist_ok=True)
@@ -135,56 +123,71 @@ async def main():
         except Exception as e:
             print(f"WARNING: Mesorch download failed: {e}")
 
-    # TruFor weights (~280MB, from GRIP/University of Naples)
-    trufor_dir = models_dir / "cnn" / "trufor"
-    trufor_dir.mkdir(parents=True, exist_ok=True)
-    trufor_path = trufor_dir / "trufor.pth.tar"
-    if not trufor_path.exists():
-        print("Downloading TruFor weights (~280MB)...")
+    # SAFE checkpoint (~6MB, from GitHub)
+    safe_dir = models_dir / "safe_ai"
+    safe_dir.mkdir(parents=True, exist_ok=True)
+    safe_path = safe_dir / "checkpoint-best.pth"
+    if not safe_path.exists():
+        print("Downloading SAFE checkpoint (~6MB)...")
         try:
             import urllib.request
-            import zipfile
-            import shutil
             urllib.request.urlretrieve(
-                "https://www.grip.unina.it/download/prog/TruFor/TruFor_weights.zip",
-                "/tmp/trufor_weights.zip",
+                "https://github.com/Purdue-M2/SAFE/raw/main/ckpt/checkpoint-best.pth",
+                str(safe_path),
             )
-            with zipfile.ZipFile("/tmp/trufor_weights.zip") as z:
-                z.extractall("/tmp/trufor_extract")
-            for root, dirs, files in os.walk("/tmp/trufor_extract"):
-                for f in files:
-                    if f.endswith((".pth.tar", ".pth")):
-                        shutil.copy(os.path.join(root, f), str(trufor_path))
-                        break
-            shutil.rmtree("/tmp/trufor_extract", ignore_errors=True)
-            os.remove("/tmp/trufor_weights.zip")
-            print(f"TruFor weights saved to {trufor_path}")
+            print(f"SAFE checkpoint saved to {safe_path}")
         except Exception as e:
-            print(f"WARNING: TruFor download failed: {e}")
+            print(f"WARNING: SAFE download failed: {e}")
 
-    # DINOv2 probe weights (download if not present)
+    # SPAI TorchScript (~560MB, from S3)
+    spai_dir = models_dir / "spai"
+    spai_dir.mkdir(parents=True, exist_ok=True)
+    spai_path = spai_dir / "spai_full.pt"
+    if not spai_path.exists():
+        print("Downloading SPAI TorchScript (~560MB from S3)...")
+        try:
+            s3_dl = boto3.client("s3", region_name=args.region)
+            s3_dl.download_file(args.bucket, "models/spai_full.pt", str(spai_path))
+            print(f"SPAI model saved to {spai_path}")
+        except Exception as e:
+            print(f"WARNING: SPAI download failed: {e}")
+
+    # Probe weights (should be in repo from git clone)
     dinov2_dir = models_dir / "dinov2"
     dinov2_dir.mkdir(parents=True, exist_ok=True)
     dinov2_probe = dinov2_dir / "dinov2_probe_weights.npz"
     if not dinov2_probe.exists():
         print("WARNING: DINOv2 probe weights not found — DINOv2 will use heuristic fallback")
 
+    clip_dir = models_dir / "clip_ai"
+    clip_dir.mkdir(parents=True, exist_ok=True)
+    clip_probe = clip_dir / "probe_weights.npz"
+    if not clip_probe.exists():
+        print("WARNING: CLIP probe weights not found — CLIP will use heuristic fallback")
+
     from app.forensics.pipeline import ForensicPipeline
 
     print("Initializing forensic pipeline (direct, no HTTP)...")
+    # Module config MUST match production (docker-compose.server.yml)
     pipeline = ForensicPipeline(
-        semantic_enabled=False,     # Skip Gemini (API cost)
-        cnn_enabled=False,          # TruFor skipped (13s/img, weak signal ~0.05-0.20)
-        mesorch_enabled=True,       # Mesorch (AAAI 2025, JPEG F1=0.774)
-        vae_recon_enabled=True,     # VAE snap-back (AI detection)
-        aigen_enabled=True,         # Swin Transformer ensemble
-        community_forensics_enabled=True,  # CommFor (CVPR 2025, 4803 generators)
-        npr_enabled=True,           # NPR (CVPR 2024, 92.2% accuracy)
-        clip_ai_enabled=True,       # CLIP probe
-        dinov2_ai_enabled=True,     # DINOv2 probe (97.2% on Flux)
-        spectral_enabled=True,      # FFT (~1s)
-        optical_enabled=True,       # Moire/perspective (~1s)
-        prnu_enabled=True,          # PRNU (~1s)
+        # Enabled on production
+        clip_ai_enabled=True,
+        community_forensics_enabled=True,
+        efficientnet_ai_enabled=True,
+        safe_ai_enabled=True,
+        dinov2_ai_enabled=True,
+        bfree_enabled=True,
+        spai_enabled=True,
+        mesorch_enabled=True,
+        prnu_enabled=True,
+        # Disabled on production
+        semantic_enabled=False,
+        cnn_enabled=False,
+        vae_recon_enabled=False,
+        aigen_enabled=False,
+        npr_enabled=False,
+        spectral_enabled=False,
+        optical_enabled=False,
     )
     print("Pipeline ready!")
 
