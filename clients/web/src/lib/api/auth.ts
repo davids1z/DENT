@@ -64,3 +64,12 @@ export async function getAdminStats(): Promise<AdminStats> {
   if (!res.ok) throw new Error(`Failed to fetch admin stats: ${res.status}`);
   return res.json();
 }
+
+export async function changeUserRole(id: string, role: "Admin" | "User"): Promise<void> {
+  const res = await authFetch(`${API_BASE}/admin/users/${id}/role`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) throw new Error("Failed to change role");
+}

@@ -75,4 +75,20 @@ public class AdminController : ControllerBase
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    [HttpPatch("users/{id:guid}/role")]
+    public async Task<IActionResult> ChangeRole(Guid id, [FromBody] ChangeRoleRequest request, CancellationToken ct)
+    {
+        if (request.Role is not ("Admin" or "User"))
+            return BadRequest(new { error = "Uloga mora biti 'Admin' ili 'User'." });
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return NotFound();
+
+        user.Role = request.Role;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
 }
+
+public record ChangeRoleRequest(string Role);
