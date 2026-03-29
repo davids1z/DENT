@@ -73,6 +73,36 @@ public class GetAdminStatsHandler : IRequestHandler<GetAdminStatsQuery, AdminSta
             dailyCounts.Add(new DailyCountDto { Date = d.ToString("yyyy-MM-dd"), Count = count });
         }
 
+        // --- Hourly distribution (last 30 days, aggregated by hour 0-23) ---
+        var hourlyRaw = await _db.Inspections
+            .Where(i => i.CreatedAt >= thirtyDaysAgo)
+            .GroupBy(i => i.CreatedAt.Hour)
+            .Select(g => new HourlyCountDto { Hour = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Hour)
+            .ToListAsync(ct);
+
+        // Fill missing hours with 0
+        var hourlyCounts = Enumerable.Range(0, 24)
+            .Select(h => hourlyRaw.FirstOrDefault(x => x.Hour == h) ?? new HourlyCountDto { Hour = h, Count = 0 })
+            .ToList();
+
+        // --- Day-of-week distribution (last 30 days) ---
+        var dowDates = await _db.Inspections
+            .Where(i => i.CreatedAt >= thirtyDaysAgo)
+            .Select(i => i.CreatedAt.Date)
+            .ToListAsync(ct);
+
+        var dowRaw = dowDates
+            .GroupBy(d => (int)d.DayOfWeek)
+            .Select(g => new DayOfWeekCountDto { Day = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Day)
+            .ToList();
+
+        // Fill missing days with 0
+        var dowCounts = Enumerable.Range(0, 7)
+            .Select(d => dowRaw.FirstOrDefault(x => x.Day == d) ?? new DayOfWeekCountDto { Day = d, Count = 0 })
+            .ToList();
+
         // --- Risk level distribution (from ForensicResults) ---
         var riskLevels = await _db.ForensicResults
             .GroupBy(fr => fr.OverallRiskLevel)
@@ -149,6 +179,8 @@ public class GetAdminStatsHandler : IRequestHandler<GetAdminStatsQuery, AdminSta
             QueuePending = _queue.Count,
             QueueActiveUsers = _queue.ActiveUserCount,
             AnalysesPerDay = dailyCounts,
+            AnalysesPerHour = hourlyCounts,
+            AnalysesPerDayOfWeek = dowCounts,
             RiskLevelDistribution = riskLevels,
             VerdictDistribution = verdictDistribution,
             DecisionOutcomeDistribution = decisionOutcomes,

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell,
 } from "recharts";
 import { useAuth } from "@/lib/auth";
@@ -78,6 +78,8 @@ function useDebouncedValue<T>(value: T, ms: number): T {
 const navItems = [
   { id: "pregled", label: "Pregled",
     icon: "M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" },
+  { id: "aktivnost", label: "Aktivnost",
+    icon: "M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" },
   { id: "korisnici", label: "Korisnici",
     icon: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-1.997M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" },
   { id: "analize", label: "Analize",
@@ -87,7 +89,8 @@ const navItems = [
 ] as const;
 
 const viewMeta: Record<string, { title: string; desc: string }> = {
-  pregled: { title: "Pregled", desc: "Aktivnost i performanse sustava" },
+  pregled: { title: "Pregled", desc: "Pregled sustava i performanse" },
+  aktivnost: { title: "Aktivnost", desc: "Detaljni vremenski obrasci koristenja" },
   korisnici: { title: "Korisnici", desc: "Upravljanje korisnickim racunima" },
   analize: { title: "Analize", desc: "Sve analize u sustavu" },
   statistika: { title: "Statistika", desc: "Detaljni statisticki podaci" },
@@ -202,6 +205,11 @@ export default function AdminPage() {
                 <OverviewTab stats={stats} loading={statsLoading} />
               </div>
             )}
+            {visited.has("aktivnost") && (
+              <div className={view === "aktivnost" ? "block" : "hidden"}>
+                <AktivnostTab stats={stats} loading={statsLoading} />
+              </div>
+            )}
             {visited.has("korisnici") && (
               <div className={view === "korisnici" ? "block" : "hidden"}>
                 <UsersTab onSelect={openUser} />
@@ -300,29 +308,6 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
         </div>
       </Card>
 
-      {/* Activity chart */}
-      {stats.analysesPerDay.length > 0 && (
-        <Card title="Aktivnost — zadnjih 30 dana" delay={0.15}>
-          <div className="h-[220px] -mx-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.analysesPerDay} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-                <defs>
-                  <linearGradient id="aGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={6} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} domain={[0, "auto"]} />
-                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-accent)", strokeOpacity: 0.15 }} />
-                <Area type="monotone" dataKey="count" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#aGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent)" }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      )}
-
       {/* Recent failures with error messages */}
       {stats.recentFailures.length > 0 && (
         <Card title="Nedavni neuspjesi" delay={0.2}>
@@ -349,6 +334,165 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
           </div>
         </Card>
       )}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  AKTIVNOST                                                          */
+/* ================================================================== */
+const periods = [{ v: 7, l: "7 dana" }, { v: 14, l: "14 dana" }, { v: 30, l: "30 dana" }] as const;
+const dowNames = ["Ned", "Pon", "Uto", "Sri", "Cet", "Pet", "Sub"];
+
+function AktivnostTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
+  const [period, setPeriod] = useState(30);
+  if (loading || !stats) return <Spin />;
+
+  const dailyFiltered = useMemo(
+    () => stats.analysesPerDay.slice(-period),
+    [stats.analysesPerDay, period],
+  );
+
+  const kpis = useMemo(() => {
+    const total = dailyFiltered.reduce((s, d) => s + d.count, 0);
+    const avgDay = dailyFiltered.length > 0 ? total / dailyFiltered.length : 0;
+    const peak = dailyFiltered.reduce((best, d) => d.count > best.count ? d : best, dailyFiltered[0] || { date: "-", count: 0 });
+    const avgUser = stats.activeUsers > 0 ? stats.totalInspections / stats.activeUsers : 0;
+    return { total, avgDay, peak, avgUser };
+  }, [dailyFiltered, stats]);
+
+  const hourly = stats.analysesPerHour || [];
+  const dow = stats.analysesPerDayOfWeek || [];
+
+  const peakHour = useMemo(() => hourly.reduce((b, h) => h.count > b.count ? h : b, hourly[0] || { hour: 0, count: 0 }), [hourly]);
+  const peakDow = useMemo(() => dow.reduce((b, d) => d.count > b.count ? d : b, dow[0] || { day: 0, count: 0 }), [dow]);
+  const quietHour = useMemo(() => hourly.reduce((b, h) => h.count < b.count ? h : b, hourly[0] || { hour: 0, count: 0 }), [hourly]);
+
+  return (
+    <div className="space-y-6">
+      {/* Period selector */}
+      <div className="flex items-center gap-2">
+        <div className="flex bg-card border border-border/50 rounded-xl p-1 shadow-sm">
+          {periods.map((p) => (
+            <button key={p.v} onClick={() => setPeriod(p.v)}
+              className={cn("px-4 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                period === p.v ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground")}>
+              {p.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <QuickStat label={`Ukupno (${period}d)`} value={kpis.total} />
+        <QuickStat label="Prosjek/dan" value={kpis.avgDay.toFixed(1)} />
+        <QuickStat label="Najaktivniji dan" value={`${kpis.peak.date.slice(5).replace("-", "/")} (${kpis.peak.count})`} />
+        <QuickStat label="Prosjek/korisnik" value={kpis.avgUser.toFixed(1)} />
+      </div>
+
+      {/* Daily trend */}
+      {dailyFiltered.length > 0 && (
+        <Card title={`Trend — zadnjih ${period} dana`}>
+          <div className="h-[220px] -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dailyFiltered} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
+                <defs>
+                  <linearGradient id="aktGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={Math.max(1, Math.floor(period / 7) - 1)} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} domain={[0, "auto"]} />
+                <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-accent)", strokeOpacity: 0.15 }} />
+                <Area type="monotone" dataKey="count" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#aktGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent)" }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
+      {/* Hourly + Day-of-week charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Hour of day */}
+        <Card title="Sati u danu">
+          <div className="h-[200px] -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={hourly} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}h`} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} interval={2} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
+                <Tooltip content={<HourTip />} cursor={{ fill: "var(--color-accent)", fillOpacity: 0.06 }} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]} animationDuration={800}>
+                  {hourly.map((h) => (
+                    <Cell key={h.hour} fill={h.hour === peakHour.hour ? "#3b82f6" : "var(--color-accent)"} fillOpacity={h.hour === peakHour.hour ? 1 : 0.4} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[11px] text-muted mt-3 text-center">
+            Vrh: <span className="text-accent font-semibold">{peakHour.hour}:00 — {peakHour.count} analiza</span>
+            {" | "}Najtiše: <span className="font-medium">{quietHour.hour}:00</span>
+          </p>
+        </Card>
+
+        {/* Day of week */}
+        <Card title="Dani u tjednu">
+          <div className="h-[200px] -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dow} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                <XAxis dataKey="day" tickFormatter={(d: number) => dowNames[d] || "?"} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
+                <Tooltip content={<DowTip />} cursor={{ fill: "var(--color-accent)", fillOpacity: 0.06 }} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]} animationDuration={800}>
+                  {dow.map((d) => (
+                    <Cell key={d.day} fill={d.day === peakDow.day ? "#8b5cf6" : "var(--color-accent)"} fillOpacity={d.day === peakDow.day ? 1 : 0.4} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[11px] text-muted mt-3 text-center">
+            Najaktivniji: <span className="text-purple-400 font-semibold">{dowNames[peakDow.day]} — {peakDow.count} analiza</span>
+          </p>
+        </Card>
+      </div>
+
+      {/* Peak summary */}
+      <Card title="Sazetak aktivnosti">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <MiniInfo label="Vrh sata" value={`${peakHour.hour}:00 (${peakHour.count})`} bold />
+          <MiniInfo label="Najtiši sat" value={`${quietHour.hour}:00 (${quietHour.count})`} />
+          <MiniInfo label="Vrh dana" value={`${dowNames[peakDow.day]} (${peakDow.count})`} bold />
+          <MiniInfo label="Prosj./korisnik" value={kpis.avgUser.toFixed(1)} bold />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function HourTip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { hour: number; count: number } }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="rounded-xl border border-border/50 bg-card px-4 py-2.5 shadow-lg">
+      <p className="text-[10px] text-muted mb-0.5">{d.hour}:00 — {d.hour}:59</p>
+      <p className="text-sm font-stat font-bold">{d.count} <span className="text-xs text-muted font-normal">analiza</span></p>
+    </div>
+  );
+}
+
+function DowTip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { day: number; count: number } }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="rounded-xl border border-border/50 bg-card px-4 py-2.5 shadow-lg">
+      <p className="text-[10px] text-muted mb-0.5">{dowNames[d.day]}</p>
+      <p className="text-sm font-stat font-bold">{d.count} <span className="text-xs text-muted font-normal">analiza</span></p>
     </div>
   );
 }

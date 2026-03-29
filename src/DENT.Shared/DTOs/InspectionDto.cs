@@ -280,6 +280,10 @@ public record AdminStatsDto
     // Time-series: analyses per day (last 30 days)
     public List<DailyCountDto> AnalysesPerDay { get; init; } = [];
 
+    // Activity: hourly + day-of-week distributions (last 30 days)
+    public List<HourlyCountDto> AnalysesPerHour { get; init; } = [];
+    public List<DayOfWeekCountDto> AnalysesPerDayOfWeek { get; init; } = [];
+
     // Distributions
     public Dictionary<string, int> RiskLevelDistribution { get; init; } = [];
     public Dictionary<string, int> VerdictDistribution { get; init; } = [];
@@ -293,6 +297,18 @@ public record AdminStatsDto
 public record DailyCountDto
 {
     public string Date { get; init; } = "";
+    public int Count { get; init; }
+}
+
+public record HourlyCountDto
+{
+    public int Hour { get; init; }
+    public int Count { get; init; }
+}
+
+public record DayOfWeekCountDto
+{
+    public int Day { get; init; }
     public int Count { get; init; }
 }
 

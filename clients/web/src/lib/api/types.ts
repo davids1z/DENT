@@ -277,6 +277,8 @@ export interface AdminStats {
   queuePending: number;
   queueActiveUsers: number;
   analysesPerDay: { date: string; count: number }[];
+  analysesPerHour: { hour: number; count: number }[];
+  analysesPerDayOfWeek: { day: number; count: number }[];
   riskLevelDistribution: Record<string, number>;
   verdictDistribution: Record<string, number>;
   decisionOutcomeDistribution: Record<string, number>;
