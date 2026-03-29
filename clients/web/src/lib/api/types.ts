@@ -283,6 +283,14 @@ export interface AdminStats {
   verdictDistribution: Record<string, number>;
   decisionOutcomeDistribution: Record<string, number>;
   fileTypeDistribution: Record<string, number>;
+  fraudRiskDistribution: Record<string, number>;
+  captureSourceDistribution: Record<string, number>;
+  processingTimeP50: number;
+  processingTimeP90: number;
+  processingTimeP95: number;
+  processingTimeP99: number;
+  usersPerDay: { date: string; count: number }[];
+  averageFraudRiskScore: number;
   recentFailures: {
     id: string;
     originalFileName: string;

@@ -289,6 +289,20 @@ public record AdminStatsDto
     public Dictionary<string, int> VerdictDistribution { get; init; } = [];
     public Dictionary<string, int> DecisionOutcomeDistribution { get; init; } = [];
     public Dictionary<string, int> FileTypeDistribution { get; init; } = [];
+    public Dictionary<string, int> FraudRiskDistribution { get; init; } = [];
+    public Dictionary<string, int> CaptureSourceDistribution { get; init; } = [];
+
+    // Processing time percentiles (ms)
+    public double ProcessingTimeP50 { get; init; }
+    public double ProcessingTimeP90 { get; init; }
+    public double ProcessingTimeP95 { get; init; }
+    public double ProcessingTimeP99 { get; init; }
+
+    // User growth trend (last 30 days)
+    public List<DailyCountDto> UsersPerDay { get; init; } = [];
+
+    // Fraud
+    public double AverageFraudRiskScore { get; init; }
 
     // Recent failures
     public List<AdminFailedInspectionDto> RecentFailures { get; init; } = [];

@@ -346,20 +346,31 @@ const dowNames = ["Ned", "Pon", "Uto", "Sri", "Cet", "Pet", "Sub"];
 
 function AktivnostTab({ stats, loading }: { stats: AdminStats | null; loading: boolean }) {
   const [period, setPeriod] = useState(30);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const useCustom = dateFrom && dateTo;
   if (loading || !stats) return <Spin />;
 
-  const dailyFiltered = useMemo(
-    () => stats.analysesPerDay.slice(-period),
-    [stats.analysesPerDay, period],
-  );
+  const dailyFiltered = useMemo(() => {
+    if (useCustom) return stats.analysesPerDay.filter((d) => d.date >= dateFrom && d.date <= dateTo);
+    return stats.analysesPerDay.slice(-period);
+  }, [stats.analysesPerDay, period, dateFrom, dateTo, useCustom]);
+
+  const userDailyFiltered = useMemo(() => {
+    const ud = stats.usersPerDay || [];
+    if (useCustom) return ud.filter((d) => d.date >= dateFrom && d.date <= dateTo);
+    return ud.slice(-period);
+  }, [stats.usersPerDay, period, dateFrom, dateTo, useCustom]);
 
   const kpis = useMemo(() => {
     const total = dailyFiltered.reduce((s, d) => s + d.count, 0);
-    const avgDay = dailyFiltered.length > 0 ? total / dailyFiltered.length : 0;
+    const days = dailyFiltered.length || 1;
+    const avgDay = total / days;
     const peak = dailyFiltered.reduce((best, d) => d.count > best.count ? d : best, dailyFiltered[0] || { date: "-", count: 0 });
     const avgUser = stats.activeUsers > 0 ? stats.totalInspections / stats.activeUsers : 0;
-    return { total, avgDay, peak, avgUser };
-  }, [dailyFiltered, stats]);
+    const newUsers = userDailyFiltered.reduce((s, d) => s + d.count, 0);
+    return { total, avgDay, peak, avgUser, newUsers, days };
+  }, [dailyFiltered, userDailyFiltered, stats]);
 
   const hourly = stats.analysesPerHour || [];
   const dow = stats.analysesPerDayOfWeek || [];
@@ -367,33 +378,45 @@ function AktivnostTab({ stats, loading }: { stats: AdminStats | null; loading: b
   const peakHour = useMemo(() => hourly.reduce((b, h) => h.count > b.count ? h : b, hourly[0] || { hour: 0, count: 0 }), [hourly]);
   const peakDow = useMemo(() => dow.reduce((b, d) => d.count > b.count ? d : b, dow[0] || { day: 0, count: 0 }), [dow]);
   const quietHour = useMemo(() => hourly.reduce((b, h) => h.count < b.count ? h : b, hourly[0] || { hour: 0, count: 0 }), [hourly]);
+  const totalHourly = useMemo(() => hourly.reduce((s, h) => s + h.count, 0), [hourly]);
+
+  const rangeLabel = useCustom ? `${dateFrom.slice(5).replace("-", "/")} — ${dateTo.slice(5).replace("-", "/")}` : `zadnjih ${period} dana`;
 
   return (
     <div className="space-y-6">
-      {/* Period selector */}
-      <div className="flex items-center gap-2">
+      {/* Period selector + date range */}
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex bg-card border border-border/50 rounded-xl p-1 shadow-sm">
           {periods.map((p) => (
-            <button key={p.v} onClick={() => setPeriod(p.v)}
+            <button key={p.v} onClick={() => { setPeriod(p.v); setDateFrom(""); setDateTo(""); }}
               className={cn("px-4 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                period === p.v ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground")}>
+                !useCustom && period === p.v ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground")}>
               {p.l}
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-2">
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-border/60 bg-card/50 text-xs text-muted focus:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 w-[130px]" />
+          <span className="text-xs text-muted">—</span>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-border/60 bg-card/50 text-xs text-muted focus:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 w-[130px]" />
+        </div>
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <QuickStat label={`Ukupno (${period}d)`} value={kpis.total} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <QuickStat label="Ukupno analiza" value={kpis.total} />
         <QuickStat label="Prosjek/dan" value={kpis.avgDay.toFixed(1)} />
         <QuickStat label="Najaktivniji dan" value={`${kpis.peak.date.slice(5).replace("-", "/")} (${kpis.peak.count})`} />
         <QuickStat label="Prosjek/korisnik" value={kpis.avgUser.toFixed(1)} />
+        <QuickStat label="Novi korisnici" value={kpis.newUsers} />
+        <QuickStat label="Dani u periodu" value={kpis.days} />
       </div>
 
       {/* Daily trend */}
       {dailyFiltered.length > 0 && (
-        <Card title={`Trend — zadnjih ${period} dana`}>
+        <Card title={`Trend analiza — ${rangeLabel}`}>
           <div className="h-[220px] -mx-2">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={dailyFiltered} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
@@ -404,7 +427,7 @@ function AktivnostTab({ stats, loading }: { stats: AdminStats | null; loading: b
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={Math.max(1, Math.floor(period / 7) - 1)} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} interval={Math.max(1, Math.floor(dailyFiltered.length / 8))} />
                 <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} domain={[0, "auto"]} />
                 <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--color-accent)", strokeOpacity: 0.15 }} />
                 <Area type="monotone" dataKey="count" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#aktGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)", fill: "var(--color-accent)" }} />
@@ -414,33 +437,49 @@ function AktivnostTab({ stats, loading }: { stats: AdminStats | null; loading: b
         </Card>
       )}
 
+      {/* User registration trend */}
+      {userDailyFiltered.length > 0 && userDailyFiltered.some((d) => d.count > 0) && (
+        <Card title={`Registracije korisnika — ${rangeLabel}`}>
+          <div className="h-[140px] -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={userDailyFiltered} margin={{ top: 4, right: 16, bottom: 0, left: -12 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(8)} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} interval={Math.max(1, Math.floor(userDailyFiltered.length / 8))} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
+                <Tooltip content={<ChartTip />} cursor={{ fill: "var(--color-accent)", fillOpacity: 0.06 }} />
+                <Bar dataKey="count" fill="#10b981" fillOpacity={0.6} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
       {/* Hourly + Day-of-week charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Hour of day */}
-        <Card title="Sati u danu">
+        <Card title="Distribucija po satima (30 dana)">
           <div className="h-[200px] -mx-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hourly} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
-                <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}h`} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} interval={2} />
+                <XAxis dataKey="hour" tickFormatter={(h: number) => `${String(h).padStart(2, "0")}h`} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} interval={2} />
                 <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
                 <Tooltip content={<HourTip />} cursor={{ fill: "var(--color-accent)", fillOpacity: 0.06 }} />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]} animationDuration={800}>
                   {hourly.map((h) => (
-                    <Cell key={h.hour} fill={h.hour === peakHour.hour ? "#3b82f6" : "var(--color-accent)"} fillOpacity={h.hour === peakHour.hour ? 1 : 0.4} />
+                    <Cell key={h.hour} fill={h.hour === peakHour.hour ? "#3b82f6" : "var(--color-accent)"} fillOpacity={h.hour === peakHour.hour ? 1 : 0.35} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           <p className="text-[11px] text-muted mt-3 text-center">
-            Vrh: <span className="text-accent font-semibold">{peakHour.hour}:00 — {peakHour.count} analiza</span>
-            {" | "}Najtiše: <span className="font-medium">{quietHour.hour}:00</span>
+            Vrh: <span className="text-accent font-semibold">{peakHour.hour}:00 ({peakHour.count})</span>
+            {" · "}Najtiše: <span className="font-medium">{quietHour.hour}:00 ({quietHour.count})</span>
+            {" · "}Ukupno: <span className="font-medium">{totalHourly}</span>
           </p>
         </Card>
 
-        {/* Day of week */}
-        <Card title="Dani u tjednu">
+        <Card title="Distribucija po danima (30 dana)">
           <div className="h-[200px] -mx-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dow} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
@@ -450,25 +489,37 @@ function AktivnostTab({ stats, loading }: { stats: AdminStats | null; loading: b
                 <Tooltip content={<DowTip />} cursor={{ fill: "var(--color-accent)", fillOpacity: 0.06 }} />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]} animationDuration={800}>
                   {dow.map((d) => (
-                    <Cell key={d.day} fill={d.day === peakDow.day ? "#8b5cf6" : "var(--color-accent)"} fillOpacity={d.day === peakDow.day ? 1 : 0.4} />
+                    <Cell key={d.day} fill={d.day === peakDow.day ? "#8b5cf6" : "var(--color-accent)"} fillOpacity={d.day === peakDow.day ? 1 : 0.35} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           <p className="text-[11px] text-muted mt-3 text-center">
-            Najaktivniji: <span className="text-purple-400 font-semibold">{dowNames[peakDow.day]} — {peakDow.count} analiza</span>
+            Vrh: <span className="text-purple-400 font-semibold">{dowNames[peakDow.day]} ({peakDow.count})</span>
           </p>
         </Card>
       </div>
 
+      {/* Processing time percentiles */}
+      <Card title="Percentili vremena obrade">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <MiniInfo label="P50 (medijan)" value={`${(stats.processingTimeP50 / 1000).toFixed(1)}s`} bold />
+          <MiniInfo label="P90" value={`${(stats.processingTimeP90 / 1000).toFixed(1)}s`} />
+          <MiniInfo label="P95" value={`${(stats.processingTimeP95 / 1000).toFixed(1)}s`} />
+          <MiniInfo label="P99" value={`${(stats.processingTimeP99 / 1000).toFixed(1)}s`} />
+        </div>
+      </Card>
+
       {/* Peak summary */}
       <Card title="Sazetak aktivnosti">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <MiniInfo label="Vrh sata" value={`${peakHour.hour}:00 (${peakHour.count})`} bold />
           <MiniInfo label="Najtiši sat" value={`${quietHour.hour}:00 (${quietHour.count})`} />
           <MiniInfo label="Vrh dana" value={`${dowNames[peakDow.day]} (${peakDow.count})`} bold />
           <MiniInfo label="Prosj./korisnik" value={kpis.avgUser.toFixed(1)} bold />
+          <MiniInfo label="Fraud prosj." value={`${stats.averageFraudRiskScore.toFixed(1)}%`} />
+          <MiniInfo label="Avg. obrada" value={`${(stats.averageProcessingTimeMs / 1000).toFixed(1)}s`} />
         </div>
       </Card>
     </div>
@@ -974,6 +1025,14 @@ function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: 
         <MemoDistPanel title="Verdikt" data={stats.verdictDistribution} colorFn={verdictColor} labelFn={verdictLabel} />
         <MemoDistPanel title="Odluke sustava" data={stats.decisionOutcomeDistribution} colorFn={decisionColor} labelFn={decisionLabel} />
         <MemoDistPanel title="Tipovi datoteka" data={stats.fileTypeDistribution} colorFn={fileTypeColor} labelFn={(k) => k.toUpperCase()} />
+        {Object.keys(stats.fraudRiskDistribution || {}).length > 0 && (
+          <MemoDistPanel title="Fraud rizik" data={stats.fraudRiskDistribution} colorFn={riskColor} labelFn={riskLabel} />
+        )}
+        {Object.keys(stats.captureSourceDistribution || {}).length > 0 && (
+          <MemoDistPanel title="Izvor snimanja" data={stats.captureSourceDistribution}
+            colorFn={(s) => ({ Camera: "#3b82f6", Upload: "#8b5cf6", Api: "#f59e0b", Mobile: "#10b981" })[s] || "#71717a"}
+            labelFn={(s) => ({ Camera: "Kamera", Upload: "Upload", Api: "API", Mobile: "Mobitel" })[s] || s} />
+        )}
       </div>
     </div>
   );

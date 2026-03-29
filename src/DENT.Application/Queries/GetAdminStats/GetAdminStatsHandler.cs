@@ -148,6 +148,49 @@ public class GetAdminStatsHandler : IRequestHandler<GetAdminStatsQuery, AdminSta
             .GroupBy(ext => ext)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        // --- Fraud risk distribution ---
+        var fraudRiskDist = await _db.Inspections
+            .Where(i => i.FraudRiskLevel != null)
+            .GroupBy(i => i.FraudRiskLevel!.Value)
+            .Select(g => new { Level = g.Key.ToString(), Count = g.Count() })
+            .ToDictionaryAsync(x => x.Level, x => x.Count, ct);
+
+        // --- Capture source distribution ---
+        var captureSourceDist = await _db.Inspections
+            .Where(i => i.CaptureSource != null)
+            .GroupBy(i => i.CaptureSource!.Value)
+            .Select(g => new { Source = g.Key.ToString(), Count = g.Count() })
+            .ToDictionaryAsync(x => x.Source, x => x.Count, ct);
+
+        // --- Processing time percentiles ---
+        var procTimes = completedWithTime
+            .Select(i => (i.CompletedAt - i.CreatedAt).TotalMilliseconds)
+            .OrderBy(t => t)
+            .ToList();
+
+        double Percentile(List<double> sorted, double p) =>
+            sorted.Count == 0 ? 0 : sorted[Math.Min((int)(sorted.Count * p), sorted.Count - 1)];
+
+        // --- User registrations per day (last 30 days) ---
+        var userDailyRaw = await _db.Users
+            .Where(u => u.CreatedAt >= thirtyDaysAgo)
+            .GroupBy(u => u.CreatedAt.Date)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Date)
+            .ToListAsync(ct);
+
+        var usersPerDay = new List<DailyCountDto>();
+        for (var d = thirtyDaysAgo; d <= today; d = d.AddDays(1))
+        {
+            var count = userDailyRaw.FirstOrDefault(x => x.Date == d)?.Count ?? 0;
+            usersPerDay.Add(new DailyCountDto { Date = d.ToString("yyyy-MM-dd"), Count = count });
+        }
+
+        // --- Average fraud risk score ---
+        var avgFraudScore = await _db.Inspections
+            .Where(i => i.FraudRiskScore != null)
+            .AverageAsync(i => (double?)i.FraudRiskScore, ct) ?? 0;
+
         // --- Recent failures ---
         var recentFailures = await _db.Inspections
             .Include(i => i.User)
@@ -185,6 +228,14 @@ public class GetAdminStatsHandler : IRequestHandler<GetAdminStatsQuery, AdminSta
             VerdictDistribution = verdictDistribution,
             DecisionOutcomeDistribution = decisionOutcomes,
             FileTypeDistribution = fileTypeDist,
+            FraudRiskDistribution = fraudRiskDist,
+            CaptureSourceDistribution = captureSourceDist,
+            ProcessingTimeP50 = Math.Round(Percentile(procTimes, 0.50), 0),
+            ProcessingTimeP90 = Math.Round(Percentile(procTimes, 0.90), 0),
+            ProcessingTimeP95 = Math.Round(Percentile(procTimes, 0.95), 0),
+            ProcessingTimeP99 = Math.Round(Percentile(procTimes, 0.99), 0),
+            UsersPerDay = usersPerDay,
+            AverageFraudRiskScore = Math.Round(avgFraudScore * 100, 1),
             RecentFailures = recentFailures,
         };
     }
