@@ -143,14 +143,39 @@ async def main():
     spai_dir = models_dir / "spai"
     spai_dir.mkdir(parents=True, exist_ok=True)
     spai_path = spai_dir / "spai_full.pt"
-    if not spai_path.exists():
+    has_spai = spai_path.exists()
+    if not has_spai:
         print("Downloading SPAI TorchScript (~560MB from S3)...")
         try:
             s3_dl = boto3.client("s3", region_name=args.region)
-            s3_dl.download_file(args.bucket, "models/spai_full.pt", str(spai_path))
+            s3_dl.download_file(args.bucket, "models/spai_full_cpu.pt", str(spai_path))
+            has_spai = True
             print(f"SPAI model saved to {spai_path}")
         except Exception as e:
-            print(f"WARNING: SPAI download failed: {e}")
+            print(f"WARNING: SPAI download failed, disabling: {e}")
+
+    # B-Free weights (from S3)
+    bfree_dir = models_dir / "bfree"
+    bfree_dir.mkdir(parents=True, exist_ok=True)
+    bfree_path = bfree_dir / "model_epoch_best.pth"
+    has_bfree = bfree_path.exists()
+    if not has_bfree:
+        print("Downloading B-Free weights from S3...")
+        try:
+            s3_dl = boto3.client("s3", region_name=args.region)
+            s3_dl.download_file(args.bucket, "models/bfree/model_epoch_best.pth", str(bfree_path))
+            has_bfree = True
+            print(f"B-Free model saved to {bfree_path}")
+        except Exception as e:
+            print(f"WARNING: B-Free download failed, disabling: {e}")
+
+    # EfficientNet (gated HuggingFace — needs HF_TOKEN)
+    has_efficientnet = bool(os.environ.get("HF_TOKEN"))
+    if not has_efficientnet:
+        eff_path = models_dir / "efficientnet_ai" / "pytorch_model.pth"
+        has_efficientnet = eff_path.exists()
+    if not has_efficientnet:
+        print("WARNING: EfficientNet requires HF_TOKEN (gated model), disabling")
 
     # Probe weights (should be in repo from git clone)
     dinov2_dir = models_dir / "dinov2"
@@ -167,20 +192,20 @@ async def main():
 
     from app.forensics.pipeline import ForensicPipeline
 
+    print(f"Modules: SPAI={'ON' if has_spai else 'OFF'} BFree={'ON' if has_bfree else 'OFF'} "
+          f"EfficientNet={'ON' if has_efficientnet else 'OFF'}")
     print("Initializing forensic pipeline (direct, no HTTP)...")
-    # Module config MUST match production (docker-compose.server.yml)
+    # Module config MUST match production — disable modules without weights
     pipeline = ForensicPipeline(
-        # Enabled on production
         clip_ai_enabled=True,
         community_forensics_enabled=True,
-        efficientnet_ai_enabled=True,
+        efficientnet_ai_enabled=has_efficientnet,
         safe_ai_enabled=True,
         dinov2_ai_enabled=True,
-        bfree_enabled=True,
-        spai_enabled=True,
+        bfree_enabled=has_bfree,
+        spai_enabled=has_spai,
         mesorch_enabled=True,
         prnu_enabled=True,
-        # Disabled on production
         semantic_enabled=False,
         cnn_enabled=False,
         vae_recon_enabled=False,

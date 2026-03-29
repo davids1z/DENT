@@ -1,6 +1,7 @@
 #!/bin/bash
 # DENT Calibration v8 — vast.ai one-shot setup and run
-# Modules match production: CLIP, CommFor, EfficientNet, SAFE, DINOv2, B-Free, SPAI, Mesorch, PRNU
+# Modules match production: CLIP, CommFor, SAFE, DINOv2, SPAI, B-Free, Mesorch, PRNU
+# Modules without weights are auto-disabled (EfficientNet needs HF_TOKEN)
 # Usage: ssh root@host 'bash -s' < vastai_setup.sh [WORKER_ID] [TOTAL_WORKERS]
 set -e
 
@@ -12,7 +13,7 @@ AWS_SECRET="${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY before running}"
 
 echo "=== DENT Calibration v8 Setup (Worker $WORKER_ID/$TOTAL_WORKERS) ==="
 echo "=== Step 1: System deps ==="
-apt-get update -qq && apt-get install -y -qq libmagic1 git tesseract-ocr 2>&1 | tail -1
+apt-get update -qq && apt-get install -y -qq libmagic1 git tesseract-ocr exiftool 2>&1 | tail -1
 
 echo "=== Step 2: Clone repo ==="
 cd /root
@@ -22,7 +23,7 @@ cd DENT/services/ml-service
 
 echo "=== Step 3: Python deps ==="
 pip install -r requirements.txt 2>&1 | tail -1
-pip install timm safetensors transformers diffusers gdown boto3 tqdm pydantic-settings huggingface_hub 2>&1 | tail -1
+pip install timm safetensors transformers diffusers gdown boto3 tqdm pydantic-settings huggingface_hub exifread 2>&1 | tail -1
 pip install "photoholmes @ git+https://github.com/photoholmes/photoholmes.git" 2>&1 | tail -1
 
 echo "=== Step 4: AWS credentials ==="
@@ -40,34 +41,17 @@ python3 -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda
 echo "=== Step 6: Verify S3 ==="
 python3 -c "import boto3; s3=boto3.client('s3',region_name='eu-central-1'); r=s3.list_objects_v2(Bucket='$BUCKET',Prefix='train_v7/',MaxKeys=3); print(f'S3 OK: {len(r.get(\"Contents\",[]))} objects in train_v7/')"
 
-echo "=== Step 7: Download SPAI model from S3 (~560MB) ==="
-mkdir -p models/spai
-python3 -c "
-import boto3
-s3 = boto3.client('s3', region_name='eu-central-1')
-s3.download_file('$BUCKET', 'models/spai_full.pt', 'models/spai/spai_full.pt')
-print('SPAI model downloaded')
-" || echo "WARNING: SPAI download failed (will run without SPAI)"
-
-echo "=== Step 8: Download B-Free model from S3 ==="
-mkdir -p models/bfree
-python3 -c "
-import boto3
-s3 = boto3.client('s3', region_name='eu-central-1')
-s3.download_file('$BUCKET', 'models/bfree/model_epoch_best.pth', 'models/bfree/model_epoch_best.pth')
-print('B-Free model downloaded')
-" || echo "WARNING: B-Free download failed (will run without B-Free)"
-
-echo "=== Step 9: Verify probe weights (from git clone) ==="
+echo "=== Step 7: Verify probe weights (from git clone) ==="
 ls -la models/clip_ai/probe_weights.npz models/dinov2/dinov2_probe_weights.npz 2>/dev/null || echo "WARNING: probe weights missing"
 
-echo "=== Step 10: Start calibration ==="
+echo "=== Step 8: Start calibration ==="
+# fast_calibration.py auto-downloads SPAI/BFree/SAFE/Mesorch
+# and auto-disables modules without weights (no timeout waste)
 python3 -m scripts.fast_calibration \
     --bucket $BUCKET \
     --output data/labeled_dataset_w${WORKER_ID}.jsonl \
     --worker-id $WORKER_ID \
-    --total-workers $TOTAL_WORKERS \
-    --resume
+    --total-workers $TOTAL_WORKERS
 
 echo "=== DONE: Worker $WORKER_ID complete ==="
 wc -l data/labeled_dataset_w${WORKER_ID}.jsonl
