@@ -169,6 +169,8 @@ body::-webkit-scrollbar {
 /* ========== DECORATIVE CIRCLES ========== */
 .deco-circle {
   background: var(--deco-circle);
+  aspect-ratio: 1;
+  flex-shrink: 0;
 }
 
 /* ========== SECTION DIVIDER ========== */
