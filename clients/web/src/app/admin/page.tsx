@@ -117,6 +117,10 @@ export default function AdminPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => { setVisited((p) => p.has(view) ? p : new Set([...p, view])); }, [view]);
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+    document.querySelector("[data-overlayscrollbars-viewport]")?.scrollTo({ top: 0 });
+  }, [view]);
 
   function openUser(u: AdminUser) { setSelUser(u); setView("user"); }
   function closeUser() { setView("korisnici"); setSelUser(null); }
@@ -181,7 +185,7 @@ export default function AdminPage() {
           })}
         </div>
 
-        <div className="p-4 sm:p-6 lg:p-8 max-w-6xl">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
           {/* Page header with refresh */}
           {view !== "user" && (
             <div className="flex items-start justify-between mb-8">
@@ -281,8 +285,8 @@ function OverviewTab({ stats, loading }: { stats: AdminStats | null; loading: bo
 
       {/* Quick stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <QuickStat label="Novi danas" value={stats.usersRegisteredToday} />
-        <QuickStat label="Novi tjedan" value={stats.usersRegisteredThisWeek} />
+        <QuickStat label="Novi korisnici danas" value={stats.usersRegisteredToday} />
+        <QuickStat label="Novi korisnici tjedan" value={stats.usersRegisteredThisWeek} />
         <QuickStat label="Obrada" value={`${health.avgSec.toFixed(1)}s`} />
         <QuickStat label="U analizi" value={stats.analyzingInspections} live={stats.analyzingInspections > 0} />
         <QuickStat label="Red cekanja" value={stats.queuePending} live={stats.queuePending > 0} />
