@@ -52,7 +52,7 @@ export default function LoginPage() {
   return (
     <div className="relative min-h-[80dvh] flex items-center justify-center px-4 overflow-hidden">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-24 -right-32 w-[450px] h-[450px] rounded-full bg-accent/[0.03]" />
+        <div className="absolute -top-24 -right-32 w-[450px] h-[450px] rounded-full deco-circle" />
       </div>
       <div className="w-full max-w-sm fade-up">
         {/* Logo */}

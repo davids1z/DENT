@@ -15,6 +15,7 @@
   --danger: #dc2626;
   --muted: #64748b;
   --muted-light: #94a3b8;
+  --deco-circle: rgba(37, 99, 235, 0.07);
 }
 
 .dark {
@@ -31,6 +32,7 @@
   --danger: #ef4444;
   --muted: #94a3b8;
   --muted-light: #64748b;
+  --deco-circle: rgba(59, 130, 246, 0.035);
 }
 
 /* Dark mode only activates via .dark class on <html> (toggle in Navbar).
@@ -162,6 +164,11 @@ body::-webkit-scrollbar {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ========== DECORATIVE CIRCLES ========== */
+.deco-circle {
+  background: var(--deco-circle);
 }
 
 /* ========== SECTION DIVIDER ========== */
