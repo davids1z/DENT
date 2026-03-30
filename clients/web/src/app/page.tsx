@@ -137,8 +137,8 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full deco-circle" />
-          <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full deco-circle" />
+          <div className="absolute -top-28 -right-28 w-[300px] h-[300px] sm:-top-36 sm:-right-36 sm:w-[450px] sm:h-[450px] lg:-top-40 lg:-right-40 lg:w-[600px] lg:h-[600px] rounded-full deco-circle" />
+          <div className="absolute -bottom-28 -left-28 w-[250px] h-[250px] sm:-bottom-36 sm:-left-36 sm:w-[380px] sm:h-[380px] lg:-bottom-40 lg:-left-40 lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
         </div>
       </section>
 
@@ -174,7 +174,7 @@ export default function Dashboard() {
       {/* ===== FEATURES ===== */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute top-[20%] -right-40 w-[550px] h-[550px] rounded-full deco-circle" />
+          <div className="absolute top-[20%] -right-28 w-[280px] h-[280px] sm:-right-36 sm:w-[400px] sm:h-[400px] lg:-right-40 lg:w-[550px] lg:h-[550px] rounded-full deco-circle" />
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
@@ -205,7 +205,7 @@ export default function Dashboard() {
       {/* ===== FORENSIC PIPELINE ===== */}
       <section className="relative overflow-hidden section-alt border-y border-border">
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-32 -left-32 w-[450px] h-[450px] rounded-full deco-circle" />
+          <div className="absolute -top-20 -left-20 w-[250px] h-[250px] sm:-top-28 sm:-left-28 sm:w-[350px] sm:h-[350px] lg:-top-32 lg:-left-32 lg:w-[450px] lg:h-[450px] rounded-full deco-circle" />
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
@@ -311,7 +311,7 @@ export default function Dashboard() {
       {/* ===== CTA BANNER ===== */}
       <section className={`relative overflow-hidden ${loaded && stats && stats.totalInspections > 0 ? "section-alt border-y border-border" : "border-t border-border section-alt"}`}>
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-32 right-[20%] w-[500px] h-[500px] rounded-full deco-circle" />
+          <div className="absolute -top-20 right-[10%] w-[260px] h-[260px] sm:-top-28 sm:right-[15%] sm:w-[380px] sm:h-[380px] lg:-top-32 lg:right-[20%] lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">

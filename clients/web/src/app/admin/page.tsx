@@ -164,7 +164,7 @@ export default function AdminPage() {
       {/* ── Main content ── */}
       <main className="relative flex-1 min-w-0 overflow-x-hidden">
         <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-10 right-[5%] w-[500px] h-[500px] rounded-full deco-circle" />
+          <div className="absolute -top-24 -right-24 w-[280px] h-[280px] sm:-top-32 sm:right-[10%] sm:w-[380px] sm:h-[380px] lg:right-[15%] lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
         </div>
         {/* Mobile nav */}
         <div className="lg:hidden flex items-center gap-1.5 px-4 pt-5 pb-2 overflow-x-auto">

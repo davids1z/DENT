@@ -113,8 +113,8 @@ function InspectContent() {
   return (
     <div className="relative">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-10 right-[5%] w-[500px] h-[500px] rounded-full deco-circle" />
-        <div className="absolute -bottom-52 -left-52 w-[400px] h-[400px] rounded-full deco-circle" />
+        <div className="absolute -top-32 -right-32 w-[280px] h-[280px] sm:-top-40 sm:-right-40 sm:w-[380px] sm:h-[380px] lg:-top-44 lg:-right-44 lg:w-[480px] lg:h-[480px] rounded-full deco-circle" />
+        <div className="absolute bottom-32 left-4 w-[120px] h-[120px] sm:bottom-24 sm:left-6 sm:w-[160px] sm:h-[160px] lg:w-[200px] lg:h-[200px] rounded-full deco-circle" />
       </div>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 md:py-12 fade-up">
       {/* Header */}
