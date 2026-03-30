@@ -7,6 +7,7 @@ using DENT.Application.Services;
 using DENT.Domain.Entities;
 using DENT.Infrastructure;
 using DENT.Infrastructure.Data;
+using DENT.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -82,6 +83,10 @@ builder.Services.AddProblemDetails();
 // Background analysis queue (fair round-robin per user) + hosted service
 builder.Services.AddSingleton<IAnalysisQueue, FairAnalysisQueue>();
 builder.Services.AddHostedService<BackgroundAnalysisService>();
+
+// Audit logging (background flush + retention cleanup)
+builder.Services.AddHostedService<AuditFlushService>();
+builder.Services.AddHostedService<AuditRetentionService>();
 
 // JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"];
@@ -250,6 +255,7 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<DENT.API.Middleware.AuditMiddleware>();
 app.MapControllers();
 
 app.MapGet("/api/health", (IAnalysisQueue queue) =>

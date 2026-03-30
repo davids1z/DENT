@@ -29,6 +29,7 @@ public class DentDbContext : DbContext, IDentDbContext
     public DbSet<InspectionImage> InspectionImages => Set<InspectionImage>();
     public DbSet<DecisionOverride> DecisionOverrides => Set<DecisionOverride>();
     public DbSet<ForensicResult> ForensicResults => Set<ForensicResult>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -168,6 +169,27 @@ public class DentDbContext : DbContext, IDentDbContext
                 .HasForeignKey(e => e.InspectionId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.InspectionId);
+        });
+
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).UseIdentityAlwaysColumn();
+            entity.Property(e => e.EventType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Category).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.Method).HasMaxLength(10);
+            entity.Property(e => e.Path).HasMaxLength(500);
+            entity.Property(e => e.SessionId).HasMaxLength(64);
+            entity.Property(e => e.IpAddress).HasMaxLength(45);
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.MetadataJson).HasColumnType("jsonb");
+            entity.Property(e => e.ResourceType).HasMaxLength(50);
+
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.EventType);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.SessionId);
+            entity.HasIndex(e => new { e.Category, e.Timestamp });
         });
     }
 }

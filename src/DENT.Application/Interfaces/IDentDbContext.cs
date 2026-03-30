@@ -11,5 +11,6 @@ public interface IDentDbContext
     DbSet<InspectionImage> InspectionImages { get; }
     DbSet<DecisionOverride> DecisionOverrides { get; }
     DbSet<ForensicResult> ForensicResults { get; }
+    DbSet<AuditEvent> AuditEvents { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Amazon.S3;
 using DENT.Application.Interfaces;
 using DENT.Application.Services;
@@ -42,6 +43,12 @@ public static class DependencyInjection
 
         // ML Service HTTP Client
         services.AddHttpClient<IMlAnalysisService, MlAnalysisService>();
+
+        // Audit logging (non-blocking Channel + background flush)
+        var auditChannel = Channel.CreateUnbounded<AuditEventData>(
+            new UnboundedChannelOptions { SingleReader = true });
+        services.AddSingleton(auditChannel);
+        services.AddSingleton<IAuditService, AuditService>();
 
         return services;
     }

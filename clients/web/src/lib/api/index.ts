@@ -4,6 +4,7 @@ export * from "./client";
 export * from "./auth";
 export * from "./inspections";
 export * from "./formatters";
+export * from "./audit";
 
 // Legacy aliases for renamed functions
 export { uploadInspection as uploadInspectionWithMetadata } from "./inspections";

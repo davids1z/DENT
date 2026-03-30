@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using System.Text.Json;
 using DENT.Application.Interfaces;
 using DENT.Application.Queries.GetAdminStats;
 using MediatR;
@@ -16,11 +18,13 @@ public class AdminController : ControllerBase
 {
     private readonly IDentDbContext _db;
     private readonly IMediator _mediator;
+    private readonly IAuditService _audit;
 
-    public AdminController(IDentDbContext db, IMediator mediator)
+    public AdminController(IDentDbContext db, IMediator mediator, IAuditService audit)
     {
         _db = db;
         _mediator = mediator;
+        _audit = audit;
     }
 
     [HttpGet("stats")]
@@ -62,6 +66,8 @@ public class AdminController : ControllerBase
         user.IsActive = false;
         user.RefreshToken = null;
         await _db.SaveChangesAsync(ct);
+
+        TrackAdminAction("deactivate", id, "User", new { targetEmail = user.Email });
         return NoContent();
     }
 
@@ -73,6 +79,8 @@ public class AdminController : ControllerBase
 
         user.IsActive = true;
         await _db.SaveChangesAsync(ct);
+
+        TrackAdminAction("activate", id, "User", new { targetEmail = user.Email });
         return NoContent();
     }
 
@@ -85,9 +93,31 @@ public class AdminController : ControllerBase
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user is null) return NotFound();
 
+        var oldRole = user.Role;
         user.Role = request.Role;
         await _db.SaveChangesAsync(ct);
+
+        TrackAdminAction("change_role", id, "User", new { targetEmail = user.Email, oldRole, newRole = request.Role });
         return NoContent();
+    }
+
+    private void TrackAdminAction(string action, Guid resourceId, string resourceType, object metadata)
+    {
+        var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        _audit.Track(new AuditEventData
+        {
+            EventType = "AdminAction",
+            Category = "admin",
+            Method = HttpContext.Request.Method,
+            Path = HttpContext.Request.Path.Value,
+            StatusCode = 200,
+            UserId = Guid.TryParse(adminId, out var uid) ? uid : null,
+            ResourceId = resourceId,
+            ResourceType = resourceType,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = Request.Headers.UserAgent.ToString(),
+            MetadataJson = JsonSerializer.Serialize(new { action, details = metadata }),
+        });
     }
 }
 

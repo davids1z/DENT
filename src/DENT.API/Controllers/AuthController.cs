@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using DENT.Application.Interfaces;
 using DENT.Application.Validation;
 using Microsoft.AspNetCore.Authorization;
@@ -15,12 +16,14 @@ public class AuthController : ControllerBase
     private readonly IAuthService _auth;
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
+    private readonly IAuditService _audit;
 
-    public AuthController(IAuthService auth, IWebHostEnvironment env, IConfiguration config)
+    public AuthController(IAuthService auth, IWebHostEnvironment env, IConfiguration config, IAuditService audit)
     {
         _auth = auth;
         _env = env;
         _config = config;
+        _audit = audit;
     }
 
     [HttpPost("register")]
@@ -37,6 +40,14 @@ public class AuthController : ControllerBase
         {
             var result = await _auth.RegisterAsync(request.Email, request.Password, request.FullName, ct);
             SetAuthCookies(result.Token, result.RefreshToken);
+            _audit.Track(new AuditEventData
+            {
+                EventType = "Register", Category = "auth", Method = "POST", Path = "/api/auth/register",
+                StatusCode = 200, UserId = result.User.Id,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                MetadataJson = JsonSerializer.Serialize(new { email = request.Email }),
+            });
             return Ok(result);
         }
         catch (InvalidOperationException ex)
@@ -55,10 +66,26 @@ public class AuthController : ControllerBase
         {
             var result = await _auth.LoginAsync(request.Email, request.Password, ct);
             SetAuthCookies(result.Token, result.RefreshToken);
+            _audit.Track(new AuditEventData
+            {
+                EventType = "Login", Category = "auth", Method = "POST", Path = "/api/auth/login",
+                StatusCode = 200, UserId = result.User.Id,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                MetadataJson = JsonSerializer.Serialize(new { email = request.Email }),
+            });
             return Ok(result);
         }
         catch (UnauthorizedAccessException ex)
         {
+            _audit.Track(new AuditEventData
+            {
+                EventType = "LoginFailed", Category = "auth", Method = "POST", Path = "/api/auth/login",
+                StatusCode = 401,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                MetadataJson = JsonSerializer.Serialize(new { email = request.Email, reason = ex.Message }),
+            });
             return Unauthorized(new { error = ex.Message });
         }
     }
@@ -66,7 +93,6 @@ public class AuthController : ControllerBase
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken ct)
     {
-        // Try cookie first, then request body for backward compatibility
         var refreshToken = Request.Cookies["dent_refresh"];
 
         if (string.IsNullOrWhiteSpace(refreshToken) && Request.ContentLength > 0)
@@ -98,6 +124,14 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public IActionResult Logout()
     {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        _audit.Track(new AuditEventData
+        {
+            EventType = "Logout", Category = "auth", Method = "POST", Path = "/api/auth/logout",
+            StatusCode = 200, UserId = Guid.TryParse(userId, out var uid) ? uid : null,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = Request.Headers.UserAgent.ToString(),
+        });
         ClearAuthCookies();
         return Ok(new { message = "Odjava uspješna." });
     }
@@ -140,7 +174,6 @@ public class AuthController : ControllerBase
             MaxAge = TimeSpan.FromDays(30),
         });
 
-        // JS-readable flag for FOUC prevention (not a secret — just "1")
         Response.Cookies.Append("dent_has_auth", "1", new CookieOptions
         {
             HttpOnly = false,

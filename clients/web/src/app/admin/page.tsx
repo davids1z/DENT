@@ -12,8 +12,8 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
   getAdminUsers, getAdminStats, deactivateUser, activateUser, changeUserRole,
-  getInspections, formatDate,
-  type AdminUser, type AdminStats, type Inspection,
+  getInspections, formatDate, getAuditEvents, getAuditStats,
+  type AdminUser, type AdminStats, type Inspection, type AuditStats, type AuditEventsResponse,
 } from "@/lib/api";
 
 /* ------------------------------------------------------------------ */
@@ -86,6 +86,8 @@ const navItems = [
     icon: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" },
   { id: "statistika", label: "Statistika",
     icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" },
+  { id: "dnevnik", label: "Dnevnik",
+    icon: "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" },
 ] as const;
 
 const viewMeta: Record<string, { title: string; desc: string }> = {
@@ -94,6 +96,7 @@ const viewMeta: Record<string, { title: string; desc: string }> = {
   korisnici: { title: "Korisnici", desc: "Upravljanje korisnickim racunima" },
   analize: { title: "Analize", desc: "Sve analize u sustavu" },
   statistika: { title: "Statistika", desc: "Detaljni statisticki podaci" },
+  dnevnik: { title: "Dnevnik", desc: "Audit log svih aktivnosti na sustavu" },
 };
 
 type View = (typeof navItems)[number]["id"] | "user";
@@ -230,6 +233,11 @@ export default function AdminPage() {
             {visited.has("statistika") && (
               <div className={view === "statistika" ? "block" : "hidden"}>
                 <StatisticsTab stats={stats} loading={statsLoading} />
+              </div>
+            )}
+            {visited.has("dnevnik") && (
+              <div className={view === "dnevnik" ? "block" : "hidden"}>
+                <DnevnikTab />
               </div>
             )}
             {view === "user" && selUser && (
@@ -1090,6 +1098,231 @@ function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Rec
   );
 }
 const MemoDistPanel = memo(DistPanel);
+
+/* ================================================================== */
+/*  DNEVNIK (AUDIT LOG) TAB                                            */
+/* ================================================================== */
+function DnevnikTab() {
+  const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
+  const [events, setEvents] = useState<AuditEventsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [period, setPeriod] = useState(7);
+  const [eventFilter, setEventFilter] = useState("");
+  const [eventsPage, setEventsPage] = useState(1);
+
+  useEffect(() => {
+    setLoading(true);
+    getAuditStats(period).then(setAuditStats).catch(() => {}).finally(() => setLoading(false));
+  }, [period]);
+
+  useEffect(() => {
+    setEventsLoading(true);
+    getAuditEvents({
+      eventType: eventFilter || undefined,
+      page: eventsPage,
+      pageSize: 30,
+    }).then(setEvents).catch(() => {}).finally(() => setEventsLoading(false));
+  }, [eventFilter, eventsPage]);
+
+  if (loading || !auditStats) return <Spin />;
+
+  const eventTypeColors: Record<string, string> = {
+    PageView: "bg-gray-500/15 text-gray-500",
+    ApiCall: "bg-blue-500/15 text-blue-500",
+    Login: "bg-green-500/15 text-green-500",
+    LoginFailed: "bg-red-500/15 text-red-500",
+    Register: "bg-teal-500/15 text-teal-500",
+    Upload: "bg-amber-500/15 text-amber-500",
+    AdminAction: "bg-purple-500/15 text-purple-500",
+    Logout: "bg-gray-400/15 text-gray-400",
+  };
+
+  const totalEvents = Object.values(auditStats.eventCounts).reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="space-y-6 fade-up">
+      {/* Period selector */}
+      <div className="flex items-center gap-2">
+        {[7, 14, 30].map((d) => (
+          <button key={d} onClick={() => setPeriod(d)} className={cn(
+            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+            period === d ? "bg-accent text-white" : "bg-card border border-border text-muted hover:text-foreground"
+          )}>{d}d</button>
+        ))}
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+        <QuickStat label="Ukupno evenata" value={totalEvents} />
+        <QuickStat label="Page viewovi" value={auditStats.pageViews} />
+        <QuickStat label="API pozivi" value={auditStats.apiCalls} />
+        <QuickStat label="Posjetitelji" value={auditStats.uniqueSessions} />
+        <QuickStat label="Prijave" value={auditStats.logins} />
+        <QuickStat label="Neuspjele prijave" value={auditStats.failedLogins} />
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Daily events */}
+        <Card>
+          <h3 className="text-sm font-semibold mb-3">Dnevni eventi</h3>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={auditStats.dailyEvents} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
+                <defs>
+                  <linearGradient id="auditGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
+                <Tooltip content={<ChartTip />} />
+                <Area type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2} fill="url(#auditGrad)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Hourly distribution */}
+        <Card>
+          <h3 className="text-sm font-semibold mb-3">Distribucija po satu</h3>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={auditStats.hourlyEvents} margin={{ top: 4, right: 16, bottom: 0, left: -12 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                <XAxis dataKey="hour" tickFormatter={(v: number) => `${v}h`} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
+                <Tooltip content={<ChartTip />} />
+                <Bar dataKey="count" fill="#8b5cf6" fillOpacity={0.6} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* Top pages + Event type distribution */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <h3 className="text-sm font-semibold mb-3">Najpopularnije stranice</h3>
+          <div className="space-y-2">
+            {auditStats.topPages.map((p, i) => (
+              <div key={p.path} className="flex items-center gap-2">
+                <span className="text-[10px] text-muted w-4 text-right">{i + 1}.</span>
+                <span className="text-xs flex-1 truncate font-mono">{p.path}</span>
+                <span className="text-xs font-mono text-muted">{p.count}</span>
+              </div>
+            ))}
+            {auditStats.topPages.length === 0 && <p className="text-xs text-muted">Nema podataka</p>}
+          </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-sm font-semibold mb-3">Vrste evenata</h3>
+          <div className="space-y-2">
+            {Object.entries(auditStats.eventCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+              <div key={type} className="flex items-center gap-2">
+                <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", eventTypeColors[type] || "bg-gray-500/15 text-gray-500")}>{type}</span>
+                <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
+                  <div className="h-full bg-accent/40 rounded-full" style={{ width: `${totalEvents > 0 ? (count / totalEvents) * 100 : 0}%` }} />
+                </div>
+                <span className="text-xs font-mono text-muted w-10 text-right">{count}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Failed logins (security) */}
+      {auditStats.recentFailedLogins.length > 0 && (
+        <Card>
+          <h3 className="text-sm font-semibold mb-3 text-red-500">Neuspjele prijave</h3>
+          <div className="space-y-1">
+            {auditStats.recentFailedLogins.map((f, i) => {
+              const meta = f.metadataJson ? JSON.parse(f.metadataJson) : {};
+              return (
+                <div key={i} className="flex items-center gap-3 py-1.5 text-xs border-b border-border/30 last:border-0">
+                  <span className="text-muted font-mono w-32 flex-shrink-0">{new Date(f.timestamp).toLocaleString("hr")}</span>
+                  <span className="text-red-400 flex-shrink-0">{meta.email || "—"}</span>
+                  <span className="text-muted font-mono ml-auto flex-shrink-0">{f.ipAddress || "—"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Event stream (paginated table) */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold">Svi eventi</h3>
+          <div className="flex items-center gap-2">
+            <select
+              value={eventFilter}
+              onChange={(e) => { setEventFilter(e.target.value); setEventsPage(1); }}
+              className="text-xs bg-card border border-border rounded-lg px-2 py-1 text-foreground"
+            >
+              <option value="">Svi tipovi</option>
+              <option value="PageView">PageView</option>
+              <option value="ApiCall">ApiCall</option>
+              <option value="Login">Login</option>
+              <option value="LoginFailed">LoginFailed</option>
+              <option value="Register">Register</option>
+              <option value="AdminAction">AdminAction</option>
+              <option value="Logout">Logout</option>
+            </select>
+          </div>
+        </div>
+
+        {eventsLoading ? <Spin /> : events && events.events.length > 0 ? (
+          <>
+            <div className="overflow-x-auto -mx-5">
+              <table className="w-full text-xs min-w-[600px]">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="px-3 py-2 text-muted font-medium">Vrijeme</th>
+                    <th className="px-3 py-2 text-muted font-medium">Tip</th>
+                    <th className="px-3 py-2 text-muted font-medium">Path</th>
+                    <th className="px-3 py-2 text-muted font-medium">Status</th>
+                    <th className="px-3 py-2 text-muted font-medium">IP</th>
+                    <th className="px-3 py-2 text-muted font-medium">Trajanje</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.events.map((e) => (
+                    <tr key={e.id} className="border-b border-border/30 hover:bg-card/50">
+                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">{new Date(e.timestamp).toLocaleString("hr")}</td>
+                      <td className="px-3 py-1.5">
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", eventTypeColors[e.eventType] || "bg-gray-500/15 text-gray-500")}>{e.eventType}</span>
+                      </td>
+                      <td className="px-3 py-1.5 font-mono truncate max-w-[200px]">{e.path || "—"}</td>
+                      <td className="px-3 py-1.5 font-mono">{e.statusCode || "—"}</td>
+                      <td className="px-3 py-1.5 font-mono text-muted">{e.ipAddress || "—"}</td>
+                      <td className="px-3 py-1.5 font-mono text-muted">{e.durationMs != null ? `${e.durationMs}ms` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Pagination */}
+            {events.total > 30 && (
+              <div className="flex items-center justify-center gap-2 mt-4">
+                <button onClick={() => setEventsPage(Math.max(1, eventsPage - 1))} disabled={eventsPage === 1} className="px-2 py-1 rounded text-xs border border-border disabled:opacity-40">←</button>
+                <span className="text-xs text-muted">{eventsPage} / {Math.ceil(events.total / 30)}</span>
+                <button onClick={() => setEventsPage(eventsPage + 1)} disabled={eventsPage >= Math.ceil(events.total / 30)} className="px-2 py-1 rounded text-xs border border-border disabled:opacity-40">→</button>
+                <span className="text-xs text-muted ml-2">{events.total} ukupno</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-muted text-center py-8">Nema eventa za prikaz</p>
+        )}
+      </Card>
+    </div>
+  );
+}
 
 /* ================================================================== */
 /*  SHARED COMPONENTS                                                  */

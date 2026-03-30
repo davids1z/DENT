@@ -7,6 +7,7 @@ import { Footer } from "@/components/Footer";
 import { AuthProvider } from "@/lib/auth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScrollProvider } from "@/components/ScrollProvider";
+import { PageTracker } from "@/components/PageTracker";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -69,6 +70,7 @@ export default function RootLayout({
             </main>
             <Footer />
             <MobileNav />
+            <PageTracker />
           </ScrollProvider>
         </AuthProvider>
       </body>
