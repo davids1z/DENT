@@ -238,6 +238,13 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Trust X-Forwarded-* headers from nginx (required for Secure cookies behind reverse proxy)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto,
+});
+
 app.UseExceptionHandler();
 app.UseCors();
 app.UseRateLimiter();
