@@ -75,7 +75,7 @@ function InspectionsContent() {
   return (
     <div className="relative">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-32 -left-20 w-[450px] h-[450px] rounded-full deco-circle" />
+        <div className="absolute -top-32 -right-32 w-[450px] h-[450px] rounded-full deco-circle" />
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up">
       <div className="flex items-center justify-between mb-8">
