@@ -128,7 +128,14 @@ export default function AdminPage() {
   const activeNavId = view === "user" ? "korisnici" : view;
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)]">
+    <div className="relative flex min-h-[calc(100dvh-4rem)] overflow-hidden">
+      {/* ── Decorative circles ── */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 right-[10%] w-[500px] h-[500px] rounded-full bg-accent/[0.03]" />
+        <div className="absolute top-[40%] -left-24 w-[400px] h-[400px] rounded-full bg-accent/[0.02]" />
+        <div className="absolute bottom-[15%] right-[30%] w-[350px] h-[350px] rounded-full bg-accent/[0.025]" />
+        <div className="absolute -bottom-20 left-[50%] w-[450px] h-[450px] rounded-full bg-accent/[0.02]" />
+      </div>
       {/* ── Sidebar (desktop) ── */}
       <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-border/40">
         <div className="sticky top-16">

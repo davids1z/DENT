@@ -73,7 +73,11 @@ function InspectionsContent() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up">
+    <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -left-20 w-[450px] h-[450px] rounded-full bg-accent/[0.03]" />
+        <div className="absolute bottom-[5%] right-[15%] w-[400px] h-[400px] rounded-full bg-accent/[0.02]" />
+      </div>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-heading text-2xl font-bold mb-1">Analize</h1>

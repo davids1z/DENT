@@ -143,7 +143,11 @@ export default function Dashboard() {
       </section>
 
       {/* ===== HOW IT WORKS ===== */}
-      <section className="section-alt border-y border-border">
+      <section className="relative overflow-hidden section-alt border-y border-border">
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-20 left-[15%] w-[400px] h-[400px] rounded-full bg-accent/[0.03]" />
+          <div className="absolute bottom-[-30%] -right-20 w-[350px] h-[350px] rounded-full bg-accent/[0.02]" />
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -172,7 +176,11 @@ export default function Dashboard() {
       </section>
 
       {/* ===== FEATURES ===== */}
-      <section>
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute top-[20%] -right-32 w-[550px] h-[550px] rounded-full bg-accent/[0.02]" />
+          <div className="absolute -bottom-24 left-[10%] w-[300px] h-[300px] rounded-full bg-accent/[0.03]" />
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -200,7 +208,11 @@ export default function Dashboard() {
       </section>
 
       {/* ===== FORENSIC PIPELINE ===== */}
-      <section className="section-alt border-y border-border">
+      <section className="relative overflow-hidden section-alt border-y border-border">
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-16 -left-24 w-[450px] h-[450px] rounded-full bg-accent/[0.03]" />
+          <div className="absolute bottom-[10%] right-[5%] w-[500px] h-[500px] rounded-full bg-accent/[0.02]" />
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -258,7 +270,11 @@ export default function Dashboard() {
 
       {/* ===== DASHBOARD STATS (if available) ===== */}
       {loaded && stats && stats.totalInspections > 0 && (
-        <section>
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0 -z-10 overflow-hidden">
+            <div className="absolute top-[30%] -right-20 w-[400px] h-[400px] rounded-full bg-accent/[0.03]" />
+            <div className="absolute -bottom-32 left-[20%] w-[350px] h-[350px] rounded-full bg-accent/[0.02]" />
+          </div>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
             <div className="text-center mb-12">
               <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -303,7 +319,11 @@ export default function Dashboard() {
       )}
 
       {/* ===== CTA BANNER ===== */}
-      <section className={loaded && stats && stats.totalInspections > 0 ? "section-alt border-y border-border" : "border-t border-border section-alt"}>
+      <section className={`relative overflow-hidden ${loaded && stats && stats.totalInspections > 0 ? "section-alt border-y border-border" : "border-t border-border section-alt"}`}>
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-24 right-[25%] w-[500px] h-[500px] rounded-full bg-accent/[0.02]" />
+          <div className="absolute bottom-[-20%] -left-16 w-[300px] h-[300px] rounded-full bg-accent/[0.03]" />
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-4">
