@@ -78,10 +78,10 @@ function InspectionsContent() {
         <div className="absolute -top-20 -right-20 w-[250px] h-[250px] sm:-top-28 sm:-right-28 sm:w-[350px] sm:h-[350px] lg:-top-32 lg:-right-32 lg:w-[450px] lg:h-[450px] rounded-full deco-circle" />
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6 sm:mb-8">
         <div>
-          <h1 className="font-heading text-2xl font-bold mb-1">Analize</h1>
-          <p className="text-muted text-sm">Pregled svih forenzičkih analiza</p>
+          <h1 className="font-heading text-xl sm:text-2xl font-bold mb-0.5 sm:mb-1">Analize</h1>
+          <p className="text-muted text-xs sm:text-sm">Pregled svih forenzičkih analiza</p>
         </div>
       </div>
 
@@ -97,10 +97,10 @@ function InspectionsContent() {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+      <div className="flex gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
         {filters.map((f) => (
           <button key={f.value} onClick={() => setFilter(f.value)} className={cn(
-            "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+            "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
             filter === f.value ? "bg-accent text-white" : "bg-card border border-border text-muted hover:text-foreground"
           )}>{f.label}</button>
         ))}
@@ -168,25 +168,25 @@ function InspectionsContent() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-8">
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2 mt-6 sm:mt-8 flex-wrap">
           <button
             onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-border bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-sm font-medium border border-border bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             ←
           </button>
           {Array.from({ length: totalPages }, (_, i) => i + 1)
-            .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+            .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
             .map((p, idx, arr) => (
               <span key={p}>
                 {idx > 0 && arr[idx - 1] !== p - 1 && (
-                  <span className="text-muted px-1">…</span>
+                  <span className="text-muted px-0.5 sm:px-1">…</span>
                 )}
                 <button
                   onClick={() => setPage(p)}
                   className={cn(
-                    "w-9 h-9 rounded-lg text-sm font-medium transition-colors",
+                    "w-8 h-8 sm:w-9 sm:h-9 rounded-lg text-sm font-medium transition-colors",
                     p === page ? "bg-accent text-white" : "border border-border bg-card hover:bg-card-hover"
                   )}
                 >
@@ -197,12 +197,12 @@ function InspectionsContent() {
           <button
             onClick={() => setPage(Math.min(totalPages, page + 1))}
             disabled={page === totalPages}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-border bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-sm font-medium border border-border bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             →
           </button>
-          <span className="text-xs text-muted ml-3">
-            {filtered.length} {filtered.length === 1 ? "analiza" : "analiza"}
+          <span className="text-xs text-muted ml-2 sm:ml-3">
+            {filtered.length} analiza
           </span>
         </div>
       )}

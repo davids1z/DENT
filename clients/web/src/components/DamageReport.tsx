@@ -36,16 +36,16 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
 
   return (
     <div className="space-y-4">
-      <GlassPanel>
-        <div className="flex items-start justify-between mb-1">
-          <div>
-            <h3 className="text-lg font-semibold">Rezultat analize</h3>
-            <span className="text-sm text-muted">{displayFileName}</span>
+      <GlassPanel className="p-3 sm:p-5">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-lg font-semibold">Rezultat analize</h3>
+            <span className="text-xs sm:text-sm text-muted block truncate">{displayFileName}</span>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {riskLevel && (
               <span className={cn(
-                "px-2.5 py-1 rounded-full text-xs font-medium border",
+                "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium border whitespace-nowrap",
                 riskLevel === "Critical" ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" :
                 riskLevel === "High" ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" :
                 riskLevel === "Medium" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" :
@@ -90,7 +90,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
               return (
                 <div key={m.moduleName || idx} className="bg-background border border-border rounded-xl overflow-hidden shadow-sm">
                   <div className="h-1 w-full" style={{ backgroundColor: color }} />
-                  <div className="p-4">
+                  <div className="p-3 sm:p-4">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: color, color: "white" }}>
                         {idx + 1}

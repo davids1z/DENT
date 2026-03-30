@@ -116,27 +116,33 @@ export function ForensicPillarCard({ data, originalImageUrl }: ForensicPillarCar
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className={cn("w-full flex items-center justify-between px-4 py-3 text-left transition-colors hover:bg-card-hover", headerBg)}
+        className={cn("w-full px-3 sm:px-4 py-2.5 sm:py-3 text-left transition-colors hover:bg-card-hover", headerBg)}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className={cn(
-            status === "fail" ? "text-red-500" : status === "warning" ? "text-amber-500" : "text-green-600"
-          )}>
-            <PillarIcon icon={data.pillar.icon} />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+            <div className={cn(
+              "flex-shrink-0",
+              status === "fail" ? "text-red-500" : status === "warning" ? "text-amber-500" : "text-green-600"
+            )}>
+              <PillarIcon icon={data.pillar.icon} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-sm font-semibold block truncate">{data.pillar.label}</span>
+              <span className="text-[11px] text-muted block truncate hidden sm:block">{data.pillar.description}</span>
+            </div>
           </div>
-          <div className="min-w-0">
-            <span className="text-sm font-semibold block truncate">{data.pillar.label}</span>
-            <span className="text-[11px] text-muted block truncate">{data.pillar.description}</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 ml-2">
+            <span className={cn("text-xs font-mono", fraudRiskColor(data.aggregateRiskLevel))}>
+              {Math.round(data.aggregateRiskScore * 100)}%
+            </span>
+            <StatusBadge status={status} />
+            <svg
+              className={cn("w-4 h-4 text-muted transition-transform", expanded && "rotate-180")}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-          <StatusBadge status={status} />
-          <svg
-            className={cn("w-4 h-4 text-muted transition-transform", expanded && "rotate-180")}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-          </svg>
         </div>
       </button>
 
@@ -150,7 +156,7 @@ export function ForensicPillarCard({ data, originalImageUrl }: ForensicPillarCar
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-3 space-y-2">
+            <div className="px-3 sm:px-4 pb-3 space-y-2">
               {data.modules.map((mod) => (
                 <ModuleRow key={mod.moduleName} module={mod} />
               ))}

@@ -84,25 +84,25 @@ function InspectionDetailContent() {
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up">
       {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
+      <div className="mb-6 sm:mb-8">
+        <div className="flex items-center justify-between">
           <button onClick={() => router.back()} className="text-muted hover:text-foreground text-sm mb-2 flex items-center gap-1 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Natrag
           </button>
-          <h1 className="font-heading text-2xl font-bold">Forenzička analiza</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-muted text-sm">{formatDate(inspection.createdAt)}</p>
-            <span className="text-muted text-sm">&middot; {inspection.originalFileName}</span>
+          <div className="flex items-center gap-2">
+            <button onClick={handleShare} className={cn("px-3 py-1.5 bg-card border border-border rounded-lg text-xs sm:text-sm transition-colors", copied ? "text-green-600 border-green-200" : "text-muted hover:text-foreground")}>
+              {copied ? "Kopirano!" : "Podijeli"}
+            </button>
+            <button onClick={handleDelete} disabled={deleting} className="px-3 py-1.5 bg-card border border-border text-red-500 rounded-lg text-xs sm:text-sm hover:bg-red-50 transition-colors disabled:opacity-50">
+              {deleting ? "..." : "Obriši"}
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleShare} className={cn("px-4 py-2 bg-card border border-border rounded-lg text-sm transition-colors", copied ? "text-green-600 border-green-200" : "text-muted hover:text-foreground")}>
-            {copied ? "Kopirano!" : "Podijeli"}
-          </button>
-          <button onClick={handleDelete} disabled={deleting} className="px-4 py-2 bg-card border border-border text-red-500 rounded-lg text-sm hover:bg-red-50 transition-colors disabled:opacity-50">
-            {deleting ? "Brisanje..." : "Obriši"}
-          </button>
+        <h1 className="font-heading text-xl sm:text-2xl font-bold">Forenzička analiza</h1>
+        <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
+          <p className="text-muted text-xs sm:text-sm">{formatDate(inspection.createdAt)}</p>
+          <span className="text-muted text-xs sm:text-sm truncate max-w-[200px] sm:max-w-none">&middot; {inspection.originalFileName}</span>
         </div>
       </div>
 
@@ -131,10 +131,10 @@ function InspectionDetailContent() {
         <div className="space-y-3">
           <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} fileName={inspection.originalFileName} pagePreviewUrls={inspection.forensicResult?.pagePreviewUrls} />
           <ImageGallery primaryImageUrl={inspection.imageUrl} additionalImages={inspection.additionalImages} activeImageUrl={activeImageUrl || inspection.imageUrl} onSelect={handleImageSelect} />
-          <GlassPanel>
-            <div className="text-xs text-muted">
-              <span>Datoteka: {inspection.originalFileName}</span>
-              <span className="mx-2">|</span>
+          <GlassPanel className="p-3 sm:p-5">
+            <div className="text-[11px] sm:text-xs text-muted flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+              <span className="truncate">Datoteka: {inspection.originalFileName}</span>
+              <span className="hidden sm:inline mx-2">|</span>
               <span>ID: {inspection.id.slice(0, 8)}...</span>
             </div>
           </GlassPanel>

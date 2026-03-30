@@ -268,52 +268,44 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-card/50 transition-colors"
+        className="w-full px-3 sm:px-5 py-3 sm:py-3.5 text-left hover:bg-card/50 transition-colors"
       >
-        {/* Status dot */}
-        <div className={cn("w-2 h-2 rounded-full flex-shrink-0", statusDotColor(status))} />
-
-        {/* Icon */}
-        <PillarIcon icon={data.pillar.icon} />
-
-        {/* Name */}
-        <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-foreground block">{data.pillar.label}</span>
-          <span className="text-[11px] text-muted-light block truncate">{data.pillar.description}</span>
-        </div>
-
-        {/* Risk bar */}
-        <div className="w-20 flex items-center gap-2 flex-shrink-0">
-          <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
-            <div
-              className={cn("h-full rounded-full", statusDotColor(status))}
-              style={{ width: `${riskPct}%` }}
-            />
+        {/* Row 1: dot + icon + name + chevron */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className={cn("w-2 h-2 rounded-full flex-shrink-0", statusDotColor(status))} />
+          <PillarIcon icon={data.pillar.icon} />
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-medium text-foreground block truncate">{data.pillar.label}</span>
+            <span className="text-[11px] text-muted-light block truncate hidden sm:block">{data.pillar.description}</span>
           </div>
-          <span className={cn("text-xs font-mono w-8 text-right", fraudRiskColor(data.aggregateRiskLevel))}>
-            {riskPct}%
-          </span>
+          {/* Desktop: all inline */}
+          <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
+            <div className="w-20 flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
+                <div className={cn("h-full rounded-full", statusDotColor(status))} style={{ width: `${riskPct}%` }} />
+              </div>
+              <span className={cn("text-xs font-mono w-8 text-right", fraudRiskColor(data.aggregateRiskLevel))}>{riskPct}%</span>
+            </div>
+            {findingsCount > 0 && (
+              <span className="text-[10px] bg-card-hover text-muted px-2 py-0.5 rounded-full">{findingsCount}</span>
+            )}
+            <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border", sl.cls)}>{sl.text}</span>
+          </div>
+          <svg className={cn("w-4 h-4 text-muted-light transition-transform flex-shrink-0", expanded && "rotate-180")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
         </div>
-
-        {/* Findings count */}
-        {findingsCount > 0 && (
-          <span className="text-[10px] bg-card-hover text-muted px-2 py-0.5 rounded-full flex-shrink-0">
-            {findingsCount}
-          </span>
-        )}
-
-        {/* Status badge */}
-        <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0", sl.cls)}>
-          {sl.text}
-        </span>
-
-        {/* Chevron */}
-        <svg
-          className={cn("w-4 h-4 text-muted-light transition-transform flex-shrink-0", expanded && "rotate-180")}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
+        {/* Row 2 (mobile only): risk bar + badge */}
+        <div className="flex sm:hidden items-center gap-2 mt-1.5 ml-[26px]">
+          <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
+            <div className={cn("h-full rounded-full", statusDotColor(status))} style={{ width: `${riskPct}%` }} />
+          </div>
+          <span className={cn("text-xs font-mono w-8 text-right flex-shrink-0", fraudRiskColor(data.aggregateRiskLevel))}>{riskPct}%</span>
+          {findingsCount > 0 && (
+            <span className="text-[10px] bg-card-hover text-muted px-1.5 py-0.5 rounded-full flex-shrink-0">{findingsCount}</span>
+          )}
+          <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0", sl.cls)}>{sl.text}</span>
+        </div>
       </button>
 
       <AnimatePresence initial={false}>

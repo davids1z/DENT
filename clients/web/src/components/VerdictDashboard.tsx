@@ -140,8 +140,7 @@ function useCountUp(target: number, enabled: boolean, duration = 1500) {
   return current;
 }
 
-function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
-  const size = 192;
+function RiskGauge({ value, animated, size = 192 }: { value: number; animated: boolean; size?: number }) {
   const stroke = 6;
   const trackStroke = 6;
   const r = (size - stroke) / 2;
@@ -187,13 +186,13 @@ function RiskGauge({ value, animated }: { value: number; animated: boolean }) {
         style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease-out 0.3s" }}
       >
         <div className="flex items-baseline gap-0">
-          <span className="text-[44px] font-heading font-extrabold tabular-nums text-foreground leading-none tracking-tight">
+          <span className="text-[36px] sm:text-[44px] font-heading font-extrabold tabular-nums text-foreground leading-none tracking-tight">
             {whole}
           </span>
-          <span className="text-xl font-heading font-extrabold tabular-nums text-foreground/50 leading-none">
+          <span className="text-lg sm:text-xl font-heading font-extrabold tabular-nums text-foreground/50 leading-none">
             {decimal}
           </span>
-          <span className="text-lg font-bold text-foreground/30 ml-0.5">%</span>
+          <span className="text-base sm:text-lg font-bold text-foreground/30 ml-0.5">%</span>
         </div>
         <div
           className="mt-2 text-[10px] font-bold uppercase tracking-[2px]"
@@ -324,17 +323,17 @@ export function VerdictDashboard({
   }, []);
 
   return (
-    <div className="bg-background shadow-sm rounded-2xl border border-border p-6 md:p-8">
+    <div className="bg-background shadow-sm rounded-2xl border border-border p-4 sm:p-6 md:p-8">
       {/* Decision Outcome (if available) */}
       {decisionOutcome && (
         <div className="flex justify-center mb-4">
           <div className={cn(
-            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold",
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold text-center max-w-full",
             decisionStyles[decisionOutcome] || "bg-card text-foreground border-border"
           )}>
-            {decisionOutcomeLabel(decisionOutcome)}
+            <span className="flex-shrink-0">{decisionOutcomeLabel(decisionOutcome)}</span>
             {decisionReason && (
-              <span className="font-normal opacity-75">— {decisionReason}</span>
+              <span className="font-normal opacity-75 line-clamp-2">— {decisionReason}</span>
             )}
           </div>
         </div>
@@ -343,28 +342,28 @@ export function VerdictDashboard({
       {/* Verdict Badge — hidden when decision outcome already shown (avoids contradictions) */}
       {!decisionOutcome && <div
         className={cn(
-          "flex justify-center mb-6 transition-opacity duration-200",
+          "flex justify-center mb-4 sm:mb-6 transition-opacity duration-200",
           animated ? "opacity-100" : "opacity-0"
         )}
       >
         <div
           className={cn(
-            "inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold",
+            "inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border text-xs sm:text-sm font-semibold text-center max-w-full",
             badge.bgClass,
             badge.textClass,
             badge.borderClass
           )}
         >
-          {badge.icon === "check" && <CheckShieldIcon />}
-          {(badge.icon === "warning" || badge.icon === "alert") && <WarningIcon />}
-          {badge.label}
+          <span className="flex-shrink-0">{badge.icon === "check" && <CheckShieldIcon />}{(badge.icon === "warning" || badge.icon === "alert") && <WarningIcon />}</span>
+          <span className="break-words">{badge.label}</span>
         </div>
       </div>}
 
-      <div className="flex flex-col lg:flex-row items-center gap-10">
+      <div className="flex flex-col lg:flex-row items-center gap-6 sm:gap-10">
         {/* Risk Gauge */}
         <div className="flex-shrink-0">
-          <RiskGauge value={riskPercent} animated={animated} />
+          <div className="sm:hidden"><RiskGauge value={riskPercent} animated={animated} size={160} /></div>
+          <div className="hidden sm:block"><RiskGauge value={riskPercent} animated={animated} size={192} /></div>
         </div>
 
         {/* Module Breakdown */}
