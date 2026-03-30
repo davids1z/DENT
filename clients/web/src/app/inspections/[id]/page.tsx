@@ -81,7 +81,6 @@ function InspectionDetailContent() {
     <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-up overflow-hidden">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-24 right-[20%] w-[500px] h-[500px] rounded-full bg-accent/[0.02]" />
-        <div className="absolute bottom-[10%] -left-16 w-[350px] h-[350px] rounded-full bg-accent/[0.03]" />
       </div>
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-8">
