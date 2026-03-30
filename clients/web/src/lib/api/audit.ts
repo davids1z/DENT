@@ -3,27 +3,30 @@ import { API_BASE, authFetch } from "./client";
 export interface AuditStats {
   period: number;
   // KPI strip
-  activeSessions: number;
-  failedLogins24h: number;
-  apiErrors24h: number;
-  avgResponseMs: number;
-  totalInspections: number;
-  totalUsers: number;
-  activeUsers: number;
-  // Historical activity (from Inspections)
-  inspectionsPerDay: { date: string; count: number }[];
-  inspectionsPerHour: { hour: number; count: number }[];
-  userActivity: { fullName: string; email: string; lastLoginAt: string | null; inspectionCount: number }[];
-  // Security
-  failedLoginsByDay: { date: string; count: number }[];
-  suspiciousIps: { ip: string; count: number; last: string }[];
-  recentFailedLogins: { timestamp: string; ipAddress: string | null; metadataJson: string | null }[];
+  totalVisits: number;
+  uniqueVisitors: number;
+  activeNow: number;
+  loggedInVisits: number;
+  anonVisits: number;
+  todayVisits: number;
+  // Charts
+  visitsPerDay: { date: string; count: number }[];
+  uniquePerDay: { date: string; count: number }[];
+  visitsPerHour: { hour: number; count: number }[];
+  authPerDay: { date: string; isAuth: boolean; count: number }[];
   // Engagement
   topPages: { path: string; count: number }[];
   heatmap: { day: number; hour: number; count: number }[];
-  // API Health
-  slowEndpoints: { method: string; path: string; avg: number; count: number; errors: number }[];
-  statusCodes: Record<string, number>;
+  topReferrers: { source: string; count: number }[];
+  // Recent visitors
+  recentVisitors: {
+    sessionId: string;
+    userName: string | null;
+    ip: string | null;
+    lastPage: string | null;
+    lastSeen: string;
+    pageCount: number;
+  }[];
 }
 
 export async function getAuditStats(days = 30): Promise<AuditStats> {

@@ -97,7 +97,7 @@ public class AuditController : ControllerBase
         return Ok(new { total, page, pageSize, events });
     }
 
-    /// <summary>Dashboard stats: security, engagement, API health.</summary>
+    /// <summary>Dashboard stats: visitor tracking & engagement.</summary>
     [HttpGet("stats")]
     [Authorize(Roles = "Admin")]
     [EnableRateLimiting("api")]
@@ -109,138 +109,164 @@ public class AuditController : ControllerBase
         var last24h = DateTime.UtcNow.AddHours(-24);
         var last30m = DateTime.UtcNow.AddMinutes(-30);
 
+        var pageViews = _db.AuditEvents
+            .Where(e => e.Timestamp >= since && e.EventType == "PageView");
+
         // ── KPI Strip ──────────────────────────────────────────
-        var activeSessions = await _db.AuditEvents
+        var totalVisits = await pageViews.CountAsync(ct);
+
+        var uniqueVisitors = await pageViews
+            .Where(e => e.SessionId != null)
+            .Select(e => e.SessionId).Distinct().CountAsync(ct);
+
+        var activeNow = await _db.AuditEvents
             .Where(e => e.Timestamp >= last30m && e.SessionId != null)
             .Select(e => e.SessionId).Distinct().CountAsync(ct);
 
-        var failedLogins24h = await _db.AuditEvents
-            .CountAsync(e => e.Timestamp >= last24h && e.EventType == "LoginFailed", ct);
+        var loggedInVisits = await pageViews
+            .CountAsync(e => e.UserId != null, ct);
 
-        var apiErrors24h = await _db.AuditEvents
-            .CountAsync(e => e.Timestamp >= last24h && e.EventType == "ApiCall" && e.StatusCode >= 500, ct);
+        var anonVisits = totalVisits - loggedInVisits;
 
-        var avgResponseMs = await _db.AuditEvents
-            .Where(e => e.Timestamp >= last24h && e.EventType == "ApiCall" && e.DurationMs != null)
-            .Select(e => (double?)e.DurationMs)
-            .AverageAsync(ct) ?? 0;
+        var todayVisits = await _db.AuditEvents
+            .CountAsync(e => e.Timestamp >= last24h && e.EventType == "PageView", ct);
 
-        // ── Security: failed logins per day ────────────────────
-        var failedLoginsByDay = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed")
+        // ── Visits per day ─────────────────────────────────────
+        var visitsPerDay = await pageViews
             .GroupBy(e => e.Timestamp.Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .OrderBy(x => x.Date)
             .ToListAsync(ct);
 
-        // ── Security: suspicious IPs (5+ failures in period) ───
-        var suspiciousIps = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed" && e.IpAddress != null)
-            .GroupBy(e => e.IpAddress!)
-            .Select(g => new { Ip = g.Key, Count = g.Count(), Last = g.Max(e => e.Timestamp) })
-            .Where(x => x.Count >= 3)
-            .OrderByDescending(x => x.Count)
-            .Take(10)
-            .ToListAsync(ct);
-
-        // ── Security: recent failed logins ─────────────────────
-        var recentFailedLogins = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed")
-            .OrderByDescending(e => e.Timestamp)
-            .Take(10)
-            .Select(e => new { e.Timestamp, e.IpAddress, e.MetadataJson })
-            .ToListAsync(ct);
-
-        // ── Historical activity (from Inspections — before audit existed) ──
-        var inspectionsPerDay = await _db.Inspections
-            .Where(i => i.CreatedAt >= since)
-            .GroupBy(i => i.CreatedAt.Date)
+        // ── Unique visitors per day ────────────────────────────
+        var uniquePerDay = await pageViews
+            .Where(e => e.SessionId != null)
+            .GroupBy(e => new { Date = e.Timestamp.Date, e.SessionId })
+            .Select(g => g.Key)
+            .GroupBy(x => x.Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .OrderBy(x => x.Date)
             .ToListAsync(ct);
 
-        var inspectionsPerHour = await _db.Inspections
-            .Where(i => i.CreatedAt >= since)
-            .GroupBy(i => i.CreatedAt.Hour)
+        // ── Visits per hour of day ─────────────────────────────
+        var visitsPerHour = await pageViews
+            .GroupBy(e => e.Timestamp.Hour)
             .Select(g => new { Hour = g.Key, Count = g.Count() })
             .OrderBy(x => x.Hour)
             .ToListAsync(ct);
 
-        var totalInspections = await _db.Inspections.CountAsync(ct);
-        var totalUsers = await _db.Users.CountAsync(ct);
-        var activeUsers = await _db.Users.CountAsync(u => u.IsActive, ct);
-
-        var userActivity = await _db.Users
-            .Where(u => u.LastLoginAt != null)
-            .OrderByDescending(u => u.LastLoginAt)
-            .Take(10)
-            .Select(u => new { u.FullName, u.Email, u.LastLoginAt, InspectionCount = u.Inspections.Count })
-            .ToListAsync(ct);
-
-        // ── Engagement: top pages (normalized) ─────────────────
-        var topPages = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "PageView" && e.Path != null)
+        // ── Top pages ──────────────────────────────────────────
+        var topPages = await pageViews
+            .Where(e => e.Path != null)
             .GroupBy(e => e.Path!)
             .Select(g => new { Path = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .Take(10)
             .ToListAsync(ct);
 
-        // ── Engagement: activity heatmap (dayOfWeek x hour) ────
-        var heatmap = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && (e.EventType == "PageView" || e.EventType == "ApiCall"))
+        // ── Visitor heatmap (dayOfWeek x hour) ─────────────────
+        var heatmap = await pageViews
             .GroupBy(e => new { Day = (int)e.Timestamp.DayOfWeek, Hour = e.Timestamp.Hour })
             .Select(g => new { g.Key.Day, g.Key.Hour, Count = g.Count() })
             .ToListAsync(ct);
 
-        // ── API Health: slowest endpoints ──────────────────────
-        var slowEndpoints = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "ApiCall" && e.DurationMs != null && e.Path != null)
-            .GroupBy(e => new { e.Method, e.Path })
-            .Select(g => new
-            {
-                Method = g.Key.Method,
-                Path = g.Key.Path,
-                Avg = (int)g.Average(e => e.DurationMs!.Value),
-                Count = g.Count(),
-                Errors = g.Count(e => e.StatusCode >= 400),
-            })
-            .OrderByDescending(x => x.Avg)
-            .Take(8)
+        // ── Auth vs anon per day ───────────────────────────────
+        var authPerDay = await pageViews
+            .GroupBy(e => new { Date = e.Timestamp.Date, IsAuth = e.UserId != null })
+            .Select(g => new { Date = g.Key.Date, IsAuth = g.Key.IsAuth, Count = g.Count() })
+            .OrderBy(x => x.Date)
             .ToListAsync(ct);
 
-        // ── API Health: status code distribution ───────────────
-        var statusCodes = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "ApiCall" && e.StatusCode != null)
-            .GroupBy(e => e.StatusCode!.Value / 100) // 2, 3, 4, 5
-            .Select(g => new { Group = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => $"{x.Group}xx", x => x.Count, ct);
+        // ── Recent visitors (last 20 unique sessions) ──────────
+        var recentVisitors = await _db.AuditEvents
+            .Where(e => e.EventType == "PageView" && e.SessionId != null)
+            .OrderByDescending(e => e.Timestamp)
+            .Select(e => new { e.SessionId, e.UserId, e.IpAddress, e.Path, e.Timestamp })
+            .Take(200) // grab recent events, then deduplicate by session
+            .ToListAsync(ct);
+
+        var recentSessions = recentVisitors
+            .GroupBy(e => e.SessionId)
+            .Take(15)
+            .Select(g => new
+            {
+                sessionId = g.Key,
+                userId = g.First().UserId,
+                ip = g.First().IpAddress,
+                lastPage = g.First().Path,
+                lastSeen = g.First().Timestamp,
+                pageCount = g.Count(),
+            })
+            .ToList();
+
+        // resolve user names for logged-in sessions
+        var sessionUserIds = recentSessions
+            .Where(s => s.userId.HasValue)
+            .Select(s => s.userId!.Value)
+            .Distinct()
+            .ToList();
+        var userNames = sessionUserIds.Count > 0
+            ? await _db.Users
+                .Where(u => sessionUserIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.FullName, ct)
+            : new Dictionary<Guid, string>();
+
+        var recentVisitorList = recentSessions.Select(s => new
+        {
+            s.sessionId,
+            userName = s.userId.HasValue && userNames.TryGetValue(s.userId.Value, out var name) ? name : null,
+            s.ip,
+            s.lastPage,
+            s.lastSeen,
+            s.pageCount,
+        });
+
+        // ── Referrers ──────────────────────────────────────────
+        var referrers = await pageViews
+            .Where(e => e.MetadataJson != null)
+            .Select(e => e.MetadataJson!)
+            .Take(500)
+            .ToListAsync(ct);
+
+        var topReferrers = referrers
+            .Select(json =>
+            {
+                try { return JsonSerializer.Deserialize<Dictionary<string, string>>(json); }
+                catch { return null; }
+            })
+            .Where(d => d != null && d.ContainsKey("referrer") && !string.IsNullOrWhiteSpace(d["referrer"]))
+            .Select(d => {
+                try { return new Uri(d!["referrer"]).Host; }
+                catch { return d!["referrer"]; }
+            })
+            .Where(h => !h.Contains("dent.xyler") && !h.Contains("localhost"))
+            .GroupBy(h => h)
+            .Select(g => new { source = g.Key, count = g.Count() })
+            .OrderByDescending(x => x.count)
+            .Take(5)
+            .ToList();
 
         return Ok(new
         {
             period = days,
             // KPI strip
-            activeSessions,
-            failedLogins24h,
-            apiErrors24h,
-            avgResponseMs = (int)avgResponseMs,
-            totalInspections,
-            totalUsers,
-            activeUsers,
-            // Historical activity (from Inspections table — full history)
-            inspectionsPerDay = inspectionsPerDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
-            inspectionsPerHour = inspectionsPerHour.Select(h => new { hour = h.Hour, count = h.Count }),
-            userActivity,
-            // Security
-            failedLoginsByDay = failedLoginsByDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
-            suspiciousIps,
-            recentFailedLogins,
-            // Engagement (from audit — grows over time)
+            totalVisits,
+            uniqueVisitors,
+            activeNow,
+            loggedInVisits,
+            anonVisits,
+            todayVisits,
+            // Charts
+            visitsPerDay = visitsPerDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
+            uniquePerDay = uniquePerDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
+            visitsPerHour = visitsPerHour.Select(h => new { hour = h.Hour, count = h.Count }),
+            authPerDay = authPerDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), isAuth = d.IsAuth, count = d.Count }),
+            // Engagement
             topPages,
             heatmap,
-            // API Health
-            slowEndpoints,
-            statusCodes,
+            topReferrers,
+            // Recent visitors
+            recentVisitors = recentVisitorList,
         });
     }
 }
