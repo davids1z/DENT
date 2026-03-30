@@ -97,7 +97,7 @@ public class AuditController : ControllerBase
         return Ok(new { total, page, pageSize, events });
     }
 
-    /// <summary>Aggregate audit stats for the admin dashboard.</summary>
+    /// <summary>Dashboard stats: security, engagement, API health.</summary>
     [HttpGet("stats")]
     [Authorize(Roles = "Admin")]
     [EnableRateLimiting("api")]
@@ -106,25 +106,52 @@ public class AuditController : ControllerBase
         CancellationToken ct = default)
     {
         var since = DateTime.UtcNow.AddDays(-days);
+        var last24h = DateTime.UtcNow.AddHours(-24);
+        var last30m = DateTime.UtcNow.AddMinutes(-30);
 
-        var eventCounts = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since)
-            .GroupBy(e => e.EventType)
-            .Select(g => new { Type = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.Type, x => x.Count, ct);
+        // ── KPI Strip ──────────────────────────────────────────
+        var activeSessions = await _db.AuditEvents
+            .Where(e => e.Timestamp >= last30m && e.SessionId != null)
+            .Select(e => e.SessionId).Distinct().CountAsync(ct);
 
-        var uniqueSessions = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.SessionId != null)
-            .Select(e => e.SessionId)
-            .Distinct()
-            .CountAsync(ct);
+        var failedLogins24h = await _db.AuditEvents
+            .CountAsync(e => e.Timestamp >= last24h && e.EventType == "LoginFailed", ct);
 
-        var uniqueUsers = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.UserId != null)
-            .Select(e => e.UserId)
-            .Distinct()
-            .CountAsync(ct);
+        var apiErrors24h = await _db.AuditEvents
+            .CountAsync(e => e.Timestamp >= last24h && e.EventType == "ApiCall" && e.StatusCode >= 500, ct);
 
+        var avgResponseMs = await _db.AuditEvents
+            .Where(e => e.Timestamp >= last24h && e.EventType == "ApiCall" && e.DurationMs != null)
+            .Select(e => (double?)e.DurationMs)
+            .AverageAsync(ct) ?? 0;
+
+        // ── Security: failed logins per day ────────────────────
+        var failedLoginsByDay = await _db.AuditEvents
+            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed")
+            .GroupBy(e => e.Timestamp.Date)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Date)
+            .ToListAsync(ct);
+
+        // ── Security: suspicious IPs (5+ failures in period) ───
+        var suspiciousIps = await _db.AuditEvents
+            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed" && e.IpAddress != null)
+            .GroupBy(e => e.IpAddress!)
+            .Select(g => new { Ip = g.Key, Count = g.Count(), Last = g.Max(e => e.Timestamp) })
+            .Where(x => x.Count >= 3)
+            .OrderByDescending(x => x.Count)
+            .Take(10)
+            .ToListAsync(ct);
+
+        // ── Security: recent failed logins ─────────────────────
+        var recentFailedLogins = await _db.AuditEvents
+            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed")
+            .OrderByDescending(e => e.Timestamp)
+            .Take(10)
+            .Select(e => new { e.Timestamp, e.IpAddress, e.MetadataJson })
+            .ToListAsync(ct);
+
+        // ── Engagement: top pages (normalized) ─────────────────
         var topPages = await _db.AuditEvents
             .Where(e => e.Timestamp >= since && e.EventType == "PageView" && e.Path != null)
             .GroupBy(e => e.Path!)
@@ -133,41 +160,54 @@ public class AuditController : ControllerBase
             .Take(10)
             .ToListAsync(ct);
 
-        var dailyEvents = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since)
-            .GroupBy(e => e.Timestamp.Date)
-            .Select(g => new { Date = g.Key, Count = g.Count() })
-            .OrderBy(x => x.Date)
+        // ── Engagement: activity heatmap (dayOfWeek x hour) ────
+        var heatmap = await _db.AuditEvents
+            .Where(e => e.Timestamp >= since && (e.EventType == "PageView" || e.EventType == "ApiCall"))
+            .GroupBy(e => new { Day = (int)e.Timestamp.DayOfWeek, Hour = e.Timestamp.Hour })
+            .Select(g => new { g.Key.Day, g.Key.Hour, Count = g.Count() })
             .ToListAsync(ct);
 
-        var hourlyEvents = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since)
-            .GroupBy(e => e.Timestamp.Hour)
-            .Select(g => new { Hour = g.Key, Count = g.Count() })
-            .OrderBy(x => x.Hour)
+        // ── API Health: slowest endpoints ──────────────────────
+        var slowEndpoints = await _db.AuditEvents
+            .Where(e => e.Timestamp >= since && e.EventType == "ApiCall" && e.DurationMs != null && e.Path != null)
+            .GroupBy(e => new { e.Method, e.Path })
+            .Select(g => new
+            {
+                Method = g.Key.Method,
+                Path = g.Key.Path,
+                Avg = (int)g.Average(e => e.DurationMs!.Value),
+                Count = g.Count(),
+                Errors = g.Count(e => e.StatusCode >= 400),
+            })
+            .OrderByDescending(x => x.Avg)
+            .Take(8)
             .ToListAsync(ct);
 
-        var recentFailedLogins = await _db.AuditEvents
-            .Where(e => e.Timestamp >= since && e.EventType == "LoginFailed")
-            .OrderByDescending(e => e.Timestamp)
-            .Take(20)
-            .Select(e => new { e.Timestamp, e.IpAddress, e.MetadataJson })
-            .ToListAsync(ct);
+        // ── API Health: status code distribution ───────────────
+        var statusCodes = await _db.AuditEvents
+            .Where(e => e.Timestamp >= since && e.EventType == "ApiCall" && e.StatusCode != null)
+            .GroupBy(e => e.StatusCode!.Value / 100) // 2, 3, 4, 5
+            .Select(g => new { Group = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => $"{x.Group}xx", x => x.Count, ct);
 
         return Ok(new
         {
             period = days,
-            eventCounts,
-            uniqueSessions,
-            uniqueUsers,
-            failedLogins = eventCounts.GetValueOrDefault("LoginFailed", 0),
-            pageViews = eventCounts.GetValueOrDefault("PageView", 0),
-            apiCalls = eventCounts.GetValueOrDefault("ApiCall", 0),
-            logins = eventCounts.GetValueOrDefault("Login", 0),
-            topPages,
-            dailyEvents = dailyEvents.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
-            hourlyEvents = hourlyEvents.Select(h => new { hour = h.Hour, count = h.Count }),
+            // KPI strip
+            activeSessions,
+            failedLogins24h,
+            apiErrors24h,
+            avgResponseMs = (int)avgResponseMs,
+            // Security
+            failedLoginsByDay = failedLoginsByDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
+            suspiciousIps,
             recentFailedLogins,
+            // Engagement
+            topPages,
+            heatmap,
+            // API Health
+            slowEndpoints,
+            statusCodes,
         });
     }
 }

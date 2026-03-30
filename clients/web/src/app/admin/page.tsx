@@ -12,8 +12,8 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
   getAdminUsers, getAdminStats, deactivateUser, activateUser, changeUserRole,
-  getInspections, formatDate, getAuditEvents, getAuditStats,
-  type AdminUser, type AdminStats, type Inspection, type AuditStats, type AuditEventsResponse,
+  getInspections, formatDate, getAuditStats,
+  type AdminUser, type AdminStats, type Inspection, type AuditStats,
 } from "@/lib/api";
 
 /* ------------------------------------------------------------------ */
@@ -1100,45 +1100,37 @@ function DistPanel({ title, data, colorFn, labelFn }: { title: string; data: Rec
 const MemoDistPanel = memo(DistPanel);
 
 /* ================================================================== */
-/*  DNEVNIK (AUDIT LOG) TAB                                            */
+/*  DNEVNIK (ACTIVITY MONITORING) TAB                                  */
 /* ================================================================== */
+
+const PAGE_LABELS: Record<string, string> = {
+  "/": "Pocetna",
+  "/login": "Prijava",
+  "/inspect": "Nova provjera",
+  "/inspections": "Lista analiza",
+  "/admin": "Admin panel",
+};
+function labelPath(p: string): string {
+  if (PAGE_LABELS[p]) return PAGE_LABELS[p];
+  if (p.startsWith("/inspections/")) return "Pregled analize";
+  return p;
+}
+const DAYS_HR = ["Ned", "Pon", "Uto", "Sri", "Cet", "Pet", "Sub"];
+
 function DnevnikTab() {
-  const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
-  const [events, setEvents] = useState<AuditEventsResponse | null>(null);
+  const [data, setData] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [eventsLoading, setEventsLoading] = useState(true);
   const [period, setPeriod] = useState(7);
-  const [eventFilter, setEventFilter] = useState("");
-  const [eventsPage, setEventsPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
-    getAuditStats(period).then(setAuditStats).catch(() => {}).finally(() => setLoading(false));
+    getAuditStats(period).then(setData).catch(() => {}).finally(() => setLoading(false));
   }, [period]);
 
-  useEffect(() => {
-    setEventsLoading(true);
-    getAuditEvents({
-      eventType: eventFilter || undefined,
-      page: eventsPage,
-      pageSize: 30,
-    }).then(setEvents).catch(() => {}).finally(() => setEventsLoading(false));
-  }, [eventFilter, eventsPage]);
+  if (loading || !data) return <Spin />;
 
-  if (loading || !auditStats) return <Spin />;
-
-  const eventTypeColors: Record<string, string> = {
-    PageView: "bg-gray-500/15 text-gray-500",
-    ApiCall: "bg-blue-500/15 text-blue-500",
-    Login: "bg-green-500/15 text-green-500",
-    LoginFailed: "bg-red-500/15 text-red-500",
-    Register: "bg-teal-500/15 text-teal-500",
-    Upload: "bg-amber-500/15 text-amber-500",
-    AdminAction: "bg-purple-500/15 text-purple-500",
-    Logout: "bg-gray-400/15 text-gray-400",
-  };
-
-  const totalEvents = Object.values(auditStats.eventCounts).reduce((a, b) => a + b, 0);
+  const maxHeat = Math.max(1, ...data.heatmap.map(h => h.count));
+  const totalStatusCodes = Object.values(data.statusCodes).reduce((a, b) => a + b, 0);
 
   return (
     <div className="space-y-6 fade-up">
@@ -1152,174 +1144,177 @@ function DnevnikTab() {
         ))}
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-        <QuickStat label="Ukupno evenata" value={totalEvents} />
-        <QuickStat label="Page viewovi" value={auditStats.pageViews} />
-        <QuickStat label="API pozivi" value={auditStats.apiCalls} />
-        <QuickStat label="Posjetitelji" value={auditStats.uniqueSessions} />
-        <QuickStat label="Prijave" value={auditStats.logins} />
-        <QuickStat label="Neuspjele prijave" value={auditStats.failedLogins} />
+      {/* ── KPI Strip ────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <QuickStat label="Aktivne sesije (30 min)" value={data.activeSessions} live={data.activeSessions > 0} />
+        <QuickStat label="Neuspjele prijave (24h)" value={data.failedLogins24h} />
+        <QuickStat label="API greske (24h)" value={data.apiErrors24h} />
+        <QuickStat label="Prosj. odziv API-ja" value={`${data.avgResponseMs}ms`} />
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Daily events */}
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Dnevni eventi</h3>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={auditStats.dailyEvents} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-                <defs>
-                  <linearGradient id="auditGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
-                <Tooltip content={<ChartTip />} />
-                <Area type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2} fill="url(#auditGrad)" dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        {/* Hourly distribution */}
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Distribucija po satu</h3>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={auditStats.hourlyEvents} margin={{ top: 4, right: 16, bottom: 0, left: -12 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
-                <XAxis dataKey="hour" tickFormatter={(v: number) => `${v}h`} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
-                <Tooltip content={<ChartTip />} />
-                <Bar dataKey="count" fill="#8b5cf6" fillOpacity={0.6} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      </div>
-
-      {/* Top pages + Event type distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Najpopularnije stranice</h3>
-          <div className="space-y-2">
-            {auditStats.topPages.map((p, i) => (
-              <div key={p.path} className="flex items-center gap-2">
-                <span className="text-[10px] text-muted w-4 text-right">{i + 1}.</span>
-                <span className="text-xs flex-1 truncate font-mono">{p.path}</span>
-                <span className="text-xs font-mono text-muted">{p.count}</span>
+      {/* ── 1. SIGURNOST ─────────────────────────────────────── */}
+      <div>
+        <h3 className="text-xs uppercase tracking-wider text-muted font-medium mb-3">Sigurnost</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Failed logins chart */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Neuspjele prijave</h4>
+            {data.failedLoginsByDay.length > 0 ? (
+              <div className="h-[180px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.failedLoginsByDay} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(8) + "."} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={20} />
+                    <Tooltip content={<ChartTip />} />
+                    <Bar dataKey="count" fill="#ef4444" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-            {auditStats.topPages.length === 0 && <p className="text-xs text-muted">Nema podataka</p>}
-          </div>
-        </Card>
-
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Vrste evenata</h3>
-          <div className="space-y-2">
-            {Object.entries(auditStats.eventCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-              <div key={type} className="flex items-center gap-2">
-                <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", eventTypeColors[type] || "bg-gray-500/15 text-gray-500")}>{type}</span>
-                <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
-                  <div className="h-full bg-accent/40 rounded-full" style={{ width: `${totalEvents > 0 ? (count / totalEvents) * 100 : 0}%` }} />
-                </div>
-                <span className="text-xs font-mono text-muted w-10 text-right">{count}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* Failed logins (security) */}
-      {auditStats.recentFailedLogins.length > 0 && (
-        <Card>
-          <h3 className="text-sm font-semibold mb-3 text-red-500">Neuspjele prijave</h3>
-          <div className="space-y-1">
-            {auditStats.recentFailedLogins.map((f, i) => {
-              const meta = f.metadataJson ? JSON.parse(f.metadataJson) : {};
-              return (
-                <div key={i} className="flex items-center gap-3 py-1.5 text-xs border-b border-border/30 last:border-0">
-                  <span className="text-muted font-mono w-32 flex-shrink-0">{new Date(f.timestamp).toLocaleString("hr")}</span>
-                  <span className="text-red-400 flex-shrink-0">{meta.email || "—"}</span>
-                  <span className="text-muted font-mono ml-auto flex-shrink-0">{f.ipAddress || "—"}</span>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      {/* Event stream (paginated table) */}
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold">Svi eventi</h3>
-          <div className="flex items-center gap-2">
-            <select
-              value={eventFilter}
-              onChange={(e) => { setEventFilter(e.target.value); setEventsPage(1); }}
-              className="text-xs bg-card border border-border rounded-lg px-2 py-1 text-foreground"
-            >
-              <option value="">Svi tipovi</option>
-              <option value="PageView">PageView</option>
-              <option value="ApiCall">ApiCall</option>
-              <option value="Login">Login</option>
-              <option value="LoginFailed">LoginFailed</option>
-              <option value="Register">Register</option>
-              <option value="AdminAction">AdminAction</option>
-              <option value="Logout">Logout</option>
-            </select>
-          </div>
-        </div>
-
-        {eventsLoading ? <Spin /> : events && events.events.length > 0 ? (
-          <>
-            <div className="overflow-x-auto -mx-5">
-              <table className="w-full text-xs min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="px-3 py-2 text-muted font-medium">Vrijeme</th>
-                    <th className="px-3 py-2 text-muted font-medium">Tip</th>
-                    <th className="px-3 py-2 text-muted font-medium">Path</th>
-                    <th className="px-3 py-2 text-muted font-medium">Status</th>
-                    <th className="px-3 py-2 text-muted font-medium">IP</th>
-                    <th className="px-3 py-2 text-muted font-medium">Trajanje</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.events.map((e) => (
-                    <tr key={e.id} className="border-b border-border/30 hover:bg-card/50">
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">{new Date(e.timestamp).toLocaleString("hr")}</td>
-                      <td className="px-3 py-1.5">
-                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", eventTypeColors[e.eventType] || "bg-gray-500/15 text-gray-500")}>{e.eventType}</span>
-                      </td>
-                      <td className="px-3 py-1.5 font-mono truncate max-w-[200px]">{e.path || "—"}</td>
-                      <td className="px-3 py-1.5 font-mono">{e.statusCode || "—"}</td>
-                      <td className="px-3 py-1.5 font-mono text-muted">{e.ipAddress || "—"}</td>
-                      <td className="px-3 py-1.5 font-mono text-muted">{e.durationMs != null ? `${e.durationMs}ms` : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* Pagination */}
-            {events.total > 30 && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <button onClick={() => setEventsPage(Math.max(1, eventsPage - 1))} disabled={eventsPage === 1} className="px-2 py-1 rounded text-xs border border-border disabled:opacity-40">←</button>
-                <span className="text-xs text-muted">{eventsPage} / {Math.ceil(events.total / 30)}</span>
-                <button onClick={() => setEventsPage(eventsPage + 1)} disabled={eventsPage >= Math.ceil(events.total / 30)} className="px-2 py-1 rounded text-xs border border-border disabled:opacity-40">→</button>
-                <span className="text-xs text-muted ml-2">{events.total} ukupno</span>
+            ) : (
+              <div className="flex items-center gap-2 py-8 justify-center text-green-500">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+                <span className="text-xs font-medium">Nema neuspjelih prijava</span>
               </div>
             )}
-          </>
-        ) : (
-          <p className="text-xs text-muted text-center py-8">Nema eventa za prikaz</p>
-        )}
-      </Card>
+          </Card>
+
+          {/* Suspicious IPs + recent failures */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Sumnjive IP adrese</h4>
+            {data.suspiciousIps.length > 0 ? (
+              <div className="space-y-2">
+                {data.suspiciousIps.map((s) => (
+                  <div key={s.ip} className="flex items-center gap-2 py-1">
+                    <span className="text-xs font-mono flex-1">{s.ip}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 font-medium">{s.count} pokusaja</span>
+                    <span className="text-[10px] text-muted">{new Date(s.last).toLocaleDateString("hr")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 py-8 justify-center text-green-500">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span className="text-xs font-medium">Nema sumnjivih aktivnosti</span>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* ── 2. KORISTENJE ────────────────────────────────────── */}
+      <div>
+        <h3 className="text-xs uppercase tracking-wider text-muted font-medium mb-3">Koristenje platforme</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Top pages */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Najposjacenije stranice</h4>
+            <div className="space-y-2">
+              {data.topPages.length > 0 ? data.topPages.map((p) => {
+                const maxCount = data.topPages[0]?.count || 1;
+                return (
+                  <div key={p.path} className="flex items-center gap-3">
+                    <span className="text-xs flex-1 truncate">{labelPath(p.path)}</span>
+                    <div className="w-24 h-1.5 bg-card-hover rounded-full overflow-hidden flex-shrink-0">
+                      <div className="h-full bg-accent rounded-full" style={{ width: `${(p.count / maxCount) * 100}%` }} />
+                    </div>
+                    <span className="text-xs font-mono text-muted w-8 text-right flex-shrink-0">{p.count}</span>
+                  </div>
+                );
+              }) : <p className="text-xs text-muted py-4 text-center">Nema podataka</p>}
+            </div>
+          </Card>
+
+          {/* Activity heatmap */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Aktivnost po danu i satu</h4>
+            <div className="overflow-x-auto">
+              <div className="min-w-[400px]">
+                <div className="flex gap-[2px] mb-1 ml-8">
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <div key={h} className="flex-1 text-center text-[8px] text-muted">{h % 6 === 0 ? `${h}h` : ""}</div>
+                  ))}
+                </div>
+                {[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => (
+                  <div key={dayIdx} className="flex items-center gap-[2px] mb-[2px]">
+                    <span className="text-[9px] text-muted w-7 text-right flex-shrink-0">{DAYS_HR[dayIdx]}</span>
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const cell = data.heatmap.find(c => c.day === dayIdx && c.hour === h);
+                      const intensity = cell ? cell.count / maxHeat : 0;
+                      return (
+                        <div
+                          key={h}
+                          className="flex-1 aspect-square rounded-[2px]"
+                          style={{ backgroundColor: intensity > 0 ? `rgba(139, 92, 246, ${0.15 + intensity * 0.75})` : "var(--color-card-hover)" }}
+                          title={`${DAYS_HR[dayIdx]} ${h}:00 — ${cell?.count || 0}`}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* ── 3. API ZDRAVLJE ───────────────────────────────────── */}
+      <div>
+        <h3 className="text-xs uppercase tracking-wider text-muted font-medium mb-3">API zdravlje</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Status codes */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Status kodovi</h4>
+            <div className="space-y-2">
+              {Object.entries(data.statusCodes).sort((a, b) => b[1] - a[1]).map(([code, count]) => (
+                <div key={code} className="flex items-center gap-2">
+                  <span className={cn("text-xs font-mono w-8", code.startsWith("2") ? "text-green-500" : code.startsWith("4") ? "text-amber-500" : "text-red-500")}>{code}</span>
+                  <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
+                    <div className={cn("h-full rounded-full", code.startsWith("2") ? "bg-green-500" : code.startsWith("4") ? "bg-amber-500" : "bg-red-500")}
+                      style={{ width: `${totalStatusCodes > 0 ? (count / totalStatusCodes) * 100 : 0}%`, opacity: 0.6 }} />
+                  </div>
+                  <span className="text-xs font-mono text-muted w-10 text-right">{count}</span>
+                </div>
+              ))}
+              {Object.keys(data.statusCodes).length === 0 && <p className="text-xs text-muted py-4 text-center">Nema podataka</p>}
+            </div>
+          </Card>
+
+          {/* Slowest endpoints */}
+          <div className="lg:col-span-2">
+            <Card>
+              <h4 className="text-sm font-semibold mb-3">Najsporiji endpointi</h4>
+              {data.slowEndpoints.length > 0 ? (
+                <div className="overflow-x-auto -mx-5">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left">
+                        <th className="px-3 py-2 text-muted font-medium">Endpoint</th>
+                        <th className="px-3 py-2 text-muted font-medium text-right">Avg</th>
+                        <th className="px-3 py-2 text-muted font-medium text-right">Pozivi</th>
+                        <th className="px-3 py-2 text-muted font-medium text-right">Greske</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.slowEndpoints.map((e) => (
+                        <tr key={`${e.method}${e.path}`} className="border-b border-border/30">
+                          <td className="px-3 py-1.5 font-mono">
+                            <span className="text-muted mr-1">{e.method}</span>
+                            <span className="truncate">{e.path}</span>
+                          </td>
+                          <td className="px-3 py-1.5 font-mono text-right">{e.avg}ms</td>
+                          <td className="px-3 py-1.5 font-mono text-right text-muted">{e.count}</td>
+                          <td className={cn("px-3 py-1.5 font-mono text-right", e.errors > 0 ? "text-red-500" : "text-muted")}>{e.errors}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="text-xs text-muted py-4 text-center">Nema podataka</p>}
+            </Card>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
