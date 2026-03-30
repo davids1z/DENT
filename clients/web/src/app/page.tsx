@@ -137,8 +137,8 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-60 -right-60 w-[600px] h-[600px] rounded-full deco-circle" />
-          <div className="absolute -bottom-60 -left-60 w-[500px] h-[500px] rounded-full deco-circle" />
+          <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full deco-circle" />
+          <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full deco-circle" />
         </div>
       </section>
 
@@ -174,7 +174,7 @@ export default function Dashboard() {
       {/* ===== FEATURES ===== */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute top-[20%] -right-60 w-[550px] h-[550px] rounded-full deco-circle" />
+          <div className="absolute top-[20%] -right-40 w-[550px] h-[550px] rounded-full deco-circle" />
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
@@ -205,7 +205,7 @@ export default function Dashboard() {
       {/* ===== FORENSIC PIPELINE ===== */}
       <section className="relative overflow-hidden section-alt border-y border-border">
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-48 -left-48 w-[450px] h-[450px] rounded-full deco-circle" />
+          <div className="absolute -top-32 -left-32 w-[450px] h-[450px] rounded-full deco-circle" />
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
@@ -311,7 +311,7 @@ export default function Dashboard() {
       {/* ===== CTA BANNER ===== */}
       <section className={`relative overflow-hidden ${loaded && stats && stats.totalInspections > 0 ? "section-alt border-y border-border" : "border-t border-border section-alt"}`}>
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-48 right-[20%] w-[500px] h-[500px] rounded-full deco-circle" />
+          <div className="absolute -top-32 right-[20%] w-[500px] h-[500px] rounded-full deco-circle" />
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">
