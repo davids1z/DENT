@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, setTokens } from "./client";
+import { API_BASE, authFetch, clearAuthFlag } from "./client";
 import type { AdminStats, AdminUser, AuthResponse, AuthUser } from "./types";
 
 export async function loginApi(email: string, password: string): Promise<AuthResponse> {
@@ -6,6 +6,7 @@ export async function loginApi(email: string, password: string): Promise<AuthRes
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+    credentials: "same-origin",
   });
   if (res.status === 429) {
     throw new Error("Previše pokušaja prijave. Pričekajte nekoliko minuta pa pokušajte ponovo.");
@@ -14,9 +15,8 @@ export async function loginApi(email: string, password: string): Promise<AuthRes
     const err = await res.json().catch(() => ({ error: "Prijava nije uspjela." }));
     throw new Error(err.error || `Login failed: ${res.status}`);
   }
-  const data: AuthResponse = await res.json();
-  setTokens(data.token, data.refreshToken);
-  return data;
+  // Server sets httpOnly cookies (dent_auth, dent_refresh, dent_has_auth)
+  return res.json();
 }
 
 export async function registerApi(email: string, password: string, fullName: string): Promise<AuthResponse> {
@@ -24,6 +24,7 @@ export async function registerApi(email: string, password: string, fullName: str
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, fullName }),
+    credentials: "same-origin",
   });
   if (res.status === 429) {
     throw new Error("Previše pokušaja registracije. Pričekajte nekoliko minuta pa pokušajte ponovo.");
@@ -32,9 +33,18 @@ export async function registerApi(email: string, password: string, fullName: str
     const err = await res.json().catch(() => ({ error: "Registracija nije uspjela." }));
     throw new Error(err.error || `Register failed: ${res.status}`);
   }
-  const data: AuthResponse = await res.json();
-  setTokens(data.token, data.refreshToken);
-  return data;
+  // Server sets httpOnly cookies
+  return res.json();
+}
+
+export async function logoutApi(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: "POST",
+      credentials: "same-origin",
+    });
+  } catch { /* ignore network errors during logout */ }
+  clearAuthFlag();
 }
 
 export async function getMeApi(): Promise<AuthUser> {

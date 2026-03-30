@@ -1,41 +1,31 @@
-import type { AuthResponse } from "./types";
-
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("dent_token");
+/**
+ * Check if the user has an auth cookie (non-httpOnly flag set by server).
+ * Used only for UI hints (FOUC prevention). The actual JWT is in an httpOnly cookie.
+ */
+export function hasAuthCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie.includes("dent_has_auth=1");
 }
 
-export function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("dent_refresh_token");
+/** Clear the JS-readable auth flag cookie (httpOnly cookies cleared by server). */
+export function clearAuthFlag() {
+  if (typeof document === "undefined") return;
+  document.cookie = "dent_has_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 }
 
-export function setTokens(token: string, refreshToken: string) {
-  localStorage.setItem("dent_token", token);
-  localStorage.setItem("dent_refresh_token", refreshToken);
-}
-
-export function clearTokens() {
-  localStorage.removeItem("dent_token");
-  localStorage.removeItem("dent_refresh_token");
-}
-
-export function authHeaders(): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
+/**
+ * Fetch with automatic cookie auth and 401 refresh retry.
+ * Cookies are sent automatically for same-origin requests (via nginx/Next.js proxy).
+ */
 export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
-  const headers = { ...authHeaders(), ...init?.headers };
-  let res = await fetch(url, { ...init, headers });
+  let res = await fetch(url, { ...init, credentials: "same-origin" });
 
   if (res.status === 401) {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
-      const retryHeaders = { ...authHeaders(), ...init?.headers };
-      res = await fetch(url, { ...init, headers: retryHeaders });
+      res = await fetch(url, { ...init, credentials: "same-origin" });
     }
   }
 
@@ -43,24 +33,32 @@ export async function authFetch(url: string, init?: RequestInit): Promise<Respon
 }
 
 async function tryRefreshToken(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
+      credentials: "same-origin",
     });
     if (!res.ok) {
-      clearTokens();
+      clearAuthFlag();
       return false;
     }
-    const data: AuthResponse = await res.json();
-    setTokens(data.token, data.refreshToken);
+    // Server set new httpOnly cookies automatically
     return true;
   } catch {
-    clearTokens();
+    clearAuthFlag();
     return false;
   }
 }
+
+// ── Legacy exports for backward compatibility ──
+// These are no-ops now that auth uses httpOnly cookies.
+/** @deprecated Auth tokens are now in httpOnly cookies. */
+export function getToken(): string | null { return null; }
+/** @deprecated Auth tokens are now in httpOnly cookies. */
+export function getRefreshToken(): string | null { return null; }
+/** @deprecated Auth tokens are now in httpOnly cookies. */
+export function setTokens(_token: string, _refreshToken: string) { /* no-op */ }
+/** @deprecated Auth tokens are now in httpOnly cookies — use clearAuthFlag() instead. */
+export function clearTokens() { clearAuthFlag(); }
+/** @deprecated Auth is via httpOnly cookies — no manual headers needed. */
+export function authHeaders(): Record<string, string> { return {}; }

@@ -1,12 +1,12 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
-import { type AuthUser, loginApi, registerApi, getMeApi, clearTokens, getToken } from "./api";
+import { type AuthUser, loginApi, registerApi, getMeApi, logoutApi, hasAuthCookie, clearAuthFlag } from "./api";
 
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
-  /** True if a token exists in localStorage (set by blocking script, available before hydration) */
+  /** True if an auth cookie exists (set by blocking script, available before hydration) */
   hasToken: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
@@ -32,15 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const hint = document.documentElement.dataset.auth === "1";
     setHasToken(hint);
 
-    const token = getToken();
-    if (!token) {
+    if (!hasAuthCookie()) {
       setIsLoading(false);
       return;
     }
     getMeApi()
       .then(setUser)
       .catch(() => {
-        clearTokens();
+        clearAuthFlag();
         document.documentElement.removeAttribute("data-auth");
       })
       .finally(() => setIsLoading(false));
@@ -60,8 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.auth = "1";
   }, []);
 
-  const logout = useCallback(() => {
-    clearTokens();
+  const logout = useCallback(async () => {
+    await logoutApi();
     setUser(null);
     setHasToken(false);
     document.documentElement.removeAttribute("data-auth");

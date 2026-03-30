@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, authHeaders, getToken } from "./client";
+import { API_BASE, authFetch, authHeaders } from "./client";
 import type { CaptureMetadata, DashboardStats, Inspection, VehicleContext } from "./types";
 
 const UPLOAD_TIMEOUT_MS = 120_000;
@@ -232,13 +232,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 }
 
 export function getReportUrl(inspectionId: string): string {
-  const token = getToken();
-  const base = `${API_BASE}/inspections/${inspectionId}/report`;
-  return token ? `${base}?access_token=${encodeURIComponent(token)}` : base;
+  return `${API_BASE}/inspections/${inspectionId}/report`;
 }
 
 export function getCertificateUrl(inspectionId: string): string {
-  const token = getToken();
-  const base = `${API_BASE}/inspections/${inspectionId}/certificate`;
-  return token ? `${base}?access_token=${encodeURIComponent(token)}` : base;
+  return `${API_BASE}/inspections/${inspectionId}/certificate`;
 }

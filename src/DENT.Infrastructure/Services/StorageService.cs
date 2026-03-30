@@ -31,7 +31,6 @@ public class StorageService : IStorageService
             Key = key,
             InputStream = stream,
             ContentType = contentType,
-            CannedACL = S3CannedACL.PublicRead
         };
 
         await _s3Client.PutObjectAsync(request, ct);

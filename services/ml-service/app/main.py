@@ -20,6 +20,17 @@ async def lifespan(app: FastAPI):
         pipeline.warmup_models()
         logger.info("All forensic models loaded and ready to serve.")
     yield
+    # Graceful shutdown — release thread pool and resources
+    logger.info("Shutting down ML service...")
+    if settings.forensics_enabled:
+        try:
+            pipeline = forensics.get_pipeline()
+            if hasattr(pipeline, "_executor") and pipeline._executor is not None:
+                pipeline._executor.shutdown(wait=True, cancel_futures=False)
+                logger.info("ThreadPoolExecutor shut down cleanly.")
+        except Exception as e:
+            logger.warning("Error during executor shutdown: %s", e)
+    logger.info("ML service shutdown complete.")
 
 
 app = FastAPI(
@@ -32,11 +43,18 @@ app = FastAPI(
 from .middleware import RequestIdMiddleware
 
 app.add_middleware(RequestIdMiddleware)
+# ML service is only called by the C# API on the internal Docker network.
+# Restrict CORS to internal callers only (not exposed to browsers).
+import os
+
+_ml_cors_origins = os.environ.get(
+    "DENT_CORS_ORIGINS", "http://api:8080,http://localhost:8080"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=_ml_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
