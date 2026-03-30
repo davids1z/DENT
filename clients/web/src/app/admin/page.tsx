@@ -1145,12 +1145,82 @@ function DnevnikTab() {
       </div>
 
       {/* ── KPI Strip ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <QuickStat label="Aktivne sesije (30 min)" value={data.activeSessions} live={data.activeSessions > 0} />
-        <QuickStat label="Neuspjele prijave (24h)" value={data.failedLogins24h} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <QuickStat label="Ukupno analiza" value={data.totalInspections} />
+        <QuickStat label="Korisnici" value={`${data.activeUsers} / ${data.totalUsers}`} />
+        <QuickStat label="Aktivne sesije" value={data.activeSessions} live={data.activeSessions > 0} />
+        <QuickStat label="Neuspjele prijave" value={data.failedLogins24h} />
         <QuickStat label="API greske (24h)" value={data.apiErrors24h} />
-        <QuickStat label="Prosj. odziv API-ja" value={`${data.avgResponseMs}ms`} />
+        <QuickStat label="Odziv API-ja" value={`${data.avgResponseMs}ms`} />
       </div>
+
+      {/* ── AKTIVNOST (from real Inspections data) ────────────── */}
+      <div>
+        <h3 className="text-xs uppercase tracking-wider text-muted font-medium mb-3">Aktivnost sustava</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Inspections per day */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Analize po danu</h4>
+            {data.inspectionsPerDay.length > 0 ? (
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.inspectionsPerDay} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
+                    <Tooltip content={<ChartTip />} />
+                    <Bar dataKey="count" fill="var(--color-accent)" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <p className="text-xs text-muted py-8 text-center">Nema analiza u odabranom periodu</p>}
+          </Card>
+
+          {/* Inspections by hour */}
+          <Card>
+            <h4 className="text-sm font-semibold mb-3">Analize po satu dana</h4>
+            {data.inspectionsPerHour.length > 0 ? (
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.inspectionsPerHour} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.2} vertical={false} />
+                    <XAxis dataKey="hour" tickFormatter={(v: number) => `${v}h`} tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "var(--color-muted)", fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
+                    <Tooltip content={<ChartTip />} />
+                    <Bar dataKey="count" fill="#10b981" fillOpacity={0.6} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <p className="text-xs text-muted py-8 text-center">Nema podataka</p>}
+          </Card>
+        </div>
+      </div>
+
+      {/* ── Recent user activity ─────────────────────────────── */}
+      {data.userActivity.length > 0 && (
+        <Card>
+          <h4 className="text-sm font-semibold mb-3">Zadnja aktivnost korisnika</h4>
+          <div className="space-y-1">
+            {data.userActivity.map((u) => (
+              <div key={u.email} className="flex items-center gap-3 py-1.5 text-xs border-b border-border/30 last:border-0">
+                <div className="w-7 h-7 rounded-full bg-accent/10 text-accent flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                  {u.fullName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium block truncate">{u.fullName}</span>
+                  <span className="text-muted text-[10px]">{u.email}</span>
+                </div>
+                <span className="text-muted font-mono text-[10px] flex-shrink-0">
+                  {u.inspectionCount} analiza
+                </span>
+                <span className="text-muted font-mono text-[10px] flex-shrink-0">
+                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString("hr") : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* ── 1. SIGURNOST ─────────────────────────────────────── */}
       <div>

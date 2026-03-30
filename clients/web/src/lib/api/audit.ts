@@ -7,6 +7,13 @@ export interface AuditStats {
   failedLogins24h: number;
   apiErrors24h: number;
   avgResponseMs: number;
+  totalInspections: number;
+  totalUsers: number;
+  activeUsers: number;
+  // Historical activity (from Inspections)
+  inspectionsPerDay: { date: string; count: number }[];
+  inspectionsPerHour: { hour: number; count: number }[];
+  userActivity: { fullName: string; email: string; lastLoginAt: string | null; inspectionCount: number }[];
   // Security
   failedLoginsByDay: { date: string; count: number }[];
   suspiciousIps: { ip: string; count: number; last: string }[];
@@ -19,7 +26,7 @@ export interface AuditStats {
   statusCodes: Record<string, number>;
 }
 
-export async function getAuditStats(days = 7): Promise<AuditStats> {
+export async function getAuditStats(days = 30): Promise<AuditStats> {
   const res = await authFetch(`${API_BASE}/audit/stats?days=${days}`);
   if (!res.ok) throw new Error(`Failed to fetch audit stats: ${res.status}`);
   return res.json();

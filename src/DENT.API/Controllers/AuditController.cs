@@ -151,6 +151,32 @@ public class AuditController : ControllerBase
             .Select(e => new { e.Timestamp, e.IpAddress, e.MetadataJson })
             .ToListAsync(ct);
 
+        // ── Historical activity (from Inspections — before audit existed) ──
+        var inspectionsPerDay = await _db.Inspections
+            .Where(i => i.CreatedAt >= since)
+            .GroupBy(i => i.CreatedAt.Date)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Date)
+            .ToListAsync(ct);
+
+        var inspectionsPerHour = await _db.Inspections
+            .Where(i => i.CreatedAt >= since)
+            .GroupBy(i => i.CreatedAt.Hour)
+            .Select(g => new { Hour = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Hour)
+            .ToListAsync(ct);
+
+        var totalInspections = await _db.Inspections.CountAsync(ct);
+        var totalUsers = await _db.Users.CountAsync(ct);
+        var activeUsers = await _db.Users.CountAsync(u => u.IsActive, ct);
+
+        var userActivity = await _db.Users
+            .Where(u => u.LastLoginAt != null)
+            .OrderByDescending(u => u.LastLoginAt)
+            .Take(10)
+            .Select(u => new { u.FullName, u.Email, u.LastLoginAt, InspectionCount = u.Inspections.Count })
+            .ToListAsync(ct);
+
         // ── Engagement: top pages (normalized) ─────────────────
         var topPages = await _db.AuditEvents
             .Where(e => e.Timestamp >= since && e.EventType == "PageView" && e.Path != null)
@@ -198,11 +224,18 @@ public class AuditController : ControllerBase
             failedLogins24h,
             apiErrors24h,
             avgResponseMs = (int)avgResponseMs,
+            totalInspections,
+            totalUsers,
+            activeUsers,
+            // Historical activity (from Inspections table — full history)
+            inspectionsPerDay = inspectionsPerDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
+            inspectionsPerHour = inspectionsPerHour.Select(h => new { hour = h.Hour, count = h.Count }),
+            userActivity,
             // Security
             failedLoginsByDay = failedLoginsByDay.Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), count = d.Count }),
             suspiciousIps,
             recentFailedLogins,
-            // Engagement
+            // Engagement (from audit — grows over time)
             topPages,
             heatmap,
             // API Health
