@@ -83,15 +83,15 @@ jobs:
             CERT_DIR="$DEPLOY_DIR/infra/certbot/conf/live/dent.xyler.ai"
             if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
               echo "Copying SSL certs from /etc/letsencrypt..."
-              mkdir -p "$CERT_DIR"
-              mkdir -p "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai"
-              cp /etc/letsencrypt/archive/dent.xyler.ai/* "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai/" 2>/dev/null || true
-              # Copy actual files (not symlinks — Docker volumes don't follow symlinks)
+              sudo mkdir -p "$CERT_DIR"
+              sudo mkdir -p "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai"
+              sudo cp /etc/letsencrypt/archive/dent.xyler.ai/* "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai/" 2>/dev/null || true
               for f in cert chain fullchain privkey; do
                 if [ -f "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" ]; then
-                  cp -L "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" "$CERT_DIR/${f}.pem"
+                  sudo cp -L "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" "$CERT_DIR/${f}.pem"
                 fi
               done
+              sudo chown -R "$(whoami):$(whoami)" "$DEPLOY_DIR/infra/certbot/" 2>/dev/null || true
             fi
 
             # ── Database backup ───────────────────────────────────
