@@ -51,7 +51,7 @@ export default function RootLayout({
   return (
     <html lang="hr" suppressHydrationWarning>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("dent_theme");var isDark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme:dark)").matches);if(isDark)d.classList.add("dark");if(document.cookie.indexOf("dent_has_auth=1")!==-1)d.dataset.auth="1"}catch(e){}})()`,
@@ -60,7 +60,6 @@ export default function RootLayout({
       </head>
       <body
         className={`${fraunces.variable} ${syne.variable} ${outfit.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground`}
-        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <AuthProvider>
           <ScrollProvider>
