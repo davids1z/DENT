@@ -39,7 +39,14 @@ echo "=== Step 5: Verify GPU ==="
 python3 -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NONE\"}')"
 
 echo "=== Step 6: Verify S3 ==="
-python3 -c "import boto3; s3=boto3.client('s3',region_name='eu-central-1'); r=s3.list_objects_v2(Bucket='$BUCKET',Prefix='train_v7/',MaxKeys=3); print(f'S3 OK: {len(r.get(\"Contents\",[]))} objects in train_v7/')"
+python3 -c "
+import boto3
+s3 = boto3.client('s3', region_name='eu-central-1')
+for prefix in ['train_v8/', 'train_v8_aug/']:
+    r = s3.list_objects_v2(Bucket='$BUCKET', Prefix=prefix, MaxKeys=3)
+    count = len(r.get('Contents', []))
+    print(f'S3: {count} objects in {prefix}')
+"
 
 echo "=== Step 7: Verify probe weights (from git clone) ==="
 ls -la models/clip_ai/probe_weights.npz models/dinov2/dinov2_probe_weights.npz 2>/dev/null || echo "WARNING: probe weights missing"
@@ -49,6 +56,7 @@ echo "=== Step 8: Start calibration ==="
 # and auto-disables modules without weights (no timeout waste)
 python3 -m scripts.fast_calibration \
     --bucket $BUCKET \
+    --s3-prefix train_v8_aug \
     --output data/labeled_dataset_w${WORKER_ID}.jsonl \
     --worker-id $WORKER_ID \
     --total-workers $TOTAL_WORKERS

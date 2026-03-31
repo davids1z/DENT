@@ -39,7 +39,7 @@ except ImportError:
                 print(f"  [{i}/{total}]", flush=True)
             yield x
 
-S3_PREFIX = "train_v7"
+S3_PREFIX = "train_v8_aug"  # Default: v8 augmented dataset
 VALID_CLASSES = {"authentic", "ai_generated", "tampered"}
 
 
@@ -98,7 +98,12 @@ async def main():
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--worker-id", type=int, default=0, help="Worker index for parallel calibration")
     parser.add_argument("--total-workers", type=int, default=1, help="Total number of parallel workers")
+    parser.add_argument("--s3-prefix", default="", help="Override S3 prefix (default: train_v8_aug)")
     args = parser.parse_args()
+
+    global S3_PREFIX
+    if args.s3_prefix:
+        S3_PREFIX = args.s3_prefix
 
     # Import pipeline directly — no HTTP
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
