@@ -182,18 +182,30 @@ async def main():
     if not has_efficientnet:
         print("WARNING: EfficientNet requires HF_TOKEN (gated model), disabling")
 
-    # Probe weights (should be in repo from git clone)
+    # Probe weights — download from S3 if not in repo
     dinov2_dir = models_dir / "dinov2"
     dinov2_dir.mkdir(parents=True, exist_ok=True)
     dinov2_probe = dinov2_dir / "dinov2_probe_weights.npz"
     if not dinov2_probe.exists():
-        print("WARNING: DINOv2 probe weights not found — DINOv2 will use heuristic fallback")
+        print("Downloading DINOv2 probe weights from S3...")
+        try:
+            s3_dl = boto3.client("s3", region_name=args.region)
+            s3_dl.download_file(args.bucket, "models/dinov2_probe_weights.npz", str(dinov2_probe))
+            print(f"DINOv2 probe saved to {dinov2_probe}")
+        except Exception as e:
+            print(f"WARNING: DINOv2 probe download failed: {e} — will use heuristic fallback")
 
     clip_dir = models_dir / "clip_ai"
     clip_dir.mkdir(parents=True, exist_ok=True)
     clip_probe = clip_dir / "probe_weights.npz"
     if not clip_probe.exists():
-        print("WARNING: CLIP probe weights not found — CLIP will use heuristic fallback")
+        print("Downloading CLIP probe weights from S3...")
+        try:
+            s3_dl = boto3.client("s3", region_name=args.region)
+            s3_dl.download_file(args.bucket, "models/clip_probe_weights.npz", str(clip_probe))
+            print(f"CLIP probe saved to {clip_probe}")
+        except Exception as e:
+            print(f"WARNING: CLIP probe download failed: {e} — will use heuristic fallback")
 
     from app.forensics.pipeline import ForensicPipeline
 
