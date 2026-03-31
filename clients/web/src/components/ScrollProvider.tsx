@@ -3,19 +3,20 @@
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import { useEffect, useState } from "react";
 
-function useIsIOS() {
-  const [isIOS, setIsIOS] = useState(false);
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+    // All mobile devices have native overlay scrollbars — no need for OverlayScrollbars
+    setIsMobile("ontouchstart" in window || navigator.maxTouchPoints > 0);
   }, []);
-  return isIOS;
+  return isMobile;
 }
 
 export function ScrollProvider({ children }: { children: React.ReactNode }) {
-  const isIOS = useIsIOS();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
-    if (isIOS) return; // iOS has native overlay scrollbars
+    if (isMobile) return;
     const style = document.createElement("style");
     style.setAttribute("data-scrollbar-theme", "");
     style.textContent = `
@@ -27,10 +28,10 @@ export function ScrollProvider({ children }: { children: React.ReactNode }) {
     `;
     document.body.appendChild(style);
     return () => { style.remove(); };
-  }, [isIOS]);
+  }, [isMobile]);
 
-  // iOS: render children directly — no wrapper div that blocks Safari chrome color detection
-  if (isIOS) {
+  // Mobile: render children directly — no wrapper div that blocks browser chrome color detection
+  if (isMobile) {
     return <>{children}</>;
   }
 

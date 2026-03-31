@@ -19,9 +19,11 @@ export function ThemeToggle() {
       document.documentElement.classList.remove("dark");
       localStorage.setItem("dent_theme", "light");
     }
-    // Update theme-color meta for browsers that support it
-    const meta = document.getElementById("theme-color-meta");
-    if (meta) meta.setAttribute("content", next ? "#0f172a" : "#ffffff");
+    // Update theme-color meta — delay to sync with CSS transition (0.2s ease)
+    setTimeout(() => {
+      const meta = document.getElementById("theme-color-meta");
+      if (meta) meta.setAttribute("content", next ? "#0f172a" : "#ffffff");
+    }, 200);
   }, [dark]);
 
   return (
