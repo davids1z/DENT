@@ -20,8 +20,16 @@ export function ThemeToggle() {
       localStorage.setItem("dent_theme", "light");
     }
     // Update theme-color meta for browsers that support it
+    const color = next ? "#0f172a" : "#ffffff";
     const meta = document.getElementById("theme-color-meta");
-    if (meta) meta.setAttribute("content", next ? "#0f172a" : "#ffffff");
+    if (meta) meta.setAttribute("content", color);
+    // Safari derives chrome color from visible element backgrounds.
+    // CSS variable changes aren't detected — set backgroundColor directly.
+    document.documentElement.style.backgroundColor = color;
+    document.body.style.backgroundColor = color;
+    // Also update the OverlayScrollbars scroll container (sits between body and content)
+    const scrollContainer = document.querySelector("[data-overlayscrollbars-viewport]")?.parentElement;
+    if (scrollContainer) scrollContainer.style.backgroundColor = color;
   }, [dark]);
 
   return (
