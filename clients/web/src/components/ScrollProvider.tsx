@@ -1,11 +1,21 @@
 "use client";
 
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+
+function useIsIOS() {
+  const [isIOS, setIsIOS] = useState(false);
+  useEffect(() => {
+    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+  }, []);
+  return isIOS;
+}
 
 export function ScrollProvider({ children }: { children: React.ReactNode }) {
+  const isIOS = useIsIOS();
+
   useEffect(() => {
-    // Inject styles at end of body to guarantee they come after all other stylesheets
+    if (isIOS) return; // iOS has native overlay scrollbars
     const style = document.createElement("style");
     style.setAttribute("data-scrollbar-theme", "");
     style.textContent = `
@@ -17,7 +27,12 @@ export function ScrollProvider({ children }: { children: React.ReactNode }) {
     `;
     document.body.appendChild(style);
     return () => { style.remove(); };
-  }, []);
+  }, [isIOS]);
+
+  // iOS: render children directly — no wrapper div that blocks Safari chrome color detection
+  if (isIOS) {
+    return <>{children}</>;
+  }
 
   return (
     <OverlayScrollbarsComponent
