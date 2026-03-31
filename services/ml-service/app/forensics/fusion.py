@@ -130,11 +130,12 @@ def fuse_scores(
     #
     # For DAMPENING: check if method-diverse detectors confirm (SAFE/CommFor/CLIP).
     # EfficientNet and DINOv2 are both CNN-family for dampening purposes.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection"}
+    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection", "clip_ai_detection"}
+    # DAMPENING independent: only truly different methods (not embedding-based).
+    # CLIP is embedding-based like DINOv2 — shares false positive bias on OOD images.
     _DAMPENING_INDEPENDENT = {
         "safe_ai_detection",              # Pixel correlation (KDD 2025)
         "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
-        "clip_ai_detection",              # Language-vision embedding
         "spai_detection",                 # FFT spectral (CVPR 2025)
     }
 
@@ -291,25 +292,33 @@ def fuse_scores(
     n_total = len(reliable_scores)
 
     # How many method-diverse INDEPENDENT detectors confirm?
-    # Threshold 0.30 catches SAFE/CommFor signals that indicate AI presence
-    # (auth images typically have SAFE < 0.25, so 0.30 is safe)
+    # STRICT independence: only count non-embedding detectors (SAFE=pixel, SPAI=FFT)
+    # CLIP is embedding-based like DINOv2 and can share false positive bias on
+    # out-of-distribution images (e.g. car damage photos not in training data).
+    _STRICT_INDEPENDENT = {"safe_ai_detection", "spai_detection", "community_forensics_detection"}
     independent_high = sum(
         1 for name in _INDEPENDENT_DETECTORS
         if reliable_scores.get(name, 0) >= 0.30
     )
+    strict_independent_high = sum(
+        1 for name in _STRICT_INDEPENDENT
+        if reliable_scores.get(name, 0) >= 0.30
+    )
 
-    # Consensus boost rules:
-    # 1. Strong consensus: 3+ reliable high AND at most 1 low → floor 0.75
-    # 2. Moderate consensus: 2+ high AND 1+ independent confirms (>=0.40) → floor 0.65
-    #    The independent confirmation is the KEY differentiator:
-    #    - Auth FP: Eff+DINOv2 high but SAFE=0.01, CommFor=0.00, CLIP=0.00 → ind=0 → NO boost
-    #    - Real AI: Eff+DINOv2 high AND CLIP=0.49 (ind confirms) → ind>=1 → boost
-    # 3. Pure CNN agreement without independent: NO boost (possible shared bias)
-    if n_high >= 3 and n_low <= 1:
+    # Consensus boost rules (v8 — requires strict independent confirmation):
+    # 1. Strong: 3+ reliable high AND 1+ strict independent (SAFE/SPAI/CommFor) → 0.75
+    # 2. Moderate: 2+ high AND 1+ independent (any) confirms → 0.65
+    # 3. Without independent confirmation: NO boost (CNN-family shared bias)
+    #
+    # Why strict: CLIP/DINOv2/EfficientNet all use vision embeddings and share
+    # false positive patterns on out-of-distribution images (car damage, medical).
+    # SAFE (pixel correlation) and SPAI (FFT spectral) use completely different
+    # methods and won't false-positive on the same images.
+    if n_high >= 3 and n_low <= 1 and strict_independent_high >= 1:
         overall = max(overall, 0.75)
-    elif n_high >= 2 and independent_high >= 1:
+    elif n_high >= 2 and independent_high >= 1 and strict_independent_high >= 1:
         overall = max(overall, 0.65)
-    # else: no boost — only CNN-family detectors agree, independents don't confirm
+    # else: no boost — CNN-family detectors agree but independents don't confirm
 
     # Swin boost ONLY if independent detector confirms
     if ai_gen and ai_gen.risk_score >= 0.60 and independent_high >= 2:
