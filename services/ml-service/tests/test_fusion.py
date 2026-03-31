@@ -176,16 +176,31 @@ def test_safe_plus_swin_no_floor():
 
 
 def test_moderate_consensus_with_independent():
-    """2 high + 1 independent confirms → floor 0.65 (typical AI image pattern)."""
+    """2 high + strict independent (CommFor) confirms → floor 0.65."""
     modules = [
         _make_module("efficientnet_ai_detection", 0.95),
         _make_module("dinov2_ai_detection", 0.90),
-        _make_module("clip_ai_detection", 0.49),   # Independent confirms (>=0.40)
+        _make_module("clip_ai_detection", 0.49),
         _make_module("safe_ai_detection", 0.04),
-        _make_module("community_forensics_detection", 0.001),
+        _make_module("community_forensics_detection", 0.35),  # Strict independent confirms
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall >= 0.65, f"2 high + CLIP independent confirm should reach 0.65, got {overall}"
+    assert overall >= 0.65, f"2 high + CommFor independent confirm should reach 0.65, got {overall}"
+
+
+def test_cnn_only_no_boost():
+    """CNN-family detectors (Eff+DINOv2+CLIP) high but no strict independent → NO boost.
+    This is the car6.jpg false positive scenario."""
+    modules = [
+        _make_module("efficientnet_ai_detection", 0.98),
+        _make_module("dinov2_ai_detection", 0.79),
+        _make_module("clip_ai_detection", 0.85),
+        _make_module("safe_ai_detection", 0.04),       # Low — no pixel artifacts
+        _make_module("community_forensics_detection", 0.01),  # Low — doesn't see AI
+        _make_module("spai_detection", 0.05),           # Low — no FFT anomaly
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.50, f"CNN-only FP (no strict independent) should be < 0.50, got {overall}"
 
 
 def test_single_detector_no_floor():
