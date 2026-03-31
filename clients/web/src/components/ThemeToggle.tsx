@@ -19,6 +19,9 @@ export function ThemeToggle() {
       document.documentElement.classList.remove("dark");
       localStorage.setItem("dent_theme", "light");
     }
+    // Update Safari status bar color
+    const meta = document.getElementById("theme-color-meta");
+    if (meta) meta.setAttribute("content", next ? "#0f172a" : "#ffffff");
   }, [dark]);
 
   return (
