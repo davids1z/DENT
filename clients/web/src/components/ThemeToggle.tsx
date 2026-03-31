@@ -19,11 +19,9 @@ export function ThemeToggle() {
       document.documentElement.classList.remove("dark");
       localStorage.setItem("dent_theme", "light");
     }
-    // Update theme-color meta — delay to sync with CSS transition (0.2s ease)
-    setTimeout(() => {
-      const meta = document.getElementById("theme-color-meta");
-      if (meta) meta.setAttribute("content", next ? "#0f172a" : "#ffffff");
-    }, 200);
+    // Don't update theme-color meta on toggle — Safari derives chrome color
+    // from body/nav background which transitions smoothly via CSS.
+    // Meta tag is only for initial page load (set by inline script in layout.tsx).
   }, [dark]);
 
   return (
