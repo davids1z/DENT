@@ -166,7 +166,12 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
             )
 
         elapsed = int((time.monotonic() - start) * 1000)
-        return self._make_result(findings, elapsed)
+        result = self._make_result(findings, elapsed)
+        # Raw score passthrough for fusion — _make_result derives risk_score
+        # from findings which have scaled/capped values, losing signal.
+        result.risk_score = round(score, 4)
+        result.risk_score100 = round(score * 100)
+        return result
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)

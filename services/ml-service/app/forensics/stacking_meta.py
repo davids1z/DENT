@@ -229,17 +229,47 @@ class StackingMetaLearner:
         # Try GBM (joblib pickle) first
         gbm_bin_path = os.path.join(base_dir, "gbm_binary.joblib")
         gbm_multi_path = os.path.join(base_dir, "gbm_multi.joblib")
+        gbm_meta_path = os.path.join(base_dir, "gbm_meta.json")
         if os.path.isfile(gbm_bin_path) and os.path.isfile(gbm_multi_path):
             try:
-                import joblib
-                self._gbm_binary = joblib.load(gbm_bin_path)
-                self._gbm_multi = joblib.load(gbm_multi_path)
-                self._loaded = True
-                logger.info(
-                    "Loaded GBM meta-learner from %s (binary + 3-class)",
-                    base_dir,
-                )
-                return
+                # Validate module order if metadata sidecar exists
+                if os.path.isfile(gbm_meta_path):
+                    import json
+                    with open(gbm_meta_path) as f:
+                        gbm_meta = json.load(f)
+                    saved_order = gbm_meta.get("module_order", [])
+                    if saved_order and saved_order != MODULE_ORDER:
+                        logger.warning(
+                            "GBM module_order MISMATCH: trained on %d modules, "
+                            "current code has %d. Features are misaligned — "
+                            "predictions will be wrong. Falling back to .npz.",
+                            len(saved_order), len(MODULE_ORDER),
+                        )
+                        # Fall through to LogReg .npz which has its own validation
+                    else:
+                        import joblib
+                        self._gbm_binary = joblib.load(gbm_bin_path)
+                        self._gbm_multi = joblib.load(gbm_multi_path)
+                        self._loaded = True
+                        logger.info(
+                            "Loaded GBM meta-learner from %s "
+                            "(binary + 3-class, %d features, module_order OK)",
+                            base_dir, gbm_meta.get("n_features", N_FEATURES),
+                        )
+                        return
+                else:
+                    # No metadata — load but warn
+                    import joblib
+                    self._gbm_binary = joblib.load(gbm_bin_path)
+                    self._gbm_multi = joblib.load(gbm_multi_path)
+                    self._loaded = True
+                    logger.warning(
+                        "Loaded GBM from %s WITHOUT module_order validation "
+                        "(no gbm_meta.json). Re-train with updated script to "
+                        "generate metadata sidecar.",
+                        base_dir,
+                    )
+                    return
             except Exception as exc:
                 logger.warning("Failed to load GBM models: %s, trying .npz", exc)
 

@@ -65,39 +65,52 @@ class ModuleDamageThreshold:
 class FusionThresholds:
     """Thresholds used in fuse_scores() for override rules."""
 
-    # Single strong module
-    single_strong_module: float = 0.70
-    single_strong_floor: float = 0.50
-    # Multiple high-risk modules
-    multi_high_threshold: float = 0.50
-    multi_high_2_floor: float = 0.50
-    multi_high_3_floor: float = 0.60
-    # AI generation detection direct
-    aigen_direct: float = 0.70
-    aigen_factor: float = 0.85
-    # AI cross-validation
-    ai_cross_threshold: float = 0.50
-    ai_cross_4_floor: float = 0.92
-    ai_cross_3_floor: float = 0.82
-    ai_cross_2_factor: float = 0.90
-    # PRNU + AI
-    prnu_aigen_threshold: float = 0.50
-    prnu_aigen_floor: float = 0.88
-    prnu_solo_threshold: float = 0.60
-    prnu_solo_factor: float = 0.75
-    # Metadata + AI
-    meta_aigen_threshold: float = 0.45
-    meta_aigen_floor: float = 0.85
-    meta_software_threshold: float = 0.25
-    # Spectral + AI
-    spectral_aigen_threshold: float = 0.50
-    spectral_min: float = 0.35
-    spectral_solo_threshold: float = 0.60
-    spectral_solo_factor: float = 0.65
-    # Text AI
-    text_ai_threshold: float = 0.50
-    text_ai_factor: float = 0.90
-    # Risk level boundaries (fusion.py _risk_level)
+    # ── CNN dampening ──────────────────────────────────────────────
+    # When independent methods (SAFE/CommFor/SPAI) don't confirm CNN-family
+    # detectors (DINOv2/EfficientNet/bfree/CLIP), dampen CNN contributions.
+    # Floor: minimum dampening factor (0.50 = CNN contributes at least 50%).
+    # Threshold: independent score below which dampening activates.
+    cnn_dampening_floor: float = 0.50
+    cnn_dampening_threshold: float = 0.25
+
+    # ── Tampering thresholds ───────────────────────────────────────
+    deep_mod_min: float = 0.55
+    mesorch_min: float = 0.40
+    ela_min: float = 0.50
+    ela_scale: float = 0.80
+    single_tamp_min: float = 0.50
+    single_tamp_scale: float = 0.85
+
+    # ── Document signals ───────────────────────────────────────────
+    text_ai_min: float = 0.50
+    content_val_min: float = 0.40
+
+    # ── Consensus boost ────────────────────────────────────────────
+    # detector_high: score threshold for a detector to count as "high"
+    # detector_low: score below which a detector counts as "low" (disagreeing)
+    # independent_confirm: score for an independent detector to confirm
+    detector_high: float = 0.45
+    detector_low: float = 0.15
+    independent_confirm: float = 0.30
+    # Strong boost: 3+ reliable high AND 1+ independent (SAFE/CommFor/SPAI)
+    boost_strong_min_high: int = 3
+    boost_strong_floor: float = 0.75
+    # Moderate boost: 2+ high AND 1+ independent (SAFE/CommFor/SPAI)
+    boost_moderate_min_high: int = 2
+    boost_moderate_floor: float = 0.65
+    # Swin (ai_gen) boost: requires 2+ independent confirmation
+    swin_min: float = 0.60
+
+    # ── Context modifiers ──────────────────────────────────────────
+    c2pa_factor: float = 0.50
+    ai_metadata_floor: float = 0.90
+
+    # ── Verdict bar reconciliation ─────────────────────────────────
+    verdict_low_threshold: float = 0.15
+    verdict_mid_threshold: float = 0.30
+    verdict_high_threshold: float = 0.65
+
+    # ── Risk level boundaries (fusion.py _risk_level) ──────────────
     risk_critical: float = 0.85
     risk_high: float = 0.40
     risk_medium: float = 0.15

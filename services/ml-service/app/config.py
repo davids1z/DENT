@@ -48,11 +48,11 @@ class Settings(BaseSettings):
     forensics_dinov2_ai_model: str = "facebook/dinov2-large"
 
     # SPAI spectral AI detection (CVPR 2025, FFT + ViT, compression-invariant)
-    forensics_spai_enabled: bool = False
+    forensics_spai_enabled: bool = True
     forensics_spai_model_dir: str = "/app/models/spai"
 
     # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators)
-    forensics_bfree_enabled: bool = False
+    forensics_bfree_enabled: bool = True
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
     # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
@@ -91,8 +91,8 @@ class Settings(BaseSettings):
     # GHOST calibration file (JSON with calibrated thresholds)
     forensics_calibration_file: str = ""
 
-    # Stacking meta-learner (replaces hand-crafted fusion rules when trained)
-    forensics_stacking_meta_enabled: bool = False
+    # Stacking meta-learner (provides verdict probability bars when trained)
+    forensics_stacking_meta_enabled: bool = True
     forensics_stacking_meta_weights: str = ""
 
     # Per-module timeout (seconds)

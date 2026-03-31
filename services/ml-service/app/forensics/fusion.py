@@ -1,12 +1,19 @@
 """
 Score fusion — combines forensic module results into a single risk score.
 
-Architecture (v2): Core-only fusion with context modifiers.
+Architecture (v3): Core-only fusion with configurable thresholds.
 
-Only 3 CORE AI detectors determine the AI generation score.
+Only 7 CORE AI detectors determine the AI generation score.
 Tampering is scored separately from AI generation.
 Context signals (metadata, PRNU) modify confidence but never decide alone.
 Support modules (spectral, optical, semantic) are informational only.
+
+Changes from v2:
+  - Removed SAFE isolation dampening (SAFE is pixel-correlation, independent)
+  - Softened CNN dampening floor (0.30 → 0.50)
+  - Removed CLIP from independent detectors (shares CNN embedding bias)
+  - Two consensus boost tiers: strong (3+, 0.75) and moderate (2+, 0.65)
+  - All thresholds loaded from FusionThresholds registry (configurable)
 """
 
 import logging
@@ -53,12 +60,6 @@ _AI_DETECTOR_MODULES = frozenset({
 })
 
 # Core AI detection modules — only these determine AI generation score
-# Retrained on diverse dataset (3799 images, 9 generators + RAISE/CarDD auth)
-# DINOv2: 0% FP on diverse auth (best discriminator, 0.55 separation)
-# SAFE: KDD 2025, JPEG-dampened (×0.70 for compression artifacts)
-# CommFor: CVPR 2025, 4803 generators
-# CLIP: retrained probe F1=0.746
-# Removed: NPR (0.023 separation = noise), VAE (disabled)
 _CORE_AI_WEIGHTS = {
     "safe_ai_detection": 0.25,
     "dinov2_ai_detection": 0.20,
@@ -68,6 +69,46 @@ _CORE_AI_WEIGHTS = {
     "bfree_detection": 0.05,             # DINOv2-family (bias-free)
     "ai_generation_detection": 0.05,
 }
+
+# CNN-family: embedding/transformer-based detectors that share OOD bias.
+# When these fire high on out-of-distribution images (car damage, medical)
+# but independent methods stay low, dampen their contribution.
+_CNN_FAMILY_DETECTORS = frozenset({
+    "dinov2_ai_detection",
+    "efficientnet_ai_detection",
+    "bfree_detection",
+    "clip_ai_detection",
+})
+
+# DAMPENING independent: fundamentally different methods (not embedding-based).
+# These use pixel/frequency/multi-generator analysis — won't share CNN false
+# positive patterns on OOD images.
+_DAMPENING_INDEPENDENT = frozenset({
+    "safe_ai_detection",              # Pixel correlation (KDD 2025)
+    "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
+    "spai_detection",                 # FFT spectral (CVPR 2025)
+})
+
+# Reliable AI detectors for consensus checking
+_RELIABLE_AI_DETECTORS = frozenset({
+    "safe_ai_detection",
+    "dinov2_ai_detection",
+    "community_forensics_detection",
+    "efficientnet_ai_detection",
+    "clip_ai_detection",
+    "spai_detection",
+    "bfree_detection",
+})
+
+# Independent detectors for consensus: fundamentally different methods that
+# won't share CNN-family false positive patterns on OOD images.
+# CLIP is NOT included — it's embedding-based like DINOv2 and shares the same
+# false positive bias on out-of-distribution images (car damage, medical).
+_INDEPENDENT_DETECTORS = frozenset({
+    "safe_ai_detection",              # Pixel correlation (KDD 2025)
+    "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
+    "spai_detection",                 # FFT spectral (CVPR 2025)
+})
 
 
 def _risk_level(score: float) -> RiskLevel:
@@ -100,6 +141,9 @@ def fuse_scores(
     if not active:
         return 0.0, 0, RiskLevel.LOW, None
 
+    reg = get_registry()
+    ft = reg.fusion
+
     # ── Stacking meta-learner (replaces everything when trained) ──────
     try:
         from ..config import settings as _settings
@@ -112,32 +156,22 @@ def fuse_scores(
 
     # Meta-learner provides ONLY verdict_probabilities (3-class breakdown
     # for the UI bars). The overall risk score is ALWAYS computed by the
-    # rule-based fusion below — rules are transparent, debuggable, and
-    # don't produce false positives like the meta-learner did.
+    # rule-based fusion below — rules are transparent and debuggable.
     if meta_enabled:
         meta_learner = get_meta_learner(_settings.forensics_stacking_meta_weights)
         verdict_probs = meta_learner.predict_proba(modules)
 
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
     #
-    # Isolation dampening: DINOv2 and EfficientNet share a CNN/transformer
-    # architecture family. When they fire high but SAFE, CommFor, and CLIP
-    # (independent architectures) all stay low, it's likely a shared bias
-    # false positive. Dampen CNN-family contributions when independents
-    # don't confirm.
-    # DINOv2 uses our trained probe (potentially biased by training data).
-    # EfficientNet uses pre-trained HuggingFace weights (not our probe).
+    # CNN dampening: DINOv2, EfficientNet, bfree, and CLIP share an
+    # embedding-based architecture. When they fire high but SAFE, CommFor,
+    # and SPAI (fundamentally different methods) stay low, it's likely a
+    # shared bias false positive. Dampen CNN-family contributions.
     #
-    # For DAMPENING: check if method-diverse detectors confirm (SAFE/CommFor/CLIP).
-    # EfficientNet and DINOv2 are both CNN-family for dampening purposes.
-    _CNN_FAMILY_DETECTORS = {"dinov2_ai_detection", "efficientnet_ai_detection", "bfree_detection", "clip_ai_detection"}
-    # DAMPENING independent: only truly different methods (not embedding-based).
-    # CLIP is embedding-based like DINOv2 — shares false positive bias on OOD images.
-    _DAMPENING_INDEPENDENT = {
-        "safe_ai_detection",              # Pixel correlation (KDD 2025)
-        "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
-        "spai_detection",                 # FFT spectral (CVPR 2025)
-    }
+    # v3: Raised floor from 0.30 to 0.50 — CNN detectors always contribute
+    # at least 50% of their signal. Old floor was too aggressive and caused
+    # false negatives on real AI images where independent detectors were
+    # borderline (e.g., SAFE=0.20, CommFor=0.15).
 
     max_independent_score = max(
         (m.risk_score for m in active
@@ -145,27 +179,20 @@ def fuse_scores(
         default=0.0,
     )
 
-    # CNN dampening factor: 1.0 (full) when SAFE/CommFor/CLIP confirm (>= 0.30),
-    # scales down linearly to 0.30 when no method-diverse signal at all.
+    # CNN dampening factor: 1.0 when independents confirm (>= threshold),
+    # scales linearly down to floor when no independent signal.
     cnn_dampening = 1.0
-    if max_independent_score < 0.30:
-        cnn_dampening = 0.30 + 0.70 * (max_independent_score / 0.30)
+    if max_independent_score < ft.cnn_dampening_threshold:
+        cnn_dampening = ft.cnn_dampening_floor + (1.0 - ft.cnn_dampening_floor) * (
+            max_independent_score / ft.cnn_dampening_threshold
+        )
 
-    # SAFE isolation check: when SAFE fires alone (CommFor+CLIP+DINOv2+Eff all low),
-    # it's likely a JPEG artifact FP. Dampen SAFE's contribution.
-    safe_mod = _get_module(active, "safe_ai_detection")
-    safe_score_raw = safe_mod.risk_score if safe_mod and not safe_mod.error else 0.0
-    other_core_max = max(
-        (m.risk_score for m in active
-         if m.module_name in _CORE_AI_WEIGHTS
-         and m.module_name != "safe_ai_detection"
-         and not m.error),
-        default=0.0,
-    )
-    safe_dampening = 1.0
-    if safe_score_raw > 0.20 and other_core_max < 0.20:
-        # SAFE alone, no corroboration → dampen
-        safe_dampening = 0.50
+    # v3: Removed SAFE isolation dampening. SAFE uses pixel correlation
+    # analysis (KDD 2025) — a fundamentally different method from CNN/ViT
+    # detectors. When SAFE fires alone at 0.80, that's a legitimate signal
+    # from an independent method, not a false positive.
+    # Old behavior dampened SAFE to 0.50 when other core modules < 0.20,
+    # causing false negatives on AI images that only SAFE could detect.
 
     core_weighted = 0.0
     core_total_w = 0.0
@@ -175,20 +202,15 @@ def fuse_scores(
             score = m.risk_score
             if m.module_name in _CNN_FAMILY_DETECTORS:
                 score *= cnn_dampening
-            if m.module_name == "safe_ai_detection":
-                score *= safe_dampening
             core_weighted += score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
     # ── Step 2: Context modifiers from metadata + PRNU ────────────────
     meta = _get_module(active, "metadata_analysis")
-    prnu = _get_module(active, "prnu_detection")
 
-    # PRNU disabled as context signal — 90% of AI images falsely get
-    # PRNU_AUTHENTIC_SENSOR due to crude 5x5 denoiser detecting image
-    # structure instead of sensor noise. Needs wavelet denoiser rewrite.
-    has_authentic_sensor = False
+    # PRNU disabled as context signal — WebP/JPEG compression destroys
+    # PRNU signal (Cohen's d = 0.011, no separation).
     has_c2pa_valid = meta is not None and any(
         f.code == "META_C2PA_VALID" for f in meta.findings
     )
@@ -200,144 +222,81 @@ def fuse_scores(
         f.code == "META_FILENAME_AI_GENERATOR" for f in meta.findings
     )
 
-    if has_authentic_sensor or has_c2pa_valid:
-        core_score *= 0.50  # Strong camera/provenance evidence halves AI risk
+    if has_c2pa_valid:
+        core_score *= ft.c2pa_factor  # Strong camera/provenance evidence
     if has_ai_tool or has_ai_filename:
-        core_score = max(core_score, 0.90)  # Definitive AI metadata signal
+        core_score = max(core_score, ft.ai_metadata_floor)  # Definitive AI signal
 
     ai_combined = core_score
 
     # ── Step 3: Tampering score (separate from AI generation) ─────────
-    # Each tampering detector needs a minimum threshold before contributing.
-    # TruFor and ELA/DCT give 0.40-0.65 on authentic JPEG (false positive),
-    # so we require higher confidence before calling it tampering.
     deep_mod = _get_module(active, "deep_modification_detection")
     mod_det = _get_module(active, "modification_detection")
     mesorch = _get_module(active, "mesorch_detection")
 
-    deep_mod_score = deep_mod.risk_score if deep_mod and deep_mod.risk_score >= 0.55 else 0.0
-    mesorch_score = mesorch.risk_score if mesorch and mesorch.risk_score >= 0.40 else 0.0
-    # ELA/modification at 0.50+ indicates real tampering (lowered from 0.70
-    # because with CNN disabled, ELA is the only other tampering signal).
-    # Scale by 0.80 to prevent minor ELA anomalies from dominating.
-    mod_det_score = (mod_det.risk_score * 0.80) if mod_det and mod_det.risk_score >= 0.50 else 0.0
+    deep_mod_score = deep_mod.risk_score if deep_mod and deep_mod.risk_score >= ft.deep_mod_min else 0.0
+    mesorch_score = mesorch.risk_score if mesorch and mesorch.risk_score >= ft.mesorch_min else 0.0
+    mod_det_score = (mod_det.risk_score * ft.ela_scale) if mod_det and mod_det.risk_score >= ft.ela_min else 0.0
 
-    # Require at least 2 tampering signals to flag as tampered.
-    # With CNN disabled, Mesorch is often the only tampering detector.
-    # A single Mesorch/mod_det signal >= 0.50 is reliable enough to flag.
     tamp_signals = [s for s in [deep_mod_score, mesorch_score, mod_det_score] if s > 0]
     if len(tamp_signals) >= 2:
         tampering = max(tamp_signals)
-    elif len(tamp_signals) == 1 and max(tamp_signals) >= 0.50:
-        # Single strong signal (lowered from 0.65 because CNN is disabled
-        # and Mesorch alone at 0.50+ is a reliable tampering indicator)
-        tampering = max(tamp_signals) * 0.85
+    elif len(tamp_signals) == 1 and max(tamp_signals) >= ft.single_tamp_min:
+        tampering = max(tamp_signals) * ft.single_tamp_scale
     else:
         tampering = 0.0
 
     # ── Step 4: Document signals ──────────────────────────────────────
     text_ai = _get_module(active, "text_ai_detection")
-    text_ai_score = text_ai.risk_score if text_ai and text_ai.risk_score >= 0.50 else 0.0
+    text_ai_score = text_ai.risk_score if text_ai and text_ai.risk_score >= ft.text_ai_min else 0.0
     content_val = _get_module(active, "content_validation")
-    content_score = content_val.risk_score if content_val and content_val.risk_score >= 0.40 else 0.0
+    content_score = content_val.risk_score if content_val and content_val.risk_score >= ft.content_val_min else 0.0
 
     # ── Step 5: Final risk = max of all channels ──────────────────────
     overall = max(ai_combined, tampering, text_ai_score, content_score)
 
-    # ── Step 6: Cross-validation AI boost (consensus with diversity) ────
+    # ── Step 6: Cross-validation AI boost (consensus with diversity) ──
     #
-    # Problem: EfficientNet + DINOv2 share CNN bias — both fire on certain
-    # authentic JPEGs (e.g., 25220902d9b0.jpg: Eff=1.00, DINOv2=0.90, but
-    # SAFE=0.01, CommFor=0.001, CLIP=0.00). That's DISAGREEMENT, not consensus.
+    # Problem: EfficientNet + DINOv2 + CLIP share embedding-based architecture.
+    # When they fire high on OOD images (car damage, medical) but SAFE, CommFor,
+    # SPAI (fundamentally different methods) stay low, it's CNN-family bias.
     #
-    # Solution: require consensus WITH diversity. When detectors disagree
-    # strongly (some HIGH, others near ZERO), that's a red flag for detector
-    # bias, not evidence of AI generation.
-    #
-    # Architecture families:
-    #   CNN-family: EfficientNet, DINOv2 (both feed-forward vision transformers/CNNs)
-    #   Independent: SAFE (pixel correlations), CommFor (4803 generators), CLIP (language-vision)
-    _RELIABLE_AI_DETECTORS = {
-        "safe_ai_detection",
-        "dinov2_ai_detection",
-        "community_forensics_detection",
-        "efficientnet_ai_detection",
-        "clip_ai_detection",
-        "spai_detection",
-        "bfree_detection",
-    }
-    # For CONSENSUS: method-diverse detectors that must confirm.
-    # EfficientNet is CNN-architecture (like DINOv2) — when both fire high
-    # but SAFE/CommFor/CLIP don't, that's CNN-family bias, not real AI.
-    # Keep consensus independent = SAFE/CommFor/CLIP only.
-    _INDEPENDENT_DETECTORS = {
-        "safe_ai_detection",           # Pixel correlation (KDD 2025)
-        "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
-        "clip_ai_detection",           # Language-vision embedding
-        "spai_detection",              # FFT spectral (CVPR 2025)
-    }
+    # Solution: require consensus WITH diversity — at least 1 independent
+    # detector (SAFE/CommFor/SPAI) must confirm before boosting.
+    #   Strong:   3+ reliable high AND 1+ independent confirms → 0.75
+    #   Moderate: 2+ high AND 1+ independent confirms → 0.65
 
     ai_gen = _get_module(active, "ai_generation_detection")
 
-    # Collect scores from reliable detectors
     reliable_scores = {}
     for m in active:
         if m.module_name in _RELIABLE_AI_DETECTORS and not m.error:
             reliable_scores[m.module_name] = m.risk_score
 
-    # CLIP consistently gives 0.48-0.49 on AI images (just below 0.50).
-    # Using 0.45 threshold captures these borderline-but-real AI signals.
-    n_high = sum(1 for s in reliable_scores.values() if s >= 0.45)
-    n_low = sum(1 for s in reliable_scores.values() if s < 0.15)
-    n_total = len(reliable_scores)
+    n_high = sum(1 for s in reliable_scores.values() if s >= ft.detector_high)
+    n_low = sum(1 for s in reliable_scores.values() if s < ft.detector_low)
 
-    # How many method-diverse INDEPENDENT detectors confirm?
-    # STRICT independence: only count non-embedding detectors (SAFE=pixel, SPAI=FFT)
-    # CLIP is embedding-based like DINOv2 and can share false positive bias on
-    # out-of-distribution images (e.g. car damage photos not in training data).
-    _STRICT_INDEPENDENT = {"safe_ai_detection", "spai_detection", "community_forensics_detection"}
-    independent_high = sum(
+    # Count independent detectors (SAFE/CommFor/SPAI) that confirm AI signal
+    independent_confirms = sum(
         1 for name in _INDEPENDENT_DETECTORS
-        if reliable_scores.get(name, 0) >= 0.30
-    )
-    strict_independent_high = sum(
-        1 for name in _STRICT_INDEPENDENT
-        if reliable_scores.get(name, 0) >= 0.30
+        if reliable_scores.get(name, 0) >= ft.independent_confirm
     )
 
-    # Consensus boost rules (v8 — requires strict independent confirmation):
-    # 1. Strong: 3+ reliable high AND 1+ strict independent (SAFE/SPAI/CommFor) → 0.75
-    # 2. Moderate: 2+ high AND 1+ independent (any) confirms → 0.65
-    # 3. Without independent confirmation: NO boost (CNN-family shared bias)
-    #
-    # Why strict: CLIP/DINOv2/EfficientNet all use vision embeddings and share
-    # false positive patterns on out-of-distribution images (car damage, medical).
-    # SAFE (pixel correlation) and SPAI (FFT spectral) use completely different
-    # methods and won't false-positive on the same images.
-    if n_high >= 3 and n_low <= 1 and strict_independent_high >= 1:
-        overall = max(overall, 0.75)
-    elif n_high >= 2 and independent_high >= 1 and strict_independent_high >= 1:
-        overall = max(overall, 0.65)
-    # else: no boost — CNN-family detectors agree but independents don't confirm
+    # Apply consensus boost (strongest matching tier wins)
+    if n_high >= ft.boost_strong_min_high and n_low <= 1 and independent_confirms >= 1:
+        overall = max(overall, ft.boost_strong_floor)
+    elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 1:
+        overall = max(overall, ft.boost_moderate_floor)
 
-    # Swin boost ONLY if independent detector confirms
-    if ai_gen and ai_gen.risk_score >= 0.60 and independent_high >= 2:
+    # Swin (ai_generation_detection) boost ONLY if independent detectors confirm
+    if ai_gen and ai_gen.risk_score >= ft.swin_min and independent_confirms >= 2:
         overall = max(overall, ai_gen.risk_score)
 
     overall = max(0.0, min(1.0, overall))
 
     # ── Reconcile meta-learner verdict bars with rule-based score ────
-    # Meta-learner verdict_probabilities can contradict the rule-based
-    # overall score. When they diverge too much, override verdict bars
-    # to match the rule-based decision.
     if verdict_probs is not None:
-        # Low risk (< 0.15) → verdict bars MUST strongly favor authentic.
-        # The meta-learner was trained on calibration data with different
-        # module behavior; noisy modules inflate its non-authentic scores.
-        if overall < 0.15:
-            # Low risk → verdict bars MUST strongly favor authentic.
-            # Meta-learner trained on different module behavior inflates
-            # non-authentic scores for noisy low-signal inputs.
+        if overall < ft.verdict_low_threshold:
             verdict_probs = {
                 "authentic": round(max(0.85, 1.0 - overall * 2), 4),
                 "ai_generated": round(overall * 0.4, 4),
@@ -347,22 +306,18 @@ def fuse_scores(
             meta_max_class = max(verdict_probs, key=verdict_probs.get)
             meta_max_prob = verdict_probs[meta_max_class]
 
-            # If rule-based says low-medium risk but meta says high AI/tampered
-            if overall < 0.30 and meta_max_class != "authentic" and meta_max_prob > 0.50:
+            if overall < ft.verdict_mid_threshold and meta_max_class != "authentic" and meta_max_prob > 0.50:
                 verdict_probs = {
                     "authentic": max(0.60, 1.0 - overall),
                     "ai_generated": overall * 0.6,
                     "tampered": overall * 0.4,
                 }
-            # If rule-based says high risk, ALWAYS override verdict bars
-            # to match. Meta-learner trained on old data gives wrong bars.
-            elif overall >= 0.65:
+            elif overall >= ft.verdict_high_threshold:
                 verdict_probs = {
                     "authentic": round(max(0.02, 1.0 - overall), 4),
                     "ai_generated": round(ai_combined / max(overall, 0.01) * overall * 0.7, 4),
                     "tampered": round(tampering / max(overall, 0.01) * overall * 0.7, 4),
                 }
-                # Ensure AI + tampered sum to ~(1 - authentic)
                 total_bad = verdict_probs["ai_generated"] + verdict_probs["tampered"]
                 if total_bad < 0.01:
                     verdict_probs["ai_generated"] = round(overall * 0.7, 4)
