@@ -19,9 +19,14 @@ export function ThemeToggle() {
       document.documentElement.classList.remove("dark");
       localStorage.setItem("dent_theme", "light");
     }
-    // Update Safari status bar color
-    const meta = document.getElementById("theme-color-meta");
-    if (meta) meta.setAttribute("content", next ? "#0f172a" : "#ffffff");
+    // Update Safari status bar color — must remove/recreate for Safari to pick it up
+    const color = next ? "#0f172a" : "#ffffff";
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+    const fresh = document.createElement("meta");
+    fresh.name = "theme-color";
+    fresh.id = "theme-color-meta";
+    fresh.content = color;
+    document.head.appendChild(fresh);
   }, [dark]);
 
   return (

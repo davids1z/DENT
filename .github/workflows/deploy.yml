@@ -138,9 +138,14 @@ jobs:
             done
 
             ML_OK=false
-            if docker exec dent-ml-service-1 python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; then
-              ML_OK=true
-            fi
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if docker exec dent-ml-service-1 python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; then
+                ML_OK=true
+                break
+              fi
+              echo "ML health check attempt $i failed, retrying in 15s..."
+              sleep 15
+            done
 
             echo "API: $API_OK, ML: $ML_OK"
             if [ "$API_OK" = true ] && [ "$ML_OK" = true ]; then

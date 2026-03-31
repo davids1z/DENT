@@ -129,6 +129,8 @@ th, select {
 /* ========== SCROLLBAR (OverlayScrollbars — floats over content, no gutter) ========== */
 html, body {
   scrollbar-width: none;
+  background: var(--background);
+  transition: background-color 0.2s ease;
 }
 html::-webkit-scrollbar,
 body::-webkit-scrollbar {
