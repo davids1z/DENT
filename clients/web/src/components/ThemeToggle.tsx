@@ -19,20 +19,23 @@ export function ThemeToggle() {
       document.documentElement.classList.remove("dark");
       localStorage.setItem("dent_theme", "light");
     }
-    // Update browser chrome color for Safari iOS
+    // iOS Safari derives chrome color from body/fixed elements on page load.
+    // Force re-evaluation: update color-scheme, recreate meta, and micro-scroll.
     if (next) {
       document.documentElement.style.colorScheme = "dark";
     } else {
       document.documentElement.style.removeProperty("color-scheme");
     }
-    // Remove existing theme-color metas and recreate after a frame (Safari needs this)
-    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
     const color = next ? "#0f172a" : "#ffffff";
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = color;
+    document.head.appendChild(meta);
+    // Force Safari to re-sample chrome color by triggering a scroll event
     requestAnimationFrame(() => {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
+      window.scrollBy(0, 1);
+      requestAnimationFrame(() => window.scrollBy(0, -1));
     });
   }, [dark]);
 
