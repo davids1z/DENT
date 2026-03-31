@@ -132,14 +132,23 @@ def extract_features(modules: list[ModuleResult]) -> np.ndarray:
 
 
 class StackingMetaLearner:
-    """Stacking meta-learner with lazy weight loading."""
+    """Stacking meta-learner with lazy weight loading.
+
+    Supports two model types:
+      1. GradientBoosting (joblib pickle) — preferred, better F1
+      2. LogisticRegression (numpy .npz) — fallback, numpy-only
+    """
 
     def __init__(self, weights_path: str = ""):
         self._weights_path = weights_path
+        # LogReg weights (fallback)
         self._weights: np.ndarray | None = None
         self._bias: float = 0.0
-        self._weights_multi: np.ndarray | None = None  # (147, 3) multinomial
-        self._bias_multi: np.ndarray | None = None      # (3,)
+        self._weights_multi: np.ndarray | None = None
+        self._bias_multi: np.ndarray | None = None
+        # GBM models (preferred)
+        self._gbm_binary = None
+        self._gbm_multi = None
         self._loaded = False
         self._load_attempted = False
 
@@ -155,15 +164,19 @@ class StackingMetaLearner:
             return None
 
         features = extract_features(modules)
+
+        # GBM: predict_proba gives [p_authentic, p_manipulated]
+        if self._gbm_binary is not None:
+            proba = self._gbm_binary.predict_proba(features.reshape(1, -1))[0]
+            return float(proba[1])  # p(manipulated)
+
+        # LogReg fallback
         logit = float(features @ self._weights + self._bias)
         score = 1.0 / (1.0 + np.exp(-np.clip(logit, -500, 500)))
         return score
 
     def predict_proba(self, modules: list[ModuleResult]) -> dict[str, float] | None:
         """Predict 3-class probabilities (authentic, ai_generated, tampered).
-
-        Uses multinomial weights (weights_multi) if available, otherwise
-        derives probabilities from binary score.
 
         Returns dict like {"authentic": 0.65, "ai_generated": 0.25, "tampered": 0.10}
         or None if no weights loaded.
@@ -176,10 +189,18 @@ class StackingMetaLearner:
 
         features = extract_features(modules)
 
-        # Try multinomial weights first (3-class softmax)
+        # GBM: predict_proba gives [p_auth, p_ai, p_tamp]
+        if self._gbm_multi is not None:
+            proba = self._gbm_multi.predict_proba(features.reshape(1, -1))[0]
+            return {
+                "authentic": round(float(proba[0]), 4),
+                "ai_generated": round(float(proba[1]), 4),
+                "tampered": round(float(proba[2]), 4),
+            }
+
+        # LogReg: multinomial weights
         if self._weights_multi is not None and self._bias_multi is not None:
-            logits = features @ self._weights_multi + self._bias_multi  # (3,)
-            # Numerically stable softmax
+            logits = features @ self._weights_multi + self._bias_multi
             logits_shifted = logits - logits.max()
             exp_logits = np.exp(logits_shifted)
             probs = exp_logits / exp_logits.sum()
@@ -200,16 +221,36 @@ class StackingMetaLearner:
         }
 
     def _try_load(self) -> None:
-        """Attempt to load weights from .npz file."""
+        """Attempt to load models. Tries GBM first, then LogReg .npz."""
         self._load_attempted = True
 
-        path = self._resolve_path()
-        if not path or not os.path.isfile(path):
-            logger.debug("No stacking meta weights at %s", path)
+        base_dir = self._resolve_dir()
+
+        # Try GBM (joblib pickle) first
+        gbm_bin_path = os.path.join(base_dir, "gbm_binary.joblib")
+        gbm_multi_path = os.path.join(base_dir, "gbm_multi.joblib")
+        if os.path.isfile(gbm_bin_path) and os.path.isfile(gbm_multi_path):
+            try:
+                import joblib
+                self._gbm_binary = joblib.load(gbm_bin_path)
+                self._gbm_multi = joblib.load(gbm_multi_path)
+                self._loaded = True
+                logger.info(
+                    "Loaded GBM meta-learner from %s (binary + 3-class)",
+                    base_dir,
+                )
+                return
+            except Exception as exc:
+                logger.warning("Failed to load GBM models: %s, trying .npz", exc)
+
+        # Fall back to LogReg .npz
+        npz_path = self._resolve_path()
+        if not npz_path or not os.path.isfile(npz_path):
+            logger.debug("No stacking meta weights at %s", npz_path)
             return
 
         try:
-            data = np.load(path, allow_pickle=True)
+            data = np.load(npz_path, allow_pickle=True)
         except Exception as exc:
             logger.warning("Failed to load stacking meta weights: %s", exc)
             return
@@ -255,26 +296,28 @@ class StackingMetaLearner:
 
         self._loaded = True
         logger.info(
-            "Loaded stacking meta weights from %s (%d features)",
-            path,
+            "Loaded LogReg stacking meta from %s (%d features)",
+            npz_path,
             len(self._weights),
         )
 
+    def _resolve_dir(self) -> str:
+        """Resolve the model directory."""
+        cache_dir = os.environ.get(
+            "DENT_FORENSICS_MODEL_CACHE_DIR", "/app/models"
+        )
+        return os.path.join(cache_dir, "stacking_meta")
+
     def _resolve_path(self) -> str:
-        """Resolve the weights file path."""
+        """Resolve the .npz weights file path."""
         if self._weights_path:
             return self._weights_path
 
-        # Check env var
         env_path = os.environ.get("DENT_FORENSICS_STACKING_META_WEIGHTS", "")
         if env_path:
             return env_path
 
-        # Default: model_cache_dir/stacking_meta/meta_weights.npz
-        cache_dir = os.environ.get(
-            "DENT_FORENSICS_MODEL_CACHE_DIR", "/app/models"
-        )
-        return os.path.join(cache_dir, "stacking_meta", "meta_weights.npz")
+        return os.path.join(self._resolve_dir(), "meta_weights.npz")
 
 
 # ── Singleton ────────────────────────────────────────────────────────

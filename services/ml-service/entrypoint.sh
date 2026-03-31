@@ -173,6 +173,14 @@ if [ -f "/app/models_stage/dinov2/dinov2_probe_weights.npz" ]; then
     cp -f /app/models_stage/dinov2/dinov2_probe_weights.npz /app/models/dinov2/dinov2_probe_weights.npz
 fi
 
+if [ -f "/app/models_stage/stacking_meta/gbm_binary.joblib" ]; then
+    echo "[entrypoint] Updating meta-learner GBM weights"
+    mkdir -p /app/models/stacking_meta
+    cp -f /app/models_stage/stacking_meta/gbm_binary.joblib /app/models/stacking_meta/gbm_binary.joblib
+    cp -f /app/models_stage/stacking_meta/gbm_multi.joblib /app/models/stacking_meta/gbm_multi.joblib
+    cp -f /app/models_stage/stacking_meta/meta_weights.npz /app/models/stacking_meta/meta_weights.npz
+fi
+
 # EfficientNet-B4 AI detector (~75 MB, public HuggingFace repo)
 efficientnet_path="/app/models/efficientnet_ai/pytorch_model.pth"
 if [ ! -f "$efficientnet_path" ]; then

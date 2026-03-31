@@ -45,3 +45,6 @@ fonttools>=4.40.0
 pyzbar>=0.1.9
 # ONNX Runtime for accelerated inference (2-3x faster than PyTorch on CPU)
 onnxruntime>=1.17.0
+# Meta-learner GradientBoosting inference
+scikit-learn>=1.4.0
+joblib>=1.3.0

@@ -49,6 +49,15 @@ COPY models/clip_ai/probe_weights.npz /app/models_stage/clip_ai/probe_weights.np
 COPY models/dinov2/dinov2_probe_weights.npz /app/models/dinov2/dinov2_probe_weights.npz
 COPY models/dinov2/dinov2_probe_weights.npz /app/models_stage/dinov2/dinov2_probe_weights.npz
 
+# Stage meta-learner GBM + LogReg weights
+RUN mkdir -p /app/models/stacking_meta /app/models_stage/stacking_meta
+COPY models/meta/gbm_binary.joblib /app/models/stacking_meta/gbm_binary.joblib
+COPY models/meta/gbm_multi.joblib /app/models/stacking_meta/gbm_multi.joblib
+COPY models/meta/meta_weights.npz /app/models/stacking_meta/meta_weights.npz
+COPY models/meta/gbm_binary.joblib /app/models_stage/stacking_meta/gbm_binary.joblib
+COPY models/meta/gbm_multi.joblib /app/models_stage/stacking_meta/gbm_multi.joblib
+COPY models/meta/meta_weights.npz /app/models_stage/stacking_meta/meta_weights.npz
+
 COPY app/ app/
 COPY scripts/ scripts/
 COPY gunicorn.conf.py /app/gunicorn.conf.py
