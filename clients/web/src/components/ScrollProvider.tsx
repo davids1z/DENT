@@ -30,7 +30,7 @@ export function ScrollProvider({ children }: { children: React.ReactNode }) {
         },
         overflow: { x: "hidden" },
       }}
-      style={{ height: "100dvh" }}
+      style={{ height: "100dvh", background: "var(--background)", transition: "background-color 0.2s ease" }}
     >
       {children}
     </OverlayScrollbarsComponent>
