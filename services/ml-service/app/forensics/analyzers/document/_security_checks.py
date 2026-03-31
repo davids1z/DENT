@@ -655,21 +655,45 @@ def _check_orphaned_objects(
         if total_xrefs < 5:
             return
 
-        # Collect all xrefs referenced from the active page tree
+        # Collect all xrefs reachable from the document structure.
+        # Previously we only tracked page/font/image refs, missing bookmarks,
+        # outlines, named destinations, AcroForm, OCG, metadata, etc.
+        # Now we do a BFS from all page objects to find all reachable xrefs.
         referenced_xrefs: set[int] = set()
 
-        # Pages and their content
+        # Seed with page tree objects
         for page_idx in range(len(doc)):
             page = doc[page_idx]
             referenced_xrefs.add(page.xref)
-            # Page fonts
             for font_info in page.get_fonts():
                 if font_info[0] > 0:
                     referenced_xrefs.add(font_info[0])
-            # Page images
             for img_info in page.get_images():
                 if img_info[0] > 0:
                     referenced_xrefs.add(img_info[0])
+
+        # BFS: expand references from known objects to catch bookmarks,
+        # outlines, AcroForm, OCG, named destinations, etc.
+        frontier = list(referenced_xrefs)
+        max_iterations = min(total_xrefs * 2, 5000)  # Safety limit
+        iterations = 0
+        while frontier and iterations < max_iterations:
+            next_frontier: list[int] = []
+            for xr in frontier:
+                iterations += 1
+                if iterations >= max_iterations:
+                    break
+                try:
+                    obj_str = doc.xref_object(xr)
+                    refs = re.findall(r"(\d+)\s+0\s+R", obj_str)
+                    for ref_str in refs:
+                        ref_int = int(ref_str)
+                        if 0 < ref_int < total_xrefs and ref_int not in referenced_xrefs:
+                            referenced_xrefs.add(ref_int)
+                            next_frontier.append(ref_int)
+                except Exception:
+                    continue
+            frontier = next_frontier
 
         # Check for orphaned stream objects
         orphan_count = 0
@@ -683,19 +707,15 @@ def _check_orphaned_objects(
                 if doc.xref_is_stream(xref):
                     orphan_count += 1
 
-                    # Try to extract text from orphaned streams
                     if len(orphan_text_fragments) < 5:
                         try:
                             stream_data = doc.xref_stream(xref)
                             if stream_data:
-                                # Try to decode as text
                                 try:
                                     text = stream_data.decode("utf-8", errors="ignore")
                                 except Exception:
                                     text = stream_data.decode("latin-1", errors="ignore")
 
-                                # Look for readable text fragments
-                                # PDF text operators: Tj, TJ, ' , "
                                 text_ops = re.findall(r"\(([^)]{3,50})\)", text)
                                 for op in text_ops[:3]:
                                     clean = op.strip()
@@ -708,6 +728,8 @@ def _check_orphaned_objects(
 
         orphan_ratio = orphan_count / max(total_xrefs, 1)
 
+        # Require multiple orphaned text streams to reduce false positives
+        # from legitimate metadata/ICC/font streams that look orphaned
         if orphan_count > 0:
             evidence = {
                 "total_xrefs": total_xrefs,
@@ -716,7 +738,7 @@ def _check_orphaned_objects(
                 "referenced_xrefs": len(referenced_xrefs),
             }
 
-            if orphan_text_fragments:
+            if len(orphan_text_fragments) >= 3:
                 evidence["orphan_text_samples"] = orphan_text_fragments[:5]
 
                 findings.append(
@@ -725,29 +747,41 @@ def _check_orphaned_objects(
                         title="Tekst u napustenim objektima dokumenta",
                         description=(
                             f"Pronadeno {orphan_count} napustenih stream objekata "
-                            f"od kojih neki sadrze citljiv tekst. Ovo su ostaci "
-                            f"prethodnih verzija dokumenta — moguc dokaz da je "
-                            f"originalni sadrzaj (npr. iznos na fakturi) izbrisan i "
-                            f"zamijenjen novim."
+                            f"od kojih {len(orphan_text_fragments)} sadrze citljiv tekst. "
+                            f"Ovo su ostaci prethodnih verzija dokumenta — moguc dokaz "
+                            f"da je originalni sadrzaj izbrisan i zamijenjen novim."
                         ),
-                        risk_score=0.70,
-                        confidence=0.85,
+                        risk_score=0.60,
+                        confidence=0.80,
                         evidence=evidence,
                     )
                 )
-            elif orphan_ratio > 0.05:
+            elif orphan_text_fragments:
+                evidence["orphan_text_samples"] = orphan_text_fragments[:5]
+                findings.append(
+                    AnalyzerFinding(
+                        code="DOC_ORPHANED_OBJECTS",
+                        title="Napusteni objekti sa tekstom",
+                        description=(
+                            f"Pronadeno {orphan_count} napustenih stream objekata "
+                            f"sa tragovima teksta — moguce normalni ostaci uredivanja."
+                        ),
+                        risk_score=0.35,
+                        confidence=0.65,
+                        evidence=evidence,
+                    )
+                )
+            elif orphan_ratio > 0.10:
                 findings.append(
                     AnalyzerFinding(
                         code="DOC_ORPHANED_OBJECTS",
                         title="Napusteni objekti u strukturi dokumenta",
                         description=(
                             f"Pronadeno {orphan_count} stream objekata ({round(orphan_ratio * 100, 1)}% "
-                            f"ukupnih) koji nisu referencirani iz aktivnog stabla dokumenta. "
-                            f"Visok omjer napustenih objekata ukazuje na visestruko uredivanje "
-                            f"i moguce brisanje originalnog sadrzaja."
+                            f"ukupnih) koji nisu referencirani iz aktivnog stabla dokumenta."
                         ),
-                        risk_score=0.45,
-                        confidence=0.75,
+                        risk_score=0.30,
+                        confidence=0.65,
                         evidence=evidence,
                     )
                 )
@@ -909,8 +943,16 @@ def _check_form_overlay_attacks(
                     # Check if text exists under this widget
                     text_under = page.get_text("text", clip=rect).strip()
 
-                    if coverage > 0.02 and text_under:
-                        # Widget covers area with text underneath
+                    if coverage > 0.15 and text_under:
+                        # Widget covers significant area with text underneath.
+                        # Only flag if the field value actually DIFFERS from the
+                        # underlying text (a real overlay attack shows different
+                        # content; normal fillable forms have matching labels).
+                        val_norm = str(field_value).strip().lower()
+                        text_norm = text_under.strip().lower()
+                        # Skip if field value is empty (unfilled form) or matches
+                        if not val_norm or val_norm in text_norm or text_norm in val_norm:
+                            continue
                         suspicious_fields.append({
                             "page": page_idx + 1,
                             "field_name": field_name[:50],

@@ -52,6 +52,8 @@ public static class InspectionMapper
         AgentProcessingTimeMs = i.AgentProcessingTimeMs,
         FraudRiskScore = i.FraudRiskScore,
         FraudRiskLevel = i.FraudRiskLevel?.ToString(),
+        AnalysisMode = i.AnalysisMode,
+        CrossImageReport = ParseCrossImageReport(i.CrossImageFindingsJson),
         ForensicResult = MapForensicResult(i.ForensicResults.OrderBy(f => f.SortOrder).FirstOrDefault()),
         FileForensicResults = i.ForensicResults.OrderBy(f => f.SortOrder).Select(f => MapForensicResult(f)!).ToList(),
         EvidenceHash = i.EvidenceHash,
@@ -214,6 +216,16 @@ public static class InspectionMapper
             {
                 PropertyNameCaseInsensitive = true,
             });
+        }
+        catch { return null; }
+    }
+
+    private static CrossImageReportDto? ParseCrossImageReport(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<CrossImageReportDto>(json, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
         }
         catch { return null; }
     }

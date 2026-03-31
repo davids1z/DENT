@@ -8,4 +8,5 @@ export * from "./audit";
 
 // Legacy aliases for renamed functions
 export { uploadInspection as uploadInspectionWithMetadata } from "./inspections";
+export { uploadInspection as uploadInspectionGroup } from "./inspections";
 export { uploadInspectionsSeparate as uploadInspections } from "./inspections";

@@ -60,21 +60,10 @@ def _check_color_space_inconsistency(
                     if cs in res_str:
                         cs_set.add(cs)
 
-                # Also check the content stream for inline color operators
-                try:
-                    # Get raw content stream text
-                    page_text_raw = page.get_text("rawdict", flags=0)
-                    blocks = page_text_raw.get("blocks", [])
-                    for block in blocks:
-                        if block.get("type") == 0:
-                            for line in block.get("lines", []):
-                                for span in line.get("spans", []):
-                                    color = span.get("color", 0)
-                                    # PyMuPDF returns color as int (RGB packed)
-                                    if color != 0:
-                                        cs_set.add("DeviceRGB")  # Text with color
-                except Exception:
-                    pass
+                # NOTE: We intentionally do NOT infer DeviceRGB from text span
+                # color values. PyMuPDF returns text color as a packed RGB int
+                # regardless of the document's actual color space, so checking
+                # span["color"] != 0 would false-flag every PDF with colored text.
 
             except Exception:
                 continue
@@ -351,53 +340,12 @@ def _check_tounicode_discrepancy(
             except Exception:
                 pass
 
-            # Method 3: Check if any content stream contains raw text
-            # operators with strings that differ from extracted text
-            try:
-                # Get content stream bytes
-                xref = page.xref
-                # Read all content streams for this page
-                page_contents = doc.xref_stream(xref) if doc.xref_is_stream(xref) else None
-
-                if not page_contents:
-                    # Page might reference content via /Contents array
-                    obj_str = doc.xref_object(xref)
-                    contents_match = re.findall(r"(\d+)\s+0\s+R", obj_str)
-                    for ref_xref in contents_match[:5]:
-                        try:
-                            ref_int = int(ref_xref)
-                            if doc.xref_is_stream(ref_int):
-                                stream_data = doc.xref_stream(ref_int)
-                                if stream_data:
-                                    # Look for text showing operators: Tj, TJ, ', "
-                                    text_ops = re.findall(
-                                        rb"\(([^)]{2,50})\)\s*Tj",
-                                        stream_data,
-                                    )
-                                    for op in text_ops:
-                                        try:
-                                            raw_text = op.decode("latin-1", errors="ignore")
-                                            # Skip strings with backslash escapes -- these
-                                            # are encoding sequences (Latin-2, WinAnsiEncoding)
-                                            # for special chars like c/s/z, NOT manipulation.
-                                            if "\\" in raw_text:
-                                                continue
-                                            # Check if this raw text appears in extracted text
-                                            if (len(raw_text) >= 5
-                                                    and raw_text.isprintable()
-                                                    and raw_text not in text_extracted):
-                                                discrepancies.append({
-                                                    "page": page_idx + 1,
-                                                    "type": "ContentStreamMismatch",
-                                                    "raw_text": raw_text[:50],
-                                                    "not_in_extracted": True,
-                                                })
-                                        except Exception:
-                                            continue
-                        except Exception:
-                            continue
-            except Exception:
-                pass
+            # NOTE: We intentionally do NOT compare raw content stream Tj
+            # operators with extracted text. Content streams use font-specific
+            # encodings (WinAnsi, MacRoman, custom CMap, glyph IDs) that are
+            # in a completely different encoding space than Unicode text
+            # extraction. Comparing them produces massive false positives on
+            # any PDF with non-ASCII text or custom-encoded Type1 fonts.
 
     except Exception as e:
         logger.debug("ToUnicode check error: %s", e)
@@ -410,7 +358,6 @@ def _check_tounicode_discrepancy(
     # Filter: Private Use Area characters are only suspicious in quantity
     pua_count = sum(1 for d in discrepancies if d["type"] == "PrivateUseArea")
     actual_text_issues = [d for d in discrepancies if d["type"] == "ActualText"]
-    content_mismatches = [d for d in discrepancies if d["type"] == "ContentStreamMismatch"]
 
     evidence = {"discrepancies": discrepancies[:15]}
 
@@ -427,23 +374,6 @@ def _check_tounicode_discrepancy(
                 ),
                 risk_score=0.85,
                 confidence=0.85,
-                evidence=evidence,
-            )
-        )
-
-    if content_mismatches and len(content_mismatches) >= 3:
-        findings.append(
-            AnalyzerFinding(
-                code="DOC_TOUNICODE_MISMATCH",
-                title="Nepodudarnost content streama i ekstrahiranog teksta",
-                description=(
-                    f"Otkriveno {len(content_mismatches)} tekstualnih segmenata u "
-                    f"content streamu koji se ne pojavljuju u ekstrahiranom tekstu. "
-                    f"Moguca ToUnicode CMap manipulacija — tekst se vizualno prikazuje "
-                    f"drugacije od onoga sto sustav za obradu cita."
-                ),
-                risk_score=0.55,
-                confidence=0.65,
                 evidence=evidence,
             )
         )

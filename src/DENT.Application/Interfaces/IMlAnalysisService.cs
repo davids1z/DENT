@@ -19,6 +19,14 @@ public interface IMlAnalysisService
         List<(byte[] Data, string FileName)> files, CancellationToken ct = default);
 
     /// <summary>
+    /// Batch-group forensic analysis — sends multiple files and also performs
+    /// cross-image consistency analysis (metadata, lighting, PRNU, etc.).
+    /// Falls back to regular batch if the endpoint is unavailable.
+    /// </summary>
+    Task<MlBatchGroupResult> RunForensicsBatchGroupAsync(
+        List<(byte[] Data, string FileName)> files, CancellationToken ct = default);
+
+    /// <summary>
     /// Context-aware analysis: sends the image together with forensic module results
     /// so Gemini synthesizes and explains forensic evidence rather than independently detecting.
     /// </summary>
@@ -222,4 +230,29 @@ public record MlTimestampResult
     public string? TimestampedAt { get; init; }
     public string? TsaUrl { get; init; }
     public string? Error { get; init; }
+}
+
+// Batch-group analysis (per-file + cross-image)
+public record MlBatchGroupResult
+{
+    public List<MlForensicResult> PerFileReports { get; init; } = [];
+    public MlCrossImageReport? CrossImageReport { get; init; }
+}
+
+public record MlCrossImageReport
+{
+    public List<MlCrossImageFinding> Findings { get; init; } = [];
+    public double GroupRiskModifier { get; init; }
+    public int ProcessingTimeMs { get; init; }
+}
+
+public record MlCrossImageFinding
+{
+    public string Code { get; init; } = "";
+    public string Title { get; init; } = "";
+    public string Description { get; init; } = "";
+    public double RiskScore { get; init; }
+    public double Confidence { get; init; }
+    public List<int> AffectedFiles { get; init; } = [];
+    public Dictionary<string, object>? Evidence { get; init; }
 }

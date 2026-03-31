@@ -64,6 +64,8 @@ public record InspectionDto
     // Fraud detection
     public double? FraudRiskScore { get; init; }
     public string? FraudRiskLevel { get; init; }
+    public string? AnalysisMode { get; init; }
+    public CrossImageReportDto? CrossImageReport { get; init; }
     public ForensicResultDto? ForensicResult { get; init; }
     public List<ForensicResultDto> FileForensicResults { get; init; } = [];
 
@@ -333,4 +335,22 @@ public record AdminFailedInspectionDto
     public string? ErrorMessage { get; init; }
     public string? UserFullName { get; init; }
     public DateTime CreatedAt { get; init; }
+}
+
+public record CrossImageReportDto
+{
+    public List<CrossImageFindingDto> Findings { get; init; } = [];
+    public double GroupRiskModifier { get; init; }
+    public int ProcessingTimeMs { get; init; }
+}
+
+public record CrossImageFindingDto
+{
+    public string Code { get; init; } = "";
+    public string Title { get; init; } = "";
+    public string Description { get; init; } = "";
+    public double RiskScore { get; init; }
+    public double Confidence { get; init; }
+    public List<int> AffectedFiles { get; init; } = [];
+    public Dictionary<string, object>? Evidence { get; init; }
 }

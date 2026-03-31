@@ -171,6 +171,22 @@ export interface CustodyEvent {
   details: string | null;
 }
 
+export interface CrossImageFinding {
+  code: string;
+  title: string;
+  description: string;
+  riskScore: number;
+  confidence: number;
+  affectedFiles: number[];
+  evidence: Record<string, unknown> | null;
+}
+
+export interface CrossImageReport {
+  findings: CrossImageFinding[];
+  groupRiskModifier: number;
+  processingTimeMs: number;
+}
+
 export interface Inspection {
   id: string;
   imageUrl: string;
@@ -181,6 +197,8 @@ export interface Inspection {
   completedAt: string | null;
   ownerEmail: string | null;
   ownerFullName: string | null;
+  analysisMode: string | null;
+  crossImageReport: CrossImageReport | null;
   userProvidedMake: string | null;
   userProvidedModel: string | null;
   userProvidedYear: number | null;

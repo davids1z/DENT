@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { getInspections, type Inspection, formatCurrency, formatDate, severityColor, severityLabel } from "@/lib/api";
+import { getInspections, type Inspection, formatCurrency, formatDate, severityColor, severityLabel, fraudRiskColor, fraudRiskLabel } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
 import { InspectionCard } from "@/components/InspectionCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { ScrollToTop } from "@/components/ScrollToTop";
 import Link from "next/link";
 
 const PAGE_SIZE = 15;
@@ -37,7 +38,8 @@ function InspectionsContent() {
     if (!isFresh) {
       if (!_cachedInspections) setLoading(true);
       setPage(1);
-      getInspections(1, 200, filter || undefined)
+      // Always fetch ALL, filter client-side
+      getInspections(1, 200)
         .then((data) => {
           setInspections(data);
           _cachedInspections = data;
@@ -46,18 +48,29 @@ function InspectionsContent() {
         .catch(() => setInspections([]))
         .finally(() => setLoading(false));
     }
-  }, [filter]);
+  }, []);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return inspections;
-    const q = search.toLowerCase();
-    return inspections.filter(
-      (i) =>
-        i.originalFileName.toLowerCase().includes(q) ||
-        (i.vehicleMake && i.vehicleMake.toLowerCase().includes(q)) ||
-        (i.vehicleModel && i.vehicleModel.toLowerCase().includes(q))
-    );
-  }, [inspections, search]);
+    let result = inspections;
+
+    // Status filter
+    if (filter) {
+      result = result.filter((i) => i.status === filter);
+    }
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (i) =>
+          i.originalFileName.toLowerCase().includes(q) ||
+          (i.vehicleMake && i.vehicleMake.toLowerCase().includes(q)) ||
+          (i.vehicleModel && i.vehicleModel.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [inspections, search, filter]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginatedItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -73,6 +86,8 @@ function InspectionsContent() {
   ];
 
   return (
+    <div>
+    <ScrollToTop />
     <div className="relative">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-20 -right-20 w-[250px] h-[250px] sm:-top-28 sm:-right-28 sm:w-[350px] sm:h-[350px] lg:-top-32 lg:-right-32 lg:w-[450px] lg:h-[450px] rounded-full deco-circle" />
@@ -122,8 +137,8 @@ function InspectionsContent() {
                 <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Datoteka</th>
                 <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Status</th>
                 <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Rizik</th>
-                <th className="text-left px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Nalazi</th>
-                <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Rezultat</th>
+                <th className="text-center px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Nalazi</th>
+                <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Razina</th>
                 <th className="text-right px-4 py-3 text-xs text-muted uppercase tracking-wider font-medium">Datum</th>
               </tr>
             </thead>
@@ -146,9 +161,31 @@ function InspectionsContent() {
                         i.status === "Completed" ? "bg-green-100 text-green-700" : i.status === "Failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                       )}>{i.status === "Completed" ? "Završeno" : i.status === "Failed" ? "Greška" : "U obradi"}</span>
                     </td>
-                    <td className="px-4 py-3">{i.damages.length > 0 && <span className={cn("text-xs font-medium", severityColor(worst))}>{severityLabel(worst)}</span>}</td>
-                    <td className="px-4 py-3 text-muted">{i.damages.length}</td>
-                    <td className="px-4 py-3 text-right">{i.totalEstimatedCostMin != null ? <span className="text-accent font-medium text-sm">{formatCurrency(i.totalEstimatedCostMin)}</span> : <span className="text-muted">-</span>}</td>
+                    <td className="px-4 py-3">
+                      {i.fraudRiskScore != null ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-card-hover rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{
+                              width: `${Math.round((i.fraudRiskScore ?? 0) * 100)}%`,
+                              backgroundColor: (i.fraudRiskLevel === "Critical" ? "#ef4444" : i.fraudRiskLevel === "High" ? "#f97316" : i.fraudRiskLevel === "Medium" ? "#f59e0b" : "#22c55e"),
+                            }} />
+                          </div>
+                          <span className="text-xs font-mono text-muted">{Math.round((i.fraudRiskScore ?? 0) * 100)}%</span>
+                        </div>
+                      ) : <span className="text-muted text-xs">-</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {i.forensicResult?.modules ? (
+                        <span className="text-xs text-muted">{i.forensicResult.modules.filter(m => m.riskScore >= 0.20).length}</span>
+                      ) : <span className="text-muted text-xs">0</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {i.fraudRiskLevel ? (
+                        <span className={cn("text-xs font-semibold", fraudRiskColor(i.fraudRiskLevel))}>
+                          {fraudRiskLabel(i.fraudRiskLevel)}
+                        </span>
+                      ) : <span className="text-muted text-xs">-</span>}
+                    </td>
                     <td className="px-4 py-3 text-right text-muted text-xs">{formatDate(i.createdAt)}</td>
                   </tr>
                 );
@@ -207,6 +244,7 @@ function InspectionsContent() {
         </div>
       )}
       </div>
+    </div>
     </div>
   );
 }

@@ -69,6 +69,10 @@ public class Inspection
     public double? FraudRiskScore { get; set; }
     public FraudRiskLevel? FraudRiskLevel { get; set; }
 
+    // Group analysis
+    public string? AnalysisMode { get; set; } // "individual" | "group"
+    public string? CrossImageFindingsJson { get; set; } // JSON: cross-image analysis report
+
     // Evidence integrity (Phase 8)
     public string? EvidenceHash { get; set; }
     public string? ImageHashesJson { get; set; }

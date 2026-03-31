@@ -87,6 +87,7 @@ public class CreateInspectionHandler : IRequestHandler<CreateInspectionCommand, 
             UserProvidedModel = request.VehicleModel,
             UserProvidedYear = request.VehicleYear,
             Mileage = request.Mileage,
+            AnalysisMode = request.AnalysisMode ?? "individual",
         };
 
         // Parse capture metadata

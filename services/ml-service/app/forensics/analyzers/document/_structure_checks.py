@@ -59,14 +59,19 @@ def _check_xref_anomalies(
     except Exception as e:
         logger.debug("PDF object count via pypdf failed: %s", e)
 
+    # NOTE: Incremental saves are the STANDARD PDF modification mechanism.
+    # Digital signatures always produce an incremental save, form filling
+    # produces incremental saves, and even Adobe Acrobat "Save" (not "Save As")
+    # creates one. Multiple %%EOF markers are informational, not inherently
+    # suspicious. We keep them at low risk as context for other checks.
     if eof_count >= 3:
         findings.append(
             AnalyzerFinding(
                 code="DOC_MULTIPLE_UPDATES",
                 title="Visestruke inkrementalne izmjene PDF-a",
-                description=f"Dokument sadrzi {eof_count} revizija (%%EOF markera), sto ukazuje na visestruke naknadne izmjene nakon izvornog stvaranja.",
-                risk_score=0.50,
-                confidence=0.85,
+                description=f"Dokument sadrzi {eof_count} revizija (%%EOF markera). Inkrementalni updateovi su standardni mehanizam za potpisivanje i popunjavanje formulara, ali mogu ukazivati i na naknadne izmjene.",
+                risk_score=0.15,
+                confidence=0.70,
                 evidence=evidence,
             )
         )
@@ -75,9 +80,9 @@ def _check_xref_anomalies(
             AnalyzerFinding(
                 code="DOC_INCREMENTAL_UPDATE",
                 title="Otkrivena inkrementalna izmjena PDF-a",
-                description="Dokument je modificiran nakon izvornog stvaranja — pronaden je jedan inkrementalni update s novom XREF tablicom.",
-                risk_score=0.25,
-                confidence=0.70,
+                description="Dokument sadrzi jedan inkrementalni update — standardno za digitalne potpise i popunjavanje formulara.",
+                risk_score=0.10,
+                confidence=0.60,
                 evidence=evidence,
             )
         )
@@ -138,25 +143,28 @@ def _check_metadata_asymmetry(
         gap_hours = gap.total_seconds() / 3600
         evidence["time_gap_hours"] = round(gap_hours, 2)
 
-        if gap_hours > 168:  # > 7 days
+        # NOTE: Large date gaps are normal for corporate documents edited over
+        # weeks/months, templates reused over time, and forms filled out later.
+        # Only flag very large gaps (90+ days) at moderate risk.
+        if gap_hours > 2160:  # > 90 days
             findings.append(
                 AnalyzerFinding(
                     code="DOC_META_DATE_GAP_LARGE",
                     title="Velika vremenska razlika u metapodacima dokumenta",
                     description=f"Datum izmjene nadmasuje datum stvaranja za {int(gap_hours / 24)} dana — dokument je modificiran znatno nakon izvornog izdavanja.",
-                    risk_score=0.50,
-                    confidence=0.85,
+                    risk_score=0.30,
+                    confidence=0.75,
                     evidence=evidence,
                 )
             )
-        elif gap_hours > 1:
+        elif gap_hours > 168:  # > 7 days
             findings.append(
                 AnalyzerFinding(
                     code="DOC_META_DATE_GAP",
                     title="Razlika datuma stvaranja i izmjene dokumenta",
-                    description=f"Datum izmjene nadmasuje datum stvaranja za {round(gap_hours, 1)} sati.",
-                    risk_score=0.30,
-                    confidence=0.80,
+                    description=f"Datum izmjene nadmasuje datum stvaranja za {int(gap_hours / 24)} dana.",
+                    risk_score=0.15,
+                    confidence=0.65,
                     evidence=evidence,
                 )
             )

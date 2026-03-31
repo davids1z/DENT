@@ -168,6 +168,22 @@ body::-webkit-scrollbar {
   100% { background-position: -200% 0; }
 }
 
+/* ========== SCROLL HINT ARROWS ========== */
+@keyframes scroll-arrows {
+  0%   { opacity: 0.6; transform: translateY(0); }
+  50%  { opacity: 1; transform: translateY(4px); }
+  100% { opacity: 0.6; transform: translateY(0); }
+}
+.animate-scroll-arrows {
+  animation: scroll-arrows 2s ease-in-out infinite;
+}
+
+/* ========== NAVBAR BLUR MASK ========== */
+.mask-b {
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
 /* ========== DECORATIVE CIRCLES ========== */
 .deco-circle {
   background: var(--deco-circle);
@@ -178,4 +194,27 @@ body::-webkit-scrollbar {
 /* ========== SECTION DIVIDER ========== */
 .section-alt {
   background: color-mix(in srgb, var(--card) 50%, var(--background));
+  border-radius: 1rem;
+  margin-inline: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: visible;
+}
+
+@media (min-width: 640px) {
+  .section-alt {
+    border-radius: 1.25rem;
+    margin-inline: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section-alt {
+    border-radius: 1.5rem;
+    margin-inline: 1.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.dark .section-alt {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }

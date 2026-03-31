@@ -285,7 +285,10 @@ export function VerdictDashboard({
   const isDocument = fileName ? ["pdf", "docx", "xlsx", "doc", "xls"].includes(fileName.split(".").pop()?.toLowerCase() ?? "") : false;
   const contentWord = isDocument ? "DOKUMENT" : "SLIKA";
 
-  // Use REAL meta-learner probabilities if available, else heuristic fallback
+  // Use REAL meta-learner probabilities if available; no heuristic fallback.
+  // When the meta-learner is disabled, showing fabricated probability bars
+  // gives false precision and misleads users.
+  const hasRealProbabilities = !!verdictProbabilities;
   const verdict = verdictProbabilities
     ? (() => {
         const a = (verdictProbabilities.authentic ?? 0) * 100;
@@ -305,14 +308,7 @@ export function VerdictDashboard({
           scores: { authentic: a, ai_generated: ai, tampered: t },
         };
       })()
-    : getVerdict(riskScore, riskLevel);
-
-  // Override labels for documents
-  if (isDocument && !verdictProbabilities) {
-    if (verdict.cls === "authentic") verdict.label = "AUTENTIČAN DOKUMENT";
-    else if (verdict.cls === "ai_generated") verdict.label = `UMJETNO GENERIRAN ${contentWord}`;
-    else if (verdict.cls === "tampered") verdict.label = `DIGITALNO IZMIJENJEN ${contentWord}`;
-  }
+    : null;
 
   const riskPercent = riskScore * 100;
   const badge = getVerdictBadge(riskPercent);
@@ -366,30 +362,34 @@ export function VerdictDashboard({
           <div className="hidden sm:block"><RiskGauge value={riskPercent} animated={animated} size={192} /></div>
         </div>
 
-        {/* Module Breakdown */}
+        {/* Module Breakdown — only show when real probabilities are available */}
         <div className="flex-1 w-full space-y-5">
-          <p className="text-xs uppercase tracking-[2px] text-muted-light font-medium">
-            Razrada rizika
-          </p>
+          {hasRealProbabilities && verdict && (
+            <>
+              <p className="text-xs uppercase tracking-[2px] text-muted-light font-medium">
+                Razrada rizika
+              </p>
 
-          <ModuleBar
-            label={isDocument ? "Autentičan dokument" : "Autentična slika"}
-            value={verdict.scores.authentic}
-            color="#22c55e"
-            animated={animated}
-          />
-          <ModuleBar
-            label="Umjetno generirana"
-            value={verdict.scores.ai_generated}
-            color="#a855f7"
-            animated={animated}
-          />
-          <ModuleBar
-            label="Digitalno izmijenjena"
-            value={verdict.scores.tampered}
-            color="#f97316"
-            animated={animated}
-          />
+              <ModuleBar
+                label={isDocument ? "Autentičan dokument" : "Autentična slika"}
+                value={verdict.scores.authentic}
+                color="#22c55e"
+                animated={animated}
+              />
+              <ModuleBar
+                label="Umjetno generirana"
+                value={verdict.scores.ai_generated}
+                color="#a855f7"
+                animated={animated}
+              />
+              <ModuleBar
+                label="Digitalno izmijenjena"
+                value={verdict.scores.tampered}
+                color="#f97316"
+                animated={animated}
+              />
+            </>
+          )}
 
           {/* Badges */}
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border">

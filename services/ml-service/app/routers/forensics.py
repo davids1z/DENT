@@ -6,7 +6,8 @@ from fastapi import APIRouter, File, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from ..config import settings
-from ..forensics.base import ForensicReport
+from ..forensics.analyzers.cross_image import analyze_cross_image
+from ..forensics.base import BatchGroupResponse, ForensicReport
 from ..forensics.pipeline import ForensicPipeline
 from ..forensics.thresholds import get_registry
 
@@ -165,6 +166,69 @@ async def analyze_forensics_batch(
     )
 
     return list(reports)
+
+
+@router.post("/forensics/batch-group", response_model=BatchGroupResponse)
+async def analyze_forensics_batch_group(
+    files: list[UploadFile] = File(...),
+    skip_modules: str | None = Query(None, description="Comma-separated module names to skip"),
+    scan_mode: str | None = Query(None, description="quick or full"),
+):
+    """Group forensic analysis with cross-image comparison."""
+    if not settings.forensics_enabled:
+        return BatchGroupResponse(
+            per_file_reports=[
+                ForensicReport(overall_risk_score=0.0, overall_risk_level="Low")
+                for _ in files
+            ],
+        )
+
+    max_size = settings.max_image_size_mb * 1024 * 1024
+    skip = set(skip_modules.split(",")) if skip_modules else set()
+    if scan_mode == "quick":
+        skip |= _QUICK_SKIP
+    skip_list = list(skip) if skip else None
+
+    pipeline = get_pipeline()
+
+    # Read all files upfront (we need the bytes for cross-image analysis too)
+    file_data: list[tuple[bytes, str]] = []
+    for f in files:
+        data = await f.read()
+        name = f.filename or "unknown"
+        file_data.append((data, name))
+
+    # Run per-file analysis concurrently (same as batch)
+    async def analyze_one(data: bytes, name: str) -> ForensicReport:
+        if len(data) > max_size:
+            return ForensicReport(
+                overall_risk_score=0.0, overall_risk_level="Low",
+                modules=[], total_processing_time_ms=0,
+            )
+        return await pipeline.analyze(data, name, skip_list)
+
+    per_file_reports = list(await asyncio.gather(
+        *(analyze_one(data, name) for data, name in file_data)
+    ))
+
+    # Run cross-image analysis
+    cross_report = analyze_cross_image(
+        [d for d, _ in file_data],
+        [n for _, n in file_data],
+        per_file_reports,
+    )
+
+    logger.info(
+        "Batch-group forensic analysis complete: %d files, %d cross-findings, modifier=%.4f",
+        len(per_file_reports),
+        len(cross_report.findings),
+        cross_report.group_risk_modifier,
+    )
+
+    return BatchGroupResponse(
+        per_file_reports=per_file_reports,
+        cross_image_report=cross_report,
+    )
 
 
 @router.post("/forensics/stream")

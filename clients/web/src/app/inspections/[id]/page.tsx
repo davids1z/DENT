@@ -13,8 +13,12 @@ import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
 import { ImageGallery } from "@/components/ImageGallery";
+import { GroupOverviewCard } from "@/components/GroupOverviewCard";
+import { CrossImageFindings } from "@/components/CrossImageFindings";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { cn } from "@/lib/cn";
+import { useMemo } from "react";
+import type { ForensicResult } from "@/lib/api";
 
 export default function InspectionDetailPage() {
   return <AuthGuard><InspectionDetailContent /></AuthGuard>;
@@ -77,6 +81,23 @@ function InspectionDetailContent() {
     ? ["High", "Critical"].includes(inspection.forensicResult.overallRiskLevel)
     : false;
 
+  const isGroupInspection = inspection.additionalImages.length > 0;
+
+  // Build group file list for GroupOverviewCard
+  const groupFiles = useMemo(() => {
+    if (!inspection || !isGroupInspection) return [];
+    const files: { url: string; fileName: string; sortOrder: number; forensicResult: ForensicResult | null }[] = [];
+    const primaryFr = inspection.fileForensicResults?.find((fr: ForensicResult) => fr.sortOrder === 0) || inspection.forensicResult;
+    files.push({ url: inspection.imageUrl, fileName: inspection.originalFileName, sortOrder: 0, forensicResult: primaryFr });
+    for (const img of inspection.additionalImages) {
+      const fr = inspection.fileForensicResults?.find(
+        (fr: ForensicResult) => fr.sortOrder === img.sortOrder || fr.fileName === img.originalFileName
+      ) || null;
+      files.push({ url: img.imageUrl, fileName: img.originalFileName, sortOrder: img.sortOrder, forensicResult: fr });
+    }
+    return files;
+  }, [inspection, isGroupInspection]);
+
   return (
     <div className="relative">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -105,6 +126,16 @@ function InspectionDetailContent() {
           <span className="text-muted text-xs sm:text-sm truncate max-w-[200px] sm:max-w-none">&middot; {inspection.originalFileName}</span>
         </div>
       </div>
+
+      {/* ── GROUP OVERVIEW (if multi-file) ── */}
+      {isGroupInspection && (
+        <div className="mb-6 space-y-4">
+          <GroupOverviewCard inspection={inspection} files={groupFiles} />
+          {inspection.crossImageReport && inspection.crossImageReport.findings.length > 0 && (
+            <CrossImageFindings report={inspection.crossImageReport} files={groupFiles} />
+          )}
+        </div>
+      )}
 
       {/* ── 1. VERDICT HERO ── */}
       {inspection.forensicResult && (

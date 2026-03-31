@@ -54,6 +54,27 @@ class ForensicReport(BaseModel):
     page_previews_b64: list[str] | None = None
 
 
+class CrossImageFinding(BaseModel):
+    code: str
+    title: str
+    description: str
+    risk_score: float
+    confidence: float
+    affected_files: list[int] = []  # SortOrder indices
+    evidence: dict | None = None
+
+
+class CrossImageReport(BaseModel):
+    findings: list[CrossImageFinding] = []
+    group_risk_modifier: float = 0.0
+    processing_time_ms: int = 0
+
+
+class BatchGroupResponse(BaseModel):
+    per_file_reports: list[ForensicReport] = []
+    cross_image_report: CrossImageReport = CrossImageReport()
+
+
 class BaseAnalyzer(ABC):
     MODULE_NAME: str = ""
     MODULE_LABEL: str = ""

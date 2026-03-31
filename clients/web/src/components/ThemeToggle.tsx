@@ -14,13 +14,10 @@ export function ThemeToggle() {
     setDark(next);
     if (next) {
       document.documentElement.classList.add("dark");
-      localStorage.setItem("dent_theme", "dark");
     } else {
       document.documentElement.classList.remove("dark");
-      localStorage.setItem("dent_theme", "light");
     }
-    // No meta theme-color — Safari derives chrome color from body background
-    // which transitions smoothly via CSS (0.2s ease).
+    // Theme is session-only — always starts light on fresh page load
   }, [dark]);
 
   return (

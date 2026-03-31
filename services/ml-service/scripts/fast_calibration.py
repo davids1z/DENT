@@ -99,6 +99,7 @@ async def main():
     parser.add_argument("--worker-id", type=int, default=0, help="Worker index for parallel calibration")
     parser.add_argument("--total-workers", type=int, default=1, help="Total number of parallel workers")
     parser.add_argument("--s3-prefix", default="", help="Override S3 prefix (default: train_v8_aug)")
+    parser.add_argument("--subset-file", default="", help="File with image filenames to process (one per line)")
     args = parser.parse_args()
 
     global S3_PREFIX

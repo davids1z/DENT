@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { uploadInspections, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
+import { uploadInspections, uploadInspection, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ImageUpload } from "@/components/ImageUpload";
 import { DamageReport } from "@/components/DamageReport";
@@ -11,23 +11,35 @@ import { DecisionTrace } from "@/components/DecisionTrace";
 import { ImageGallery } from "@/components/ImageGallery";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ForensicProgress, useForensicProgress } from "@/components/ForensicProgress";
+import { GroupOverviewCard } from "@/components/GroupOverviewCard";
+import { CrossImageFindings } from "@/components/CrossImageFindings";
+import { ForensicModuleTable } from "@/components/ForensicModuleTable";
+import { VerdictDashboard } from "@/components/VerdictDashboard";
+import { cn } from "@/lib/cn";
 import Link from "next/link";
+
+type AnalysisMode = "individual" | "group";
 
 export default function InspectPage() {
   return <AuthGuard><InspectContent /></AuthGuard>;
 }
 
 function InspectContent() {
+  const [mode, setMode] = useState<AnalysisMode>("individual");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [result, setResult] = useState<Inspection | null>(null);
+  const [allResults, setAllResults] = useState<Inspection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedDamageIndex, setSelectedDamageIndex] = useState<number | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [expandedFileIndex, setExpandedFileIndex] = useState<number | null>(null);
   const forensicProgress = useForensicProgress(isLoading, uploadedFiles);
 
   const currentStep = result ? 2 : isLoading ? 1 : 0;
+  const isGroupMode = mode === "group";
+  const isGroupResult = isGroupMode && result && (result.fileForensicResults?.length > 1 || result.additionalImages?.length > 0);
 
   // Find the forensic result matching the currently active image
   const activeForensicResult = useMemo<ForensicResult | null>(() => {
@@ -60,29 +72,38 @@ function InspectContent() {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setAllResults([]);
     setSelectedDamageIndex(null);
     setUploadedFiles(files);
+    setExpandedFileIndex(null);
 
     try {
-      // Each file becomes a SEPARATE inspection
-      const created = await uploadInspections(files);
-
-      // Poll ALL inspections in parallel
-      const inspections = await Promise.all(
-        created.map((c) => pollInspectionUntilComplete(c.id))
-      );
-
-      const failed = inspections.filter((i) => i.status === "Failed");
-      if (failed.length === inspections.length) {
-        throw new Error(failed[0]?.errorMessage || "Analiza nije uspjela");
+      if (isGroupMode) {
+        // Group mode: single inspection with all files + cross-image analysis
+        const created = await uploadInspection(files, { analysisMode: "group" });
+        const completed = await pollInspectionUntilComplete(created.id);
+        if (completed.status === "Failed") {
+          throw new Error(completed.errorMessage || "Analiza nije uspjela");
+        }
+        await forensicProgress.complete();
+        setResult(completed);
+        setActiveImageUrl(completed.imageUrl);
+      } else {
+        // Individual mode: each file → separate inspection
+        const created = await uploadInspections(files);
+        const inspections = await Promise.all(
+          created.map((c) => pollInspectionUntilComplete(c.id))
+        );
+        const failed = inspections.filter((i) => i.status === "Failed");
+        if (failed.length === inspections.length) {
+          throw new Error(failed[0]?.errorMessage || "Analiza nije uspjela");
+        }
+        await forensicProgress.complete();
+        setAllResults(inspections);
+        const firstCompleted = inspections.find((i) => i.status === "Completed") || inspections[0];
+        setResult(firstCompleted);
+        setActiveImageUrl(firstCompleted.imageUrl);
       }
-
-      await forensicProgress.complete();
-
-      // Show the first completed inspection result
-      const firstCompleted = inspections.find((i) => i.status === "Completed") || inspections[0];
-      setResult(firstCompleted);
-      setActiveImageUrl(firstCompleted.imageUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Doslo je do greske");
     } finally {
@@ -92,11 +113,13 @@ function InspectContent() {
 
   const handleReset = () => {
     setResult(null);
+    setAllResults([]);
     setError(null);
     setSelectedDamageIndex(null);
     setActiveImageUrl(null);
     setActiveImageIndex(0);
     setUploadedFiles([]);
+    setExpandedFileIndex(null);
   };
 
   const handleImageSelect = (url: string) => {
@@ -109,6 +132,26 @@ function InspectContent() {
       setActiveImageIndex(idx >= 0 ? idx + 1 : 0);
     }
   };
+
+  // Build file list for group view
+  const groupFiles = useMemo(() => {
+    if (!result) return [];
+    const files: { url: string; fileName: string; sortOrder: number; forensicResult: ForensicResult | null }[] = [];
+
+    // Primary
+    const primaryFr = result.fileForensicResults?.find((fr) => fr.sortOrder === 0) || result.forensicResult;
+    files.push({ url: result.imageUrl, fileName: result.originalFileName, sortOrder: 0, forensicResult: primaryFr });
+
+    // Additional images
+    for (const img of result.additionalImages) {
+      const fr = result.fileForensicResults?.find(
+        (fr) => fr.sortOrder === img.sortOrder || fr.fileName === img.originalFileName
+      ) || null;
+      files.push({ url: img.imageUrl, fileName: img.originalFileName, sortOrder: img.sortOrder, forensicResult: fr });
+    }
+
+    return files;
+  }, [result]);
 
   return (
     <div className="relative">
@@ -133,6 +176,41 @@ function InspectContent() {
       {/* Upload state */}
       {!result && !isLoading && (
         <div className="max-w-lg mx-auto space-y-6">
+          {/* Mode selector */}
+          <div className="flex justify-center">
+            <div className="inline-flex bg-card border border-border rounded-xl p-1">
+              <button
+                onClick={() => setMode("individual")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                  mode === "individual"
+                    ? "bg-accent text-white shadow-sm"
+                    : "text-muted hover:text-foreground"
+                )}
+              >
+                Pojedinacna analiza
+              </button>
+              <button
+                onClick={() => setMode("group")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                  mode === "group"
+                    ? "bg-accent text-white shadow-sm"
+                    : "text-muted hover:text-foreground"
+                )}
+              >
+                Skupna analiza
+              </button>
+            </div>
+          </div>
+
+          {/* Mode description */}
+          <p className="text-xs text-muted text-center">
+            {isGroupMode
+              ? "Sve datoteke analiziraju se zajedno — sustav trazi nekonzistentnosti medu datotekama i daje skupnu ocjenu."
+              : "Svaka datoteka analizira se zasebno kao nezavisna inspekcija."}
+          </p>
+
           <ImageUpload onUpload={handleUploadSubmit} isLoading={isLoading} />
 
           {error && (
@@ -146,11 +224,15 @@ function InspectContent() {
       {/* Analyzing state — real-time forensic progress */}
       {isLoading && (
         <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 max-w-lg mx-auto">
-          <h3 className="font-heading font-semibold text-lg mb-1 text-center">Forenzicka analiza u tijeku</h3>
+          <h3 className="font-heading font-semibold text-lg mb-1 text-center">
+            {isGroupMode ? "Skupna forenzicka analiza u tijeku" : "Forenzicka analiza u tijeku"}
+          </h3>
           <p className="text-sm text-muted mb-6 text-center">
-            {uploadedFiles.length > 1
-              ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi zasebnu forenzicku analizu.`
-              : "Forenzicki moduli provjeravaju autenticnost, detektiraju manipulacije i AI-generirani sadrzaj."}
+            {isGroupMode
+              ? `Analiziram ${uploadedFiles.length} datoteka kao skupinu — individualna analiza + usporedba medu datotekama.`
+              : uploadedFiles.length > 1
+                ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi zasebnu forenzicku analizu.`
+                : "Forenzicki moduli provjeravaju autenticnost, detektiraju manipulacije i AI-generirani sadrzaj."}
           </p>
           <ForensicProgress
             steps={forensicProgress.steps}
@@ -162,8 +244,101 @@ function InspectContent() {
         </div>
       )}
 
-      {/* Result state */}
-      {result && (
+      {/* ── GROUP RESULT VIEW ── */}
+      {result && isGroupResult && (
+        <div className="space-y-6">
+          {/* Group overview */}
+          <GroupOverviewCard inspection={result} files={groupFiles} />
+
+          {/* Cross-image findings */}
+          {result.crossImageReport && result.crossImageReport.findings.length > 0 && (
+            <CrossImageFindings report={result.crossImageReport} files={groupFiles} />
+          )}
+
+          {/* Per-file grid */}
+          <div>
+            <h3 className="font-heading font-semibold text-base mb-3">Rezultati po datoteci</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {groupFiles.map((file, idx) => {
+                const fr = file.forensicResult;
+                const isExpanded = expandedFileIndex === idx;
+                const riskLevel = fr?.overallRiskLevel || "Low";
+                const riskColor = riskLevel === "Critical" ? "border-red-500" : riskLevel === "High" ? "border-orange-500" : riskLevel === "Medium" ? "border-amber-500" : "border-green-500";
+                const riskBg = riskLevel === "Critical" ? "bg-red-500" : riskLevel === "High" ? "bg-orange-500" : riskLevel === "Medium" ? "bg-amber-500" : "bg-green-500";
+
+                return (
+                  <div key={idx}>
+                    <button
+                      onClick={() => setExpandedFileIndex(isExpanded ? null : idx)}
+                      className={cn(
+                        "w-full bg-card border-2 rounded-xl overflow-hidden text-left transition-all hover:shadow-md",
+                        isExpanded ? riskColor : "border-border"
+                      )}
+                    >
+                      <div className="flex items-center gap-3 p-3">
+                        <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-card">
+                          {file.url && file.fileName?.match(/\.(jpe?g|png|webp|heic)$/i) ? (
+                            <img src={file.url} alt={file.fileName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted">
+                              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{file.fileName}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={cn("w-2 h-2 rounded-full", riskBg)} />
+                            <span className="text-xs text-muted">
+                              {fr ? `${fr.overallRiskScore100}% rizik` : "U obradi..."}
+                            </span>
+                          </div>
+                        </div>
+                        <svg className={cn("w-5 h-5 text-muted transition-transform", isExpanded && "rotate-180")} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {/* Expanded detail */}
+                    {isExpanded && fr && (
+                      <div className="mt-2 bg-card border border-border rounded-xl p-4 space-y-4">
+                        <VerdictDashboard
+                          riskScore={fr.overallRiskScore}
+                          riskLevel={fr.overallRiskLevel}
+                          c2paStatus={fr.c2paStatus}
+                          predictedSource={fr.predictedSource}
+                          sourceConfidence={fr.sourceConfidence}
+                          totalProcessingTimeMs={fr.totalProcessingTimeMs}
+                          inspectionId={result.id}
+                          verdictProbabilities={fr.verdictProbabilities}
+                          fileName={file.fileName}
+                        />
+                        {fr.modules && fr.modules.length > 0 && (
+                          <ForensicModuleTable result={fr} originalImageUrl={file.url} />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button onClick={handleReset} className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors">
+              Nova analiza
+            </button>
+            <Link href={`/inspections/${result.id}`} className="px-6 py-2.5 bg-card border border-border rounded-xl font-medium text-sm hover:bg-card-hover transition-colors inline-flex items-center gap-2">
+              Detaljan pregled
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── INDIVIDUAL RESULT VIEW (existing) ── */}
+      {result && !isGroupResult && (
         <div className="space-y-6">
           {result.decisionOutcome && (
             <DecisionBadge outcome={result.decisionOutcome} reason={result.decisionReason} />
@@ -184,9 +359,9 @@ function InspectContent() {
             <button onClick={handleReset} className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors">
               Nova analiza
             </button>
-            {uploadedFiles.length > 1 && (
+            {allResults.length > 1 && (
               <Link href="/inspections" className="px-6 py-2.5 bg-accent text-white rounded-xl font-medium text-sm hover:bg-accent-hover transition-colors inline-flex items-center gap-2">
-                Pogledaj sve analize ({uploadedFiles.length})
+                Pogledaj sve analize ({allResults.length})
               </Link>
             )}
             <button onClick={() => window.print()} className="px-6 py-2.5 bg-card border border-border rounded-xl font-medium text-sm hover:bg-card-hover transition-colors">

@@ -94,7 +94,9 @@ function statusLabel(status: "pass" | "warning" | "fail"): { text: string; cls: 
 function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
   const [open, setOpen] = useState(false);
   const riskPct = Math.round(mod.riskScore * 100);
-  const hasFindings = mod.findings.length > 0;
+  // Filter out low-risk findings (< 0.20) to avoid showing noise/false positives
+  const visibleFindings = mod.findings.filter(f => f.riskScore >= 0.20);
+  const hasFindings = visibleFindings.length > 0;
 
   return (
     <div className="rounded-lg border border-border bg-background">
@@ -140,7 +142,7 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
             className="overflow-hidden"
           >
             <div className="px-3 pb-2 space-y-1 border-t border-border">
-              {mod.findings.map((f, j) => (
+              {visibleFindings.map((f, j) => (
                 <div key={j} className="flex items-start gap-2 py-1.5">
                   <div
                     className={cn(

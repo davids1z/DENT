@@ -262,7 +262,7 @@ def _check_font_glyph_analysis(
                     glyph_count = len(cmap)
                     tt.close()
 
-                    if glyph_count < 30:
+                    if glyph_count < 10:
                         suspicious_fonts.append({
                             "page": page_idx + 1,
                             "xref": xref,
@@ -280,9 +280,11 @@ def _check_font_glyph_analysis(
     if not suspicious_fonts:
         return
 
-    # Separate into severity levels
-    critical = [f for f in suspicious_fonts if f["glyph_count"] < 15]
-    moderate = [f for f in suspicious_fonts if 15 <= f["glyph_count"] < 30]
+    # Separate into severity levels (threshold lowered: <5 = critical, 5-9 = moderate)
+    # PDF generators (Chrome, reportlab, wkhtmltopdf) routinely create subsets
+    # with 10-30 glyphs for numeric-only content — only flag truly tiny subsets.
+    critical = [f for f in suspicious_fonts if f["glyph_count"] < 5]
+    moderate = [f for f in suspicious_fonts if 5 <= f["glyph_count"] < 10]
 
     if critical:
         findings.append(
@@ -296,8 +298,8 @@ def _check_font_glyph_analysis(
                     f"Ovo je tipican trag alata za uredivanje koji ugraduje minimalni "
                     f"font za zamijenjene znakove."
                 ),
-                risk_score=0.75,
-                confidence=0.80,
+                risk_score=0.50,
+                confidence=0.75,
                 evidence={
                     "suspicious_fonts": critical[:5],
                     "total_suspicious": len(critical),
@@ -314,8 +316,8 @@ def _check_font_glyph_analysis(
                     f"{moderate[0]['glyph_count']} glifova — neobicno mali "
                     f"podskup za standardni poslovni dokument."
                 ),
-                risk_score=0.60,
-                confidence=0.80,
+                risk_score=0.35,
+                confidence=0.65,
                 evidence={
                     "suspicious_fonts": moderate[:5],
                     "total_suspicious": len(moderate),
@@ -349,6 +351,11 @@ def _check_zero_width_chars(
 
             for ch in text:
                 cp = ord(ch)
+                # Exclude BOM (U+FEFF) and LRM/RLM (U+200E/U+200F) from
+                # the count — these are extremely common in legitimate
+                # multilingual documents and Unicode-aware PDF generators.
+                if cp in (0xFEFF, 0x200E, 0x200F):
+                    continue
                 if cp in _ZERO_WIDTH_CHARS or unicodedata.category(ch) == "Cf":
                     try:
                         name = unicodedata.name(ch, f"U+{cp:04X}")
@@ -372,7 +379,7 @@ def _check_zero_width_chars(
         "char_types": dict(sorted(zw_counts.items(), key=lambda x: -x[1])[:10]),
     }
 
-    if zw_total > 10:
+    if zw_total > 20:
         findings.append(
             AnalyzerFinding(
                 code="DOC_ZERO_WIDTH_CHARS",
@@ -388,7 +395,7 @@ def _check_zero_width_chars(
                 evidence=evidence,
             )
         )
-    elif zw_total > 3:
+    elif zw_total > 10:
         findings.append(
             AnalyzerFinding(
                 code="DOC_ZERO_WIDTH_CHARS",

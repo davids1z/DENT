@@ -12,6 +12,7 @@ public record CreateInspectionCommand : IRequest<InspectionDto>
     public int? VehicleYear { get; init; }
     public int? Mileage { get; init; }
     public string? CaptureMetadataJson { get; init; }
+    public string? AnalysisMode { get; init; }
 }
 
 public record ImageInput

@@ -75,10 +75,21 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                     .Select(f => (f.Data, f.FileName))
                     .ToList();
 
+                // Choose batch vs batch-group based on analysis mode
                 List<MlForensicResult> batchResults;
+                MlCrossImageReport? crossImageReport = null;
                 try
                 {
-                    batchResults = await _mlService.RunForensicsBatchAsync(batchFiles, ct);
+                    if (inspection.AnalysisMode == "group" && batchFiles.Count > 1)
+                    {
+                        var groupResult = await _mlService.RunForensicsBatchGroupAsync(batchFiles, ct);
+                        batchResults = groupResult.PerFileReports;
+                        crossImageReport = groupResult.CrossImageReport;
+                    }
+                    else
+                    {
+                        batchResults = await _mlService.RunForensicsBatchAsync(batchFiles, ct);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -196,6 +207,19 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                         _logger.LogWarning(fileEx,
                             "Post-processing failed for file {FileName} in inspection {Id}, continuing",
                             fileName, inspection.Id);
+                    }
+                }
+
+                // Store cross-image findings (group analysis)
+                if (crossImageReport != null && crossImageReport.Findings.Count > 0)
+                {
+                    inspection.CrossImageFindingsJson = JsonSerializer.Serialize(crossImageReport,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+                    // Adjust max risk with cross-image modifier
+                    if (crossImageReport.GroupRiskModifier > 0 && maxRiskScore > 0)
+                    {
+                        maxRiskScore = Math.Min(1.0, maxRiskScore + crossImageReport.GroupRiskModifier);
                     }
                 }
 

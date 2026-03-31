@@ -60,7 +60,11 @@ except ImportError:
     logger.info("pytesseract not installed, Visual vs OCR comparison disabled")
 
 # Known PDF editing software (keyword_lower, risk_score, display_name)
-# Ordered from highest risk (online tools) to lowest risk (standard office).
+# Ordered from highest risk (online tools) to lowest risk.
+# NOTE: We intentionally EXCLUDE standard PDF creators (Adobe Acrobat,
+# LibreOffice, Microsoft Office, iText, ReportLab, FPDF, TCPDF, PDFsharp)
+# because these are legitimate PDF creation tools used by millions of
+# documents. Only flag tools primarily used for POST-CREATION editing.
 PDF_EDITING_SOFTWARE: list[tuple[str, float, str]] = [
     # Online editing tools — highest risk (anonymous web-based manipulation)
     ("ilovepdf", 0.55, "iLovePDF"),
@@ -71,20 +75,11 @@ PDF_EDITING_SOFTWARE: list[tuple[str, float, str]] = [
     ("sodapdf", 0.50, "Soda PDF"),
     ("pdfcandy", 0.50, "PDF Candy"),
     ("pdf-xchange", 0.45, "PDF-XChange"),
-    # Local editing tools
-    ("pdftk", 0.45, "PDFtk"),
-    ("itext", 0.40, "iText"),
-    ("itextsharp", 0.40, "iTextSharp"),
+    # Local editing tools (primarily used for modifying existing PDFs)
+    ("pdftk", 0.40, "PDFtk"),
     ("nitro", 0.40, "Nitro PDF"),
     ("qoppa", 0.40, "Qoppa PDF"),
-    ("fpdf", 0.35, "FPDF"),
-    ("tcpdf", 0.35, "TCPDF"),
-    ("pdfsharp", 0.35, "PDFsharp"),
     ("foxit phantompdf", 0.35, "Foxit PhantomPDF"),
-    ("reportlab", 0.30, "ReportLab"),
-    ("adobe acrobat", 0.15, "Adobe Acrobat"),
-    ("libreoffice", 0.10, "LibreOffice"),
-    ("microsoft", 0.05, "Microsoft Office"),
 ]
 
 # Unicode codepoints considered zero-width or invisible formatting

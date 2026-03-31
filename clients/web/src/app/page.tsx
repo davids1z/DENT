@@ -6,6 +6,8 @@ import { getDashboardStats, type DashboardStats as Stats } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { DashboardStats } from "@/components/DashboardStats";
 import { InspectionCard } from "@/components/InspectionCard";
+import { ScrollHint } from "@/components/ScrollHint";
+import { ScrollToTop } from "@/components/ScrollToTop";
 
 const features = [
   {
@@ -101,9 +103,26 @@ export default function Dashboard() {
 
   return (
     <div>
+    <ScrollHint />
+    <ScrollToTop />
+    <div className="relative overflow-x-clip">
+      {/* ===== GLOBAL DECO CIRCLES — behind everything ===== */}
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+        {/* Hero top-right */}
+        <div className="absolute -top-28 -right-28 w-[300px] h-[300px] sm:-top-36 sm:-right-36 sm:w-[450px] sm:h-[450px] lg:-top-40 lg:-right-40 lg:w-[600px] lg:h-[600px] rounded-full deco-circle" />
+        {/* Hero bottom-left */}
+        <div className="absolute top-[320px] -left-28 w-[250px] h-[250px] sm:top-[380px] sm:-left-36 sm:w-[380px] sm:h-[380px] lg:top-[420px] lg:-left-40 lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
+        {/* Features right */}
+        <div className="absolute top-[900px] -right-28 w-[280px] h-[280px] sm:top-[1000px] sm:-right-36 sm:w-[400px] sm:h-[400px] lg:top-[1100px] lg:-right-40 lg:w-[550px] lg:h-[550px] rounded-full deco-circle" />
+        {/* Pipeline left */}
+        <div className="absolute top-[1600px] -left-20 w-[250px] h-[250px] sm:top-[1800px] sm:-left-28 sm:w-[350px] sm:h-[350px] lg:top-[1900px] lg:-left-32 lg:w-[450px] lg:h-[450px] rounded-full deco-circle" />
+        {/* CTA right */}
+        <div className="absolute bottom-[400px] right-[10%] w-[260px] h-[260px] sm:bottom-[450px] sm:right-[15%] sm:w-[380px] sm:h-[380px] lg:bottom-[500px] lg:right-[20%] lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
+      </div>
+
       {/* ===== HERO ===== */}
-      <section className="relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 pb-20 md:pt-24 md:pb-28">
+      <section className="relative min-h-[calc(100dvh-68px)] max-h-[1200px] flex items-start justify-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-[12vh] sm:pt-[14vh] md:pt-[16vh] pb-16 w-full">
           <div className="max-w-3xl mx-auto text-center fade-up">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-light text-accent text-xs font-medium mb-6">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -136,14 +155,10 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-28 -right-28 w-[300px] h-[300px] sm:-top-36 sm:-right-36 sm:w-[450px] sm:h-[450px] lg:-top-40 lg:-right-40 lg:w-[600px] lg:h-[600px] rounded-full deco-circle" />
-          <div className="absolute -bottom-28 -left-28 w-[250px] h-[250px] sm:-bottom-36 sm:-left-36 sm:w-[380px] sm:h-[380px] lg:-bottom-40 lg:-left-40 lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
-        </div>
       </section>
 
       {/* ===== HOW IT WORKS ===== */}
-      <section className="section-alt border-y border-border">
+      <section className="section-alt border border-border my-6 md:my-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -172,10 +187,7 @@ export default function Dashboard() {
       </section>
 
       {/* ===== FEATURES ===== */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute top-[20%] -right-28 w-[280px] h-[280px] sm:-right-36 sm:w-[400px] sm:h-[400px] lg:-right-40 lg:w-[550px] lg:h-[550px] rounded-full deco-circle" />
-        </div>
+      <section className="relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -189,7 +201,7 @@ export default function Dashboard() {
             {features.map((f) => (
               <div
                 key={f.title}
-                className="p-6 rounded-2xl border border-border hover:border-accent/20 hover:bg-accent-light/30 transition-colors"
+                className="p-6 rounded-2xl bg-background border border-border hover:border-accent/20 hover:bg-accent-light/30 transition-colors relative"
               >
                 <div className="w-10 h-10 rounded-xl bg-accent-light flex items-center justify-center text-accent mb-4">
                   {f.icon}
@@ -203,10 +215,7 @@ export default function Dashboard() {
       </section>
 
       {/* ===== FORENSIC PIPELINE ===== */}
-      <section className="relative overflow-hidden section-alt border-y border-border">
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-20 -left-20 w-[250px] h-[250px] sm:-top-28 sm:-left-28 sm:w-[350px] sm:h-[350px] lg:-top-32 lg:-left-32 lg:w-[450px] lg:h-[450px] rounded-full deco-circle" />
-        </div>
+      <section className="relative section-alt border border-border my-6 md:my-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">
@@ -309,10 +318,7 @@ export default function Dashboard() {
       )}
 
       {/* ===== CTA BANNER ===== */}
-      <section className={`relative overflow-hidden ${loaded && stats && stats.totalInspections > 0 ? "section-alt border-y border-border" : "border-t border-border section-alt"}`}>
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-20 right-[10%] w-[260px] h-[260px] sm:-top-28 sm:right-[15%] sm:w-[380px] sm:h-[380px] lg:-top-32 lg:right-[20%] lg:w-[500px] lg:h-[500px] rounded-full deco-circle" />
-        </div>
+      <section className="relative section-alt border border-border my-6 md:my-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-4">
@@ -334,6 +340,8 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+
+    </div>
     </div>
   );
 }

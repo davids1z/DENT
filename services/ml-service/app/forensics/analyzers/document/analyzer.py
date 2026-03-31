@@ -9,6 +9,7 @@ from ._common import (
     _PYPDF_AVAILABLE,
     logger,
 )
+from ...base import RiskLevel
 from ._content_checks import (
     _check_color_space_inconsistency,
     _check_compression_inconsistency,
@@ -49,6 +50,74 @@ class DocumentForensicsAnalyzer(BaseAnalyzer):
 
     def __init__(self, signature_verification: bool = True) -> None:
         self._sig_verification = signature_verification
+
+    def _make_result(
+        self,
+        findings: list[AnalyzerFinding],
+        processing_time_ms: int = 0,
+        error: str | None = None,
+    ) -> ModuleResult:
+        """Override base _make_result for document forensics.
+
+        Document forensics runs 18 diverse checks. Using pure MAX (base class)
+        means a single false positive at 0.70 dominates regardless of how many
+        checks are clean. Instead we use a weighted combination:
+
+          risk = max_score * 0.55 + mean(top_3) * 0.30 + corroboration * 0.15
+
+        The corroboration bonus rewards multiple independent signals agreeing,
+        which is the hallmark of real tampering vs. isolated noise.
+        """
+        if error:
+            return ModuleResult(
+                module_name=self.MODULE_NAME,
+                module_label=self.MODULE_LABEL,
+                risk_score=0.0, risk_score100=0,
+                risk_level=RiskLevel.LOW,
+                findings=[], processing_time_ms=processing_time_ms, error=error,
+            )
+
+        if not findings:
+            return ModuleResult(
+                module_name=self.MODULE_NAME,
+                module_label=self.MODULE_LABEL,
+                risk_score=0.0, risk_score100=0,
+                risk_level=RiskLevel.LOW,
+                findings=[], processing_time_ms=processing_time_ms,
+            )
+
+        positive = sorted(
+            [f.risk_score for f in findings if f.risk_score > 0], reverse=True
+        )
+        negative = [f.risk_score for f in findings if f.risk_score < 0]
+
+        if not positive:
+            risk_score = 0.0
+        else:
+            max_score = positive[0]
+            # Mean of top 3 (or fewer if less available)
+            top3 = positive[:3]
+            mean_top3 = sum(top3) / len(top3)
+            # Corroboration: how many findings exceed 0.30 (meaningful signal)?
+            n_corroborating = sum(1 for s in positive if s >= 0.30)
+            # Corroboration score: 0 if just 1, scales up with more signals
+            corr_score = min((n_corroborating - 1) / 3, 1.0) if n_corroborating > 1 else 0.0
+
+            risk_score = max_score * 0.55 + mean_top3 * 0.30 + corr_score * 0.15
+
+        # Apply trust reductions (e.g. valid digital signature)
+        risk_score = risk_score + sum(negative)
+        risk_score = max(0.0, min(1.0, risk_score))
+
+        return ModuleResult(
+            module_name=self.MODULE_NAME,
+            module_label=self.MODULE_LABEL,
+            risk_score=risk_score,
+            risk_score100=round(risk_score * 100),
+            risk_level=self._risk_level(risk_score),
+            findings=findings,
+            processing_time_ms=processing_time_ms,
+        )
 
     async def analyze_image(self, image_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([])  # No-op for images

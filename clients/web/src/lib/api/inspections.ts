@@ -75,11 +75,14 @@ export async function uploadInspection(
   options?: {
     captureMetadata?: CaptureMetadata[];
     vehicle?: VehicleContext;
+    analysisMode?: "individual" | "group";
   },
 ): Promise<Inspection> {
   const compressed = await compressFiles(files);
   const formData = new FormData();
   compressed.forEach((f) => formData.append("images", f));
+
+  if (options?.analysisMode) formData.append("analysisMode", options.analysisMode);
 
   const vehicle = options?.vehicle;
   if (vehicle?.vehicleMake) formData.append("vehicleMake", vehicle.vehicleMake);

@@ -150,6 +150,35 @@ public class MlAnalysisService : IMlAnalysisService
         }
     }
 
+    public async Task<MlBatchGroupResult> RunForensicsBatchGroupAsync(
+        List<(byte[] Data, string FileName)> files, CancellationToken ct = default)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            foreach (var (data, fileName) in files)
+            {
+                var byteContent = new ByteArrayContent(data);
+                byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    GetContentType(fileName));
+                content.Add(byteContent, "files", fileName);
+            }
+
+            var response = await _httpClient.PostAsync("/forensics/batch-group", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<MlBatchGroupResult>(SnakeCaseOptions, ct);
+            return result ?? new MlBatchGroupResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Batch-group endpoint failed, falling back to regular batch");
+            // Fallback: run regular batch, no cross-image analysis
+            var regularResults = await RunForensicsBatchAsync(files, ct);
+            return new MlBatchGroupResult { PerFileReports = regularResults };
+        }
+    }
+
     public async Task<MlAnalysisResult> AnalyzeImageWithContextAsync(
         byte[] imageData, string fileName,
         MlForensicResult forensicContext,
