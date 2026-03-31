@@ -80,18 +80,22 @@ jobs:
             chmod 600 "$DEPLOY_DIR/secrets/"*.txt
 
             # ── SSL certs: copy from system letsencrypt if missing ─
+            # Use docker (runs as root) to copy certs since deploy user may not have access
             CERT_DIR="$DEPLOY_DIR/infra/certbot/conf/live/dent.xyler.ai"
             if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
               echo "Copying SSL certs from /etc/letsencrypt..."
-              sudo mkdir -p "$CERT_DIR"
-              sudo mkdir -p "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai"
-              sudo cp /etc/letsencrypt/archive/dent.xyler.ai/* "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai/" 2>/dev/null || true
-              for f in cert chain fullchain privkey; do
-                if [ -f "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" ]; then
-                  sudo cp -L "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" "$CERT_DIR/${f}.pem"
-                fi
-              done
-              sudo chown -R "$(whoami):$(whoami)" "$DEPLOY_DIR/infra/certbot/" 2>/dev/null || true
+              docker run --rm \
+                -v /etc/letsencrypt:/src:ro \
+                -v "$DEPLOY_DIR/infra/certbot/conf:/dst" \
+                alpine sh -c '
+                  mkdir -p /dst/live/dent.xyler.ai /dst/archive/dent.xyler.ai
+                  cp /src/archive/dent.xyler.ai/* /dst/archive/dent.xyler.ai/ 2>/dev/null || true
+                  for f in cert chain fullchain privkey; do
+                    [ -f "/src/live/dent.xyler.ai/${f}.pem" ] && cp -L "/src/live/dent.xyler.ai/${f}.pem" "/dst/live/dent.xyler.ai/${f}.pem"
+                  done
+                  chmod -R 644 /dst/live/ /dst/archive/ 2>/dev/null || true
+                  chmod 600 /dst/live/dent.xyler.ai/privkey.pem 2>/dev/null || true
+                '
             fi
 
             # ── Database backup ───────────────────────────────────
