@@ -23,8 +23,10 @@ export const FORENSIC_PILLARS: ForensicPillar[] = [
       "community_forensics_detection", // CommFor (CVPR 2025)
       "efficientnet_ai_detection",   // EfficientNet-B4 pre-trained
       "clip_ai_detection",           // CLIP ViT-L/14 probe
+      "bfree_detection",             // B-Free (CVPR 2025) — bias-free DINOv2
+      "spai_detection",              // SPAI (CVPR 2025) — FFT spectral
     ],
-    description: "5 nezavisnih AI detektora: SAFE, DINOv2, CommFor, EfficientNet, CLIP",
+    description: "7 nezavisnih AI detektora: SAFE, DINOv2, CommFor, EfficientNet, CLIP, B-Free, SPAI",
   },
   {
     id: "modification",

@@ -114,7 +114,8 @@ def main():
             boundary_picks += pool[n_disagree:n_disagree + n_boundary - len(boundary_picks)]
 
         # Easy anchors (very high or very low scores — clear cases)
-        remaining = [r for r in pool if r not in set(map(id, disagree_picks + boundary_picks))]
+        picked_ids = {id(r) for r in disagree_picks + boundary_picks}
+        remaining = [r for r in pool if id(r) not in picked_ids]
         if cls == "authentic":
             # Easy authentic = very low overall risk
             remaining.sort(key=lambda r: r.get("overall_risk_score", 0))

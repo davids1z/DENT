@@ -237,6 +237,15 @@ async def main():
     s3 = boto3.client("s3", region_name=args.region)
 
     labels = load_labels(s3, args.bucket)
+
+    # Subset filtering: only process images in the subset file
+    if args.subset_file:
+        with open(args.subset_file) as sf:
+            subset = {line.strip() for line in sf if line.strip()}
+        before = len(labels)
+        labels = {fn: gt for fn, gt in labels.items() if fn in subset}
+        print(f"Subset filter: {len(labels)} images from {before} (file: {args.subset_file})")
+
     print(f"Labels: {len(labels)} ({sum(1 for v in labels.values() if v=='authentic')} auth, "
           f"{sum(1 for v in labels.values() if v=='ai_generated')} ai, "
           f"{sum(1 for v in labels.values() if v=='tampered')} tamp)")
