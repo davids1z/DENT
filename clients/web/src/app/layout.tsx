@@ -51,12 +51,10 @@ export default function RootLayout({
   return (
     <html lang="hr" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("dent_theme");var isDark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme:dark)").matches);if(isDark)d.classList.add("dark");document.getElementById("theme-color-meta").content=isDark?"#0f172a":"#ffffff";if(document.cookie.indexOf("dent_has_auth=1")!==-1)d.dataset.auth="1"}catch(e){}})()`,
+            __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("dent_theme");var isDark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme:dark)").matches);if(isDark)d.classList.add("dark");if(document.cookie.indexOf("dent_has_auth=1")!==-1)d.dataset.auth="1"}catch(e){}})()`,
           }}
         />
       </head>
