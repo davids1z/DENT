@@ -28,6 +28,9 @@ out/
 docker-compose.override.yml
 secrets/
 
+# SSL certificates (managed by certbot, not git)
+infra/certbot/conf/
+
 # OS
 .DS_Store
 Thumbs.db

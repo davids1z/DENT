@@ -20,7 +20,7 @@ jobs:
           cache-dependency-path: services/ml-service/requirements.txt
 
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio pydantic pydantic-settings numpy pillow scipy PyWavelets
+        run: pip install pytest pytest-asyncio pydantic pydantic-settings numpy pillow scipy PyWavelets scikit-learn joblib
 
       - name: Run core tests (fusion + stacking_meta)
         run: pytest tests/test_fusion.py tests/test_stacking_meta.py -v
@@ -43,14 +43,15 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: DB_PASSWORD,JWT_SECRET,ADMIN_PASSWORD,MINIO_ACCESS_KEY,MINIO_SECRET_KEY
+          command_timeout: 10m
           script: |
             set -e
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
+            COMPOSE="docker compose -f docker-compose.server.yml"
 
-            # Init git repo if needed
+            # ── Git pull ──────────────────────────────────────────
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
-              cd /tmp
-              rm -rf dent-clone
+              cd /tmp && rm -rf dent-clone
               git clone https://github.com/${{ github.repository }}.git dent-clone
               mv dent-clone/.git "$DEPLOY_DIR/.git"
               rm -rf dent-clone
@@ -59,41 +60,91 @@ jobs:
             else
               cd "$DEPLOY_DIR"
               git fetch origin main
-              # Docker containers create root-owned files that git can't overwrite.
-              # Force-remove them so git reset can recreate from the repo.
-              docker run --rm -v "$DEPLOY_DIR:/work" alpine sh -c "rm -rf /work/services/ml-service/models/stacking_meta /work/services/ml-service/models/dinov2 /work/config" 2>/dev/null || true
+
+              # Docker creates root-owned files that git can't overwrite
+              docker run --rm -v "$DEPLOY_DIR:/work" alpine sh -c \
+                "rm -rf /work/services/ml-service/models/stacking_meta /work/services/ml-service/models/dinov2 /work/config" \
+                2>/dev/null || true
+
               git reset --hard origin/main
             fi
 
-            # Create Docker secrets files from server .env
+            # ── Secrets ───────────────────────────────────────────
             mkdir -p "$DEPLOY_DIR/secrets"
             set -a; source "$DEPLOY_DIR/.env" 2>/dev/null || true; set +a
-            echo "${DB_PASSWORD:-dent_secret_2024}" > "$DEPLOY_DIR/secrets/db_password.txt"
-            echo "${JWT_SECRET}" > "$DEPLOY_DIR/secrets/jwt_secret.txt"
-            echo "${ADMIN_PASSWORD}" > "$DEPLOY_DIR/secrets/admin_password.txt"
-            echo "${MINIO_ACCESS_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_access_key.txt"
-            echo "${MINIO_SECRET_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_secret_key.txt"
+            echo -n "${DB_PASSWORD:-dent_secret_2024}" > "$DEPLOY_DIR/secrets/db_password.txt"
+            echo -n "${JWT_SECRET}" > "$DEPLOY_DIR/secrets/jwt_secret.txt"
+            echo -n "${ADMIN_PASSWORD}" > "$DEPLOY_DIR/secrets/admin_password.txt"
+            echo -n "${MINIO_ACCESS_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_access_key.txt"
+            echo -n "${MINIO_SECRET_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_secret_key.txt"
             chmod 600 "$DEPLOY_DIR/secrets/"*.txt
 
-            # Pre-deploy: backup database
-            echo "Backing up database before deploy..."
+            # ── SSL certs: copy from system letsencrypt if missing ─
+            CERT_DIR="$DEPLOY_DIR/infra/certbot/conf/live/dent.xyler.ai"
+            if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+              echo "Copying SSL certs from /etc/letsencrypt..."
+              mkdir -p "$CERT_DIR"
+              mkdir -p "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai"
+              cp /etc/letsencrypt/archive/dent.xyler.ai/* "$DEPLOY_DIR/infra/certbot/conf/archive/dent.xyler.ai/" 2>/dev/null || true
+              # Copy actual files (not symlinks — Docker volumes don't follow symlinks)
+              for f in cert chain fullchain privkey; do
+                if [ -f "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" ]; then
+                  cp -L "/etc/letsencrypt/live/dent.xyler.ai/${f}.pem" "$CERT_DIR/${f}.pem"
+                fi
+              done
+            fi
+
+            # ── Database backup ───────────────────────────────────
             mkdir -p "$DEPLOY_DIR/backups"
-            docker compose -f docker-compose.server.yml exec -T postgres \
+            $COMPOSE exec -T postgres \
               pg_dump -U dent --no-owner dent \
               | gzip > "$DEPLOY_DIR/backups/pre-deploy-$(date +%Y%m%d_%H%M%S).sql.gz" || \
-              echo "WARNING: Database backup failed (DB may not be running yet)"
+              echo "WARNING: DB backup failed (DB may not be running)"
 
-            # Build new images, then rolling update (no down — avoids full outage)
-            docker compose -f docker-compose.server.yml build --parallel
-            docker compose -f docker-compose.server.yml up -d --remove-orphans --wait --wait-timeout 120
+            # ── Build only app images (NOT nginx/postgres/minio) ──
+            $COMPOSE build --parallel api ml-service web
+
+            # ── Rolling update: only app services ─────────────────
+            # Do NOT restart nginx (SSL certs), postgres (data), minio (storage)
+            $COMPOSE up -d --no-deps api
+            $COMPOSE up -d --no-deps ml-service
+            $COMPOSE up -d --no-deps web
+
+            # Wait for services to be healthy
+            echo "Waiting for services..."
+            sleep 30
+
+            # Start nginx only if not running
+            if ! docker ps --filter name=dent-nginx-1 --filter status=running -q | grep -q .; then
+              echo "Nginx not running, starting..."
+              $COMPOSE up -d nginx
+            fi
+
             docker image prune -f
 
-            # Post-deploy: verify API health
-            if curl -sf http://127.0.0.1:3200/api/health > /dev/null; then
-              echo "Deploy verified — API healthy"
+            # ── Health check ──────────────────────────────────────
+            API_OK=false
+            for i in 1 2 3 4 5; do
+              if docker exec dent-api-1 curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
+                API_OK=true
+                break
+              fi
+              echo "Health check attempt $i failed, retrying in 10s..."
+              sleep 10
+            done
+
+            ML_OK=false
+            if docker exec dent-ml-service-1 python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; then
+              ML_OK=true
+            fi
+
+            echo "API: $API_OK, ML: $ML_OK"
+            if [ "$API_OK" = true ] && [ "$ML_OK" = true ]; then
+              echo "Deploy verified — all healthy"
             else
-              echo "WARNING: API health check failed after deploy"
-              docker compose -f docker-compose.server.yml logs --tail=30 api
+              echo "WARNING: Health check issues"
+              $COMPOSE ps
+              $COMPOSE logs --tail=10 api ml-service
               exit 1
             fi
 
