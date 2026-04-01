@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { ForensicResult, ForensicModuleResult } from "@/lib/api";
+import type { ForensicResult, ForensicModuleResult, ForensicFinding } from "@/lib/api";
 import { fraudRiskColor } from "@/lib/api";
 import {
   groupModulesIntoPillars,
@@ -11,6 +11,8 @@ import {
   type PillarData,
 } from "@/lib/forensicPillars";
 import { cn } from "@/lib/cn";
+import { hasBboxData, extractBboxes } from "@/lib/findingBbox";
+import { FindingBboxOverlay } from "./FindingBboxOverlay";
 
 // ── Icons ────────────────────────────────────────────────────────
 
@@ -91,8 +93,9 @@ function statusLabel(status: "pass" | "warning" | "fail"): { text: string; cls: 
 
 // ── Module Row ───────────────────────────────────────────────────
 
-function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
+function ModuleRow({ module: mod, pagePreviewUrls }: { module: ForensicModuleResult; pagePreviewUrls?: string[] | null }) {
   const [open, setOpen] = useState(false);
+  const [bboxOverlay, setBboxOverlay] = useState<{ finding: ForensicFinding; pageIdx: number } | null>(null);
   const riskPct = mod.riskScore100;
 
   return (
@@ -135,25 +138,46 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
           >
             <div className="px-3 pb-2.5 pt-1.5 border-t border-border space-y-1.5">
               {mod.findings.length > 0 ? (
-                mod.findings.map((f, j) => (
-                  <div key={j} className="flex items-start gap-2 py-1">
-                    <div
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5",
-                        f.riskScore >= 0.5 ? "bg-red-500" : f.riskScore >= 0.25 ? "bg-amber-400" : "bg-green-500"
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[11px] text-foreground block">{f.title}</span>
-                      {f.description && (
-                        <span className="text-[10px] text-muted-light block">{f.description}</span>
-                      )}
+                mod.findings.map((f, j) => {
+                  const bboxPages = hasBboxData(f) ? extractBboxes(f) : [];
+                  return (
+                    <div key={j} className="flex items-start gap-2 py-1">
+                      <div
+                        className={cn(
+                          "w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5",
+                          f.riskScore >= 0.5 ? "bg-red-500" : f.riskScore >= 0.25 ? "bg-amber-400" : "bg-green-500"
+                        )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[11px] text-foreground block">{f.title}</span>
+                        {f.description && (
+                          <span className="text-[10px] text-muted-light block">{f.description}</span>
+                        )}
+                        {/* Bbox page buttons */}
+                        {bboxPages.length > 0 && pagePreviewUrls && pagePreviewUrls.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {bboxPages.map((bp, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setBboxOverlay({ finding: f, pageIdx: bp.page - 1 })}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                              >
+                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                                </svg>
+                                Str. {bp.page}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono text-muted-light flex-shrink-0">
+                        {Math.round(f.confidence * 100)}%
+                      </span>
                     </div>
-                    <span className="text-[10px] font-mono text-muted-light flex-shrink-0">
-                      {Math.round(f.confidence * 100)}%
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-[10px] text-muted-light py-1">
                   Nije utvrđena anomalija ovim modulom.
@@ -166,6 +190,22 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Bbox overlay lightbox */}
+      {bboxOverlay && pagePreviewUrls && pagePreviewUrls[bboxOverlay.pageIdx] && (() => {
+        const allBboxes = extractBboxes(bboxOverlay.finding);
+        const pageBbox = allBboxes.find(b => b.page === bboxOverlay.pageIdx + 1);
+        if (!pageBbox) return null;
+        return (
+          <FindingBboxOverlay
+            pagePreviewUrl={pagePreviewUrls[bboxOverlay.pageIdx]}
+            bboxes={pageBbox.rects}
+            label={pageBbox.label}
+            pageNumber={pageBbox.page}
+            onClose={() => setBboxOverlay(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -260,7 +300,7 @@ function HeatmapViewer({
 
 // ── Pillar Section ───────────────────────────────────────────────
 
-function PillarSection({ data, originalImageUrl }: { data: PillarData; originalImageUrl: string }) {
+function PillarSection({ data, originalImageUrl, pagePreviewUrls }: { data: PillarData; originalImageUrl: string; pagePreviewUrls?: string[] | null }) {
   const [expanded, setExpanded] = useState(false);
   const status = getPillarStatus(data.aggregateRiskScore);
   const riskPct = Math.round(data.aggregateRiskScore * 100);
@@ -324,7 +364,7 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
           >
             <div className="px-5 pb-4 space-y-2 bg-card/30">
               {data.modules.map((mod) => (
-                <ModuleRow key={mod.moduleName} module={mod} />
+                <ModuleRow key={mod.moduleName} module={mod} pagePreviewUrls={pagePreviewUrls} />
               ))}
               {(data.heatmapUrl || data.fftSpectrumUrl) && (
                 <HeatmapViewer
@@ -346,9 +386,10 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
 interface ForensicModuleTableProps {
   result: ForensicResult;
   originalImageUrl: string;
+  pagePreviewUrls?: string[] | null;
 }
 
-export function ForensicModuleTable({ result, originalImageUrl }: ForensicModuleTableProps) {
+export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls }: ForensicModuleTableProps) {
   const pillars = groupModulesIntoPillars(result.modules, result);
   if (pillars.length === 0) return null;
 
@@ -369,7 +410,7 @@ export function ForensicModuleTable({ result, originalImageUrl }: ForensicModule
       </h2>
       <div className="bg-background rounded-2xl border border-border shadow-sm overflow-hidden divide-y divide-border">
         {pillars.map((p) => (
-          <PillarSection key={p.pillar.id} data={p} originalImageUrl={originalImageUrl} />
+          <PillarSection key={p.pillar.id} data={p} originalImageUrl={originalImageUrl} pagePreviewUrls={pagePreviewUrls} />
         ))}
       </div>
 
@@ -380,7 +421,7 @@ export function ForensicModuleTable({ result, originalImageUrl }: ForensicModule
           <div className="bg-background rounded-xl border border-border shadow-sm overflow-hidden">
             <div className="px-5 py-3 space-y-2">
               {unassigned.map((mod) => (
-                <ModuleRow key={mod.moduleName} module={mod} />
+                <ModuleRow key={mod.moduleName} module={mod} pagePreviewUrls={pagePreviewUrls} />
               ))}
             </div>
           </div>

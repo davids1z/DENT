@@ -44,6 +44,9 @@ public static class DependencyInjection
         // ML Service HTTP Client
         services.AddHttpClient<IMlAnalysisService, MlAnalysisService>();
 
+        // Weather Service (Open-Meteo, free, no API key)
+        services.AddHttpClient<IWeatherService, WeatherService>();
+
         // Audit logging (non-blocking Channel + background flush)
         var auditChannel = Channel.CreateUnbounded<AuditEventData>(
             new UnboundedChannelOptions { SingleReader = true });

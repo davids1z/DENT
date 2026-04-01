@@ -16,6 +16,7 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
     private readonly IStorageService _storage;
     private readonly IEvidenceService _evidence;
     private readonly IImageProcessingService _imageProcessing;
+    private readonly IWeatherService _weather;
     private readonly ILogger<ForensicOrchestrationService> _logger;
 
     public ForensicOrchestrationService(
@@ -24,6 +25,7 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
         IStorageService storage,
         IEvidenceService evidence,
         IImageProcessingService imageProcessing,
+        IWeatherService weather,
         ILogger<ForensicOrchestrationService> logger)
     {
         _db = db;
@@ -31,6 +33,7 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
         _storage = storage;
         _evidence = evidence;
         _imageProcessing = imageProcessing;
+        _weather = weather;
         _logger = logger;
     }
 
@@ -296,6 +299,87 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
 
                 if (primaryFr != null)
                     inspection.ForensicResultHash = _evidence.ComputeSha256(primaryFr.ModuleResultsJson ?? "[]");
+
+                // ── Weather correlation (GPS + timestamp → Open-Meteo) ──
+                try
+                {
+                    if (primaryForensicResult != null)
+                    {
+                        double? lat = null, lon = null;
+                        DateTime? captureDate = null;
+
+                        // Extract GPS and timestamp from metadata module findings
+                        var metaModule = primaryForensicResult.Modules
+                            .FirstOrDefault(m => m.ModuleName == "metadata_analysis");
+                        if (metaModule != null)
+                        {
+                            // Parse evidence from metadata module JSON
+                            var moduleJson = primaryFr?.ModuleResultsJson ?? "[]";
+                            using var doc = JsonDocument.Parse(moduleJson);
+                            foreach (var mod in doc.RootElement.EnumerateArray())
+                            {
+                                if (mod.TryGetProperty("moduleName", out var mn) && mn.GetString() == "metadata_analysis")
+                                {
+                                    foreach (var finding in mod.GetProperty("findings").EnumerateArray())
+                                    {
+                                        if (!finding.TryGetProperty("evidence", out var ev)) continue;
+                                        if (ev.TryGetProperty("latitude", out var latEl) && latEl.ValueKind == JsonValueKind.Number)
+                                            lat = latEl.GetDouble();
+                                        if (ev.TryGetProperty("longitude", out var lonEl) && lonEl.ValueKind == JsonValueKind.Number)
+                                            lon = lonEl.GetDouble();
+                                        if (ev.TryGetProperty("original", out var dateEl) && dateEl.ValueKind == JsonValueKind.String)
+                                        {
+                                            var dateStr = dateEl.GetString();
+                                            if (!string.IsNullOrEmpty(dateStr))
+                                            {
+                                                // EXIF format: "YYYY:MM:DD HH:MM:SS" → "YYYY-MM-DD HH:MM:SS"
+                                                if (dateStr.Length >= 10 && dateStr[4] == ':')
+                                                    dateStr = dateStr[..4] + "-" + dateStr[5..7] + "-" + dateStr[8..];
+                                                if (DateTime.TryParse(dateStr, out var parsed))
+                                                    captureDate = parsed;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (lat.HasValue && lon.HasValue && captureDate.HasValue
+                            && Math.Abs(lat.Value) > 0.1 && Math.Abs(lon.Value) > 0.1)
+                        {
+                            var weather = await _weather.GetHistoricalWeatherAsync(
+                                lat.Value, lon.Value, captureDate.Value, ct);
+
+                            if (weather != null)
+                            {
+                                var weatherAssessment = new
+                                {
+                                    queried = true,
+                                    hadHail = weather.HadHail,
+                                    hadPrecipitation = weather.HadPrecipitation,
+                                    precipitationMm = weather.PrecipitationMm,
+                                    temperatureMax = weather.TempMax,
+                                    temperatureMin = weather.TempMin,
+                                    weatherCode = weather.WeatherCode,
+                                    weatherDescription = weather.WeatherDescription,
+                                    latitude = lat.Value,
+                                    longitude = lon.Value,
+                                    date = captureDate.Value.ToString("yyyy-MM-dd"),
+                                };
+                                inspection.AgentWeatherAssessment = JsonSerializer.Serialize(weatherAssessment);
+
+                                _logger.LogInformation(
+                                    "Weather for inspection {Id}: {Desc}, {Precip}mm, {TMin}-{TMax}°C",
+                                    inspection.Id, weather.WeatherDescription,
+                                    weather.PrecipitationMm, weather.TempMin, weather.TempMax);
+                            }
+                        }
+                    }
+                }
+                catch (Exception wex)
+                {
+                    _logger.LogDebug(wex, "Weather correlation failed for inspection {Id}", inspection.Id);
+                }
             }
             catch (Exception fex)
             {

@@ -126,6 +126,7 @@ export interface ForensicFinding {
   description: string;
   riskScore: number;
   confidence: number;
+  evidence?: Record<string, unknown> | null;
 }
 
 export interface ForensicModuleResult {
@@ -228,6 +229,7 @@ export interface Inspection {
   agentStpEligible: boolean;
   agentFallbackUsed: boolean;
   agentProcessingTimeMs: number;
+  agentWeatherAssessment: string | null;
   fraudRiskScore: number | null;
   fraudRiskLevel: string | null;
   forensicResult: ForensicResult | null;

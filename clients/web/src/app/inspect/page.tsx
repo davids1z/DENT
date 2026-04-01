@@ -315,7 +315,7 @@ function InspectContent() {
                           fileName={file.fileName}
                         />
                         {fr.modules && fr.modules.length > 0 && (
-                          <ForensicModuleTable result={fr} originalImageUrl={file.url} />
+                          <ForensicModuleTable result={fr} originalImageUrl={file.url} pagePreviewUrls={fr.pagePreviewUrls} />
                         )}
                       </div>
                     )}

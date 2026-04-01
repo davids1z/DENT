@@ -60,6 +60,7 @@ public record InspectionDto
     public bool AgentStpEligible { get; init; }
     public bool AgentFallbackUsed { get; init; }
     public int AgentProcessingTimeMs { get; init; }
+    public string? AgentWeatherAssessment { get; init; }
 
     // Fraud detection
     public double? FraudRiskScore { get; init; }

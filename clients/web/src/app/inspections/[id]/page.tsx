@@ -231,12 +231,45 @@ function InspectionDetailContent() {
         </section>
       )}
 
+      {/* ── 3.5. WEATHER CORRELATION ── */}
+      {inspection.agentWeatherAssessment && (() => {
+        try {
+          const w = JSON.parse(inspection.agentWeatherAssessment) as {
+            queried?: boolean; weatherDescription?: string; precipitationMm?: number;
+            temperatureMin?: number; temperatureMax?: number; hadHail?: boolean;
+            hadPrecipitation?: boolean; latitude?: number; longitude?: number; date?: string;
+          };
+          if (!w.queried) return null;
+          const icon = w.hadHail ? "🌨️" : w.hadPrecipitation ? "🌧️" : "☀️";
+          return (
+            <div className="mt-4 p-3 bg-card border border-border rounded-xl flex items-center gap-3">
+              <span className="text-xl">{icon}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium text-foreground block">
+                  Vremenska provjera — {w.date}
+                </span>
+                <span className="text-[11px] text-muted block">
+                  {w.weatherDescription}
+                  {w.precipitationMm != null && w.precipitationMm > 0 ? `, ${w.precipitationMm.toFixed(1)}mm oborina` : ""}
+                  {w.temperatureMin != null && w.temperatureMax != null ? `, ${Math.round(w.temperatureMin)}-${Math.round(w.temperatureMax)}°C` : ""}
+                  {w.hadHail ? " — TUČA ZABILJEŽENA" : ""}
+                </span>
+              </div>
+              <span className="text-[10px] text-muted flex-shrink-0">
+                GPS: {w.latitude?.toFixed(2)}, {w.longitude?.toFixed(2)}
+              </span>
+            </div>
+          );
+        } catch { return null; }
+      })()}
+
       {/* ── 4. FORENSIC MODULES ── */}
       {activeForensicResult && (
         <div className="mt-8">
           <ForensicModuleTable
             result={activeForensicResult}
             originalImageUrl={activeImageUrl || inspection.imageUrl}
+            pagePreviewUrls={activeForensicResult.pagePreviewUrls}
           />
         </div>
       )}

@@ -50,6 +50,7 @@ public static class InspectionMapper
         AgentStpEligible = i.AgentStpEligible,
         AgentFallbackUsed = i.AgentFallbackUsed,
         AgentProcessingTimeMs = i.AgentProcessingTimeMs,
+        AgentWeatherAssessment = i.AgentWeatherAssessment,
         FraudRiskScore = i.FraudRiskScore,
         FraudRiskLevel = i.FraudRiskLevel?.ToString(),
         AnalysisMode = i.AnalysisMode,
