@@ -103,7 +103,6 @@ export default function Dashboard() {
 
   return (
     <div>
-    <ScrollHint />
     <ScrollToTop />
     <div className="relative overflow-x-clip">
       {/* ===== GLOBAL DECO CIRCLES — behind everything ===== */}
