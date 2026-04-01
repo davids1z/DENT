@@ -70,7 +70,7 @@ function InspectionDetailContent() {
     if (url === inspection.imageUrl) {
       setActiveImageIndex(0);
     } else {
-      const idx = inspection.additionalImages.findIndex((img) => img.imageUrl === url);
+      const idx = (inspection.additionalImages ?? []).findIndex((img) => img.imageUrl === url);
       setActiveImageIndex(idx >= 0 ? idx + 1 : 0);
     }
   };
@@ -81,7 +81,7 @@ function InspectionDetailContent() {
     ? ["High", "Critical"].includes(inspection.forensicResult.overallRiskLevel)
     : false;
 
-  const isGroupInspection = inspection.additionalImages.length > 0;
+  const isGroupInspection = (inspection.additionalImages?.length ?? 0) > 0;
 
   // Build group file list for GroupOverviewCard
   const groupFiles = useMemo(() => {
