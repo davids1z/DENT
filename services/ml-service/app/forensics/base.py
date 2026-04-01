@@ -52,6 +52,10 @@ class ForensicReport(BaseModel):
     verdict_probabilities: dict[str, float] | None = None
     # PDF page previews (base64-encoded PNG images)
     page_previews_b64: list[str] | None = None
+    # Perceptual hash for duplicate/similarity detection (16-char hex)
+    perceptual_hash: str | None = None
+    # CLIP embedding for semantic similarity (base64-encoded float16 768-dim)
+    clip_embedding_b64: str | None = None
 
 
 class CrossImageFinding(BaseModel):

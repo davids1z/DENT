@@ -178,6 +178,8 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                             PagePreviewUrlsJson = pagePreviewUrls is { Count: > 0 }
                                 ? JsonSerializer.Serialize(pagePreviewUrls)
                                 : null,
+                            PerceptualHash = forensicResult.PerceptualHash,
+                            ClipEmbeddingB64 = forensicResult.ClipEmbeddingB64,
                         };
                         _db.ForensicResults.Add(fr);
                         inspection.ForensicResults.Add(fr);
@@ -209,6 +211,70 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                             "Post-processing failed for file {FileName} in inspection {Id}, continuing",
                             fileName, inspection.Id);
                     }
+                }
+
+                // ── Historical duplicate search (cross-inspection pHash match) ──
+                try
+                {
+                    var currentHashes = inspection.ForensicResults
+                        .Where(fr => !string.IsNullOrEmpty(fr.PerceptualHash))
+                        .Select(fr => fr.PerceptualHash!)
+                        .Distinct()
+                        .ToList();
+
+                    if (currentHashes.Count > 0)
+                    {
+                        var historicalMatches = await _db.ForensicResults
+                            .Where(fr => currentHashes.Contains(fr.PerceptualHash!)
+                                         && fr.InspectionId != inspection.Id
+                                         && fr.PerceptualHash != null)
+                            .Select(fr => new { fr.InspectionId, fr.FileName, fr.PerceptualHash, fr.Inspection.CreatedAt })
+                            .Take(20)
+                            .ToListAsync(ct);
+
+                        if (historicalMatches.Count > 0)
+                        {
+                            crossImageReport ??= new MlCrossImageReport();
+                            var findings = new List<MlCrossImageFinding>(crossImageReport.Findings);
+
+                            // Group by matched inspection for cleaner reporting
+                            var matchGroups = historicalMatches.GroupBy(m => m.InspectionId);
+                            foreach (var group in matchGroups)
+                            {
+                                var matchedInspectionId = group.Key;
+                                var matchedFiles = group.Select(m => m.FileName ?? "nepoznato").ToList();
+                                var matchDate = group.First().CreatedAt;
+
+                                findings.Add(new MlCrossImageFinding
+                                {
+                                    Code = "CROSS_HISTORICAL_DUPLICATE",
+                                    Title = "Duplikat iz prethodne inspekcije",
+                                    Description = $"Identican perceptualni hash pronaden u inspekciji od {matchDate:dd.MM.yyyy HH:mm} " +
+                                                  $"(datoteke: {string.Join(", ", matchedFiles)}). " +
+                                                  $"Ista ili gotovo identicna slika vec je koristena u prethodnom zahtjevu.",
+                                    RiskScore = 0.85,
+                                    Confidence = 0.95,
+                                    AffectedFiles = [],
+                                    Evidence = new Dictionary<string, object>
+                                    {
+                                        ["matched_inspection_id"] = matchedInspectionId.ToString(),
+                                        ["matched_files"] = matchedFiles,
+                                        ["matched_date"] = matchDate.ToString("o"),
+                                        ["matched_hashes"] = group.Select(m => m.PerceptualHash).Distinct().ToList(),
+                                    },
+                                });
+                            }
+
+                            crossImageReport = crossImageReport with { Findings = findings };
+                            _logger.LogInformation(
+                                "Historical duplicate found for inspection {Id}: {Count} matches across {Groups} inspections",
+                                inspection.Id, historicalMatches.Count, matchGroups.Count());
+                        }
+                    }
+                }
+                catch (Exception hdEx)
+                {
+                    _logger.LogWarning(hdEx, "Historical duplicate search failed for inspection {Id}", inspection.Id);
                 }
 
                 // Store cross-image findings (group analysis)

@@ -16,14 +16,17 @@ interface CrossImageFindingsProps {
 }
 
 const FINDING_LABELS: Record<string, string> = {
-  CROSS_META_CAMERA_MISMATCH: "Razliciti uredaji",
+  CROSS_META_CAMERA_MISMATCH: "Različiti uređaji",
   CROSS_META_TIMESTAMP_GAP: "Nekonzistentan vremenski okvir",
-  CROSS_META_GPS_MISMATCH: "Razlicite GPS lokacije",
-  CROSS_META_SOFTWARE_MISMATCH: "Razlicit softver za obradu",
-  CROSS_RISK_OUTLIER: "Rizicni outlier u skupini",
-  CROSS_RISK_ALL_HIGH: "Svi fajlovi visokorizicni",
+  CROSS_META_GPS_MISMATCH: "Različite GPS lokacije",
+  CROSS_META_SOFTWARE_MISMATCH: "Različit softver za obradu",
+  CROSS_RISK_OUTLIER: "Rizični outlier u skupini",
+  CROSS_RISK_ALL_HIGH: "Svi fajlovi visokorizični",
   CROSS_SAME_GENERATOR: "Isti AI generator detektiran",
-  CROSS_NEAR_DUPLICATE: "Gotovo identicne datoteke",
+  CROSS_NEAR_DUPLICATE: "Gotovo identične datoteke",
+  CROSS_HASH_NEAR_DUPLICATE: "Identične datoteke (hash)",
+  CROSS_SEMANTIC_DUPLICATE: "Semantički slične datoteke",
+  CROSS_HISTORICAL_DUPLICATE: "Duplikat iz prethodne inspekcije",
   CROSS_COMPRESSION_MISMATCH: "Nekonzistentna kompresija",
 };
 
@@ -33,6 +36,11 @@ const FINDING_ICONS: Record<string, string> = {
   CROSS_META_GPS_MISMATCH: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z",
   CROSS_RISK_OUTLIER: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
   CROSS_NEAR_DUPLICATE: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z",
+  // Duplicate detection icons — reuse the "copy" icon path for all hash/semantic/historical
+  CROSS_HASH_NEAR_DUPLICATE: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z",
+  CROSS_SEMANTIC_DUPLICATE: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z",
+  // Historical duplicate: clock + copy combined icon (use exclamation for visibility)
+  CROSS_HISTORICAL_DUPLICATE: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z",
 };
 
 export function CrossImageFindings({ report, files }: CrossImageFindingsProps) {

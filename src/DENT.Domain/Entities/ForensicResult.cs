@@ -38,6 +38,12 @@ public class ForensicResult
     // PDF page preview image URLs (JSON array of strings)
     public string? PagePreviewUrlsJson { get; set; }
 
+    // Perceptual hash for duplicate detection (16-char hex, indexed)
+    public string? PerceptualHash { get; set; }
+
+    // CLIP embedding for semantic similarity (base64-encoded float16 768-dim)
+    public string? ClipEmbeddingB64 { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation

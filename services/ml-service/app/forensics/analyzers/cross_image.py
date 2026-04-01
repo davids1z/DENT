@@ -1,7 +1,11 @@
 """Cross-image comparison analyzer for group forensic analysis."""
+import base64
 import time
 import logging
 from collections import Counter
+
+import numpy as np
+
 from ..base import CrossImageFinding, CrossImageReport, ForensicReport
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,9 @@ def analyze_cross_image(
 
     # 4. Compression consistency
     findings.extend(_check_compression_consistency(per_file_reports, file_names))
+
+    # 5. Duplicate / similarity detection (pHash + CLIP embedding)
+    findings.extend(_check_duplicate_similarity(per_file_reports, file_names))
 
     # Calculate group risk modifier
     group_risk_modifier = _calculate_risk_modifier(findings)
@@ -272,6 +279,119 @@ def _check_compression_consistency(
                     ))
         except (ValueError, TypeError):
             pass
+
+    return findings
+
+
+def _check_duplicate_similarity(
+    reports: list[ForensicReport], names: list[str]
+) -> list[CrossImageFinding]:
+    """Detect near-duplicate images via perceptual hash and CLIP embedding similarity.
+
+    Layer 1 (pHash): Hamming distance ≤ 8 → near-duplicate (pixel-level match).
+    Layer 2 (CLIP):  Cosine similarity ≥ 0.93 → semantic duplicate (crops, filters, resizes).
+    """
+    findings: list[CrossImageFinding] = []
+    n = len(reports)
+    if n < 2:
+        return findings
+
+    # ── Layer 1: Perceptual hash comparison ──
+    # Collect hashes (16-char hex strings from imagehash.phash)
+    hashes: dict[int, str] = {}
+    for i, report in enumerate(reports):
+        if report.perceptual_hash:
+            hashes[i] = report.perceptual_hash
+
+    if len(hashes) >= 2:
+        indices = list(hashes.keys())
+        reported_pairs: set[tuple[int, int]] = set()
+        for j_idx in range(len(indices)):
+            for k_idx in range(j_idx + 1, len(indices)):
+                j, k = indices[j_idx], indices[k_idx]
+                try:
+                    # Hamming distance between hex hash strings
+                    h1 = int(hashes[j], 16)
+                    h2 = int(hashes[k], 16)
+                    distance = bin(h1 ^ h2).count("1")
+                except (ValueError, TypeError):
+                    continue
+
+                if distance <= 8:
+                    pair = (min(j, k), max(j, k))
+                    if pair not in reported_pairs:
+                        reported_pairs.add(pair)
+                        risk = 0.85 if distance <= 3 else 0.75
+                        findings.append(CrossImageFinding(
+                            code="CROSS_HASH_NEAR_DUPLICATE",
+                            title="Gotovo identicne datoteke (hash)",
+                            description=(
+                                f"Datoteke {names[j]} i {names[k]} imaju gotovo "
+                                f"identican perceptualni hash (Hamming udaljenost: "
+                                f"{distance}/64). Ovo ukazuje da su slike identicne "
+                                f"ili minimalno modificirane (rekompresirane, "
+                                f"promijenjene velicine)."
+                            ),
+                            risk_score=risk,
+                            confidence=0.90,
+                            affected_files=[j, k],
+                            evidence={
+                                "hash_distance": distance,
+                                "hash_j": hashes[j],
+                                "hash_k": hashes[k],
+                            },
+                        ))
+
+    # ── Layer 2: CLIP embedding cosine similarity ──
+    embeddings: dict[int, np.ndarray] = {}
+    for i, report in enumerate(reports):
+        if report.clip_embedding_b64:
+            try:
+                raw = base64.b64decode(report.clip_embedding_b64)
+                emb = np.frombuffer(raw, dtype=np.float16).astype(np.float32)
+                if len(emb) >= 384:  # Sanity check (768-dim expected)
+                    embeddings[i] = emb
+            except Exception:
+                continue
+
+    if len(embeddings) >= 2:
+        indices = list(embeddings.keys())
+        # Already reported hash duplicates — skip those pairs for CLIP
+        hash_pairs = {(min(j, k), max(j, k))
+                      for f in findings if f.code == "CROSS_HASH_NEAR_DUPLICATE"
+                      for j, k in [(f.affected_files[0], f.affected_files[1])]}
+
+        for j_idx in range(len(indices)):
+            for k_idx in range(j_idx + 1, len(indices)):
+                j, k = indices[j_idx], indices[k_idx]
+                pair = (min(j, k), max(j, k))
+                if pair in hash_pairs:
+                    continue  # Already flagged by hash
+
+                emb_j = embeddings[j]
+                emb_k = embeddings[k]
+                dot = float(np.dot(emb_j, emb_k))
+                norm_j = float(np.linalg.norm(emb_j))
+                norm_k = float(np.linalg.norm(emb_k))
+                cosine = dot / (norm_j * norm_k + 1e-8)
+
+                if cosine >= 0.93:
+                    findings.append(CrossImageFinding(
+                        code="CROSS_SEMANTIC_DUPLICATE",
+                        title="Semanticki slicne datoteke",
+                        description=(
+                            f"Datoteke {names[j]} i {names[k]} imaju visoku "
+                            f"semanticku slicnost (CLIP cosine: {cosine:.3f}). "
+                            f"Ovo ukazuje da su slike verzije istog sadrzaja "
+                            f"— moguci crop, filter, ili drugacija obrada."
+                        ),
+                        risk_score=0.75,
+                        confidence=0.85,
+                        affected_files=[j, k],
+                        evidence={
+                            "clip_cosine_similarity": round(cosine, 4),
+                        },
+                    ))
 
     return findings
 

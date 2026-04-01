@@ -136,6 +136,10 @@ public record MlForensicResult
     public Dictionary<string, double>? VerdictProbabilities { get; init; }
     // PDF page preview images (base64-encoded JPEG)
     public List<string>? PagePreviewsB64 { get; init; }
+    // Perceptual hash for duplicate detection (16-char hex)
+    public string? PerceptualHash { get; init; }
+    // CLIP embedding for semantic similarity (base64-encoded float16 768-dim)
+    public string? ClipEmbeddingB64 { get; init; }
 }
 
 public record MlForensicModule

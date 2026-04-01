@@ -697,6 +697,36 @@ class ForensicPipeline:
             except Exception as e:
                 logger.debug("PDF page preview rendering failed: %s", e)
 
+        # ── Perceptual hash + CLIP embedding for duplicate detection ──
+        perceptual_hash: str | None = None
+        clip_embedding_b64: str | None = None
+        if file_category not in ("pdf", "docx", "xlsx"):
+            try:
+                import imagehash
+                from PIL import Image as PILImage
+                import base64
+
+                pil_img = PILImage.open(io.BytesIO(file_bytes))
+                if pil_img.mode not in ("RGB", "L"):
+                    pil_img = pil_img.convert("RGB")
+                perceptual_hash = str(imagehash.phash(pil_img))
+                logger.debug("pHash computed: %s", perceptual_hash)
+
+                # Reuse CLIP model (already loaded) for embedding
+                if self._clip_ai is not None:
+                    try:
+                        import numpy as np
+                        clip_emb = self._clip_ai._extract_embedding(pil_img)
+                        # Normalize + convert to float16 for compact storage
+                        clip_norm = clip_emb / (np.linalg.norm(clip_emb) + 1e-8)
+                        clip_embedding_b64 = base64.b64encode(
+                            clip_norm.astype(np.float16).tobytes()
+                        ).decode()
+                    except Exception as e:
+                        logger.debug("CLIP embedding extraction for similarity failed: %s", e)
+            except Exception as e:
+                logger.debug("Perceptual hash computation failed: %s", e)
+
         return ForensicReport(
             overall_risk_score=round(overall_score, 4),
             overall_risk_score100=overall_score_100,
@@ -712,4 +742,6 @@ class ForensicPipeline:
             c2pa_issuer=c2pa_issuer,
             verdict_probabilities=verdict_probs,
             page_previews_b64=page_previews,
+            perceptual_hash=perceptual_hash,
+            clip_embedding_b64=clip_embedding_b64,
         )
