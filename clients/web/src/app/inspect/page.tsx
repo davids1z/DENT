@@ -59,7 +59,7 @@ function InspectContent() {
     }
 
     // Fallback: match additional image by fileName
-    const additionalImg = result.additionalImages.find((img) => img.imageUrl === currentUrl);
+    const additionalImg = (result.additionalImages ?? []).find((img) => img.imageUrl === currentUrl);
     if (additionalImg) {
       const matchByName = fileResults.find((fr) => fr.fileName === additionalImg.originalFileName);
       if (matchByName) return matchByName;
@@ -128,7 +128,7 @@ function InspectContent() {
     if (url === result.imageUrl) {
       setActiveImageIndex(0);
     } else {
-      const idx = result.additionalImages.findIndex((img) => img.imageUrl === url);
+      const idx = (result.additionalImages ?? []).findIndex((img) => img.imageUrl === url);
       setActiveImageIndex(idx >= 0 ? idx + 1 : 0);
     }
   };
@@ -251,7 +251,7 @@ function InspectContent() {
           <GroupOverviewCard inspection={result} files={groupFiles} />
 
           {/* Cross-image findings */}
-          {result.crossImageReport && result.crossImageReport.findings.length > 0 && (
+          {result.crossImageReport && (result.crossImageReport?.findings?.length ?? 0) > 0 && (
             <CrossImageFindings report={result.crossImageReport} files={groupFiles} />
           )}
 
@@ -352,7 +352,7 @@ function InspectContent() {
               <DamageReport inspection={result} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} forensicResult={activeForensicResult} />
             </div>
           </div>
-          {result.decisionTraces && result.decisionTraces.length > 0 && (
+          {result.decisionTraces && (result.decisionTraces?.length ?? 0) > 0 && (
             <DecisionTrace traces={result.decisionTraces} />
           )}
           <div className="flex gap-3">

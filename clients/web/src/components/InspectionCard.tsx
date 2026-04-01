@@ -10,7 +10,7 @@ interface InspectionCardProps {
 }
 
 export function InspectionCard({ inspection: i }: InspectionCardProps) {
-  const worstSeverity = i.damages.reduce(
+  const worstSeverity = (i.damages ?? []).reduce(
     (worst, d) => {
       const order = ["Minor", "Moderate", "Severe", "Critical"];
       return order.indexOf(d.severity) > order.indexOf(worst) ? d.severity : worst;
@@ -31,17 +31,17 @@ export function InspectionCard({ inspection: i }: InspectionCardProps) {
               {i.status === "Completed" ? "Završeno" : i.status === "Failed" ? "Greška" : "U obradi"}
             </span>
           </div>
-          {i.additionalImages.length > 0 && (
+          {(i.additionalImages?.length ?? 0) > 0 && (
             <div className="absolute top-2 left-2 sm:top-3 sm:left-3">
               <span className="px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-accent/90 text-white backdrop-blur-sm">
-                Skupina ({i.additionalImages.length + 1})
+                Skupina ({(i.additionalImages?.length ?? 0) + 1})
               </span>
             </div>
           )}
-          {i.damages.length > 0 && (
+          {(i.damages?.length ?? 0) > 0 && (
             <div className="absolute bottom-3 left-3">
               <span className={cn("text-xs font-semibold bg-white/90 px-2 py-1 rounded", severityColor(worstSeverity))}>
-                {i.damages.length} {i.damages.length === 1 ? "nalaz" : "nalaza"} &middot; {severityLabel(worstSeverity)}
+                {(i.damages?.length ?? 0)} {(i.damages?.length ?? 0) === 1 ? "nalaz" : "nalaza"} &middot; {severityLabel(worstSeverity)}
               </span>
             </div>
           )}

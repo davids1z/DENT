@@ -144,7 +144,7 @@ function InspectionsContent() {
             </thead>
             <tbody>
               {paginatedItems.map((i) => {
-                const worst = i.damages.reduce((w, d) => {
+                const worst = (i.damages ?? []).reduce((w, d) => {
                   const order = ["Minor", "Moderate", "Severe", "Critical"];
                   return order.indexOf(d.severity) > order.indexOf(w) ? d.severity : w;
                 }, "Minor");

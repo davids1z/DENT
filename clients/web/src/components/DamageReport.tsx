@@ -58,10 +58,10 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
         </div>
       </GlassPanel>
 
-      {i.damages.length > 0 && (
+      {(i.damages?.length ?? 0) > 0 && (
         <div className="space-y-3">
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wider">Detektirani nalazi ({i.damages.length})</h3>
-          {i.damages.map((d, idx) => (
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider">Detektirani nalazi ({(i.damages?.length ?? 0)})</h3>
+          {(i.damages ?? []).map((d, idx) => (
             <FindingCard
               key={d.id || idx}
               damage={d}
@@ -75,7 +75,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
       )}
 
       {/* Low risk: show "all clear" banner */}
-      {i.damages.length === 0 && i.status === "Completed" && !isHighRisk && !isMediumRisk && (
+      {(i.damages?.length ?? 0) === 0 && i.status === "Completed" && !isHighRisk && !isMediumRisk && (
         <GlassPanel className="text-center">
           <div className="flex items-center justify-center gap-2 text-green-600 mb-2">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -88,7 +88,7 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
       )}
 
       {/* Unified module list — same layout for ALL risk levels */}
-      {i.damages.length === 0 && i.status === "Completed" && modules.length > 0 && (
+      {(i.damages?.length ?? 0) === 0 && i.status === "Completed" && modules.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
             Provedene provjere ({modules.filter(m => !m.error).length})
