@@ -1,36 +1,46 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 export function ScrollToTop() {
   const [visible, setVisible] = useState(false);
+  const viewportRef = useRef<HTMLElement | null>(null);
 
   const handleScroll = useCallback(() => {
-    const osViewport = document.querySelector<HTMLElement>("[data-overlayscrollbars-viewport]");
-    const scrollTop = osViewport ? osViewport.scrollTop : window.scrollY;
+    const scrollTop = viewportRef.current ? viewportRef.current.scrollTop : window.scrollY;
     setVisible(scrollTop > 400);
   }, []);
 
   useEffect(() => {
-    const osViewport = document.querySelector<HTMLElement>("[data-overlayscrollbars-viewport]");
+    // OverlayScrollbars viewport may mount after this component.
+    // Poll until we find it, then attach listener.
+    let osViewport: HTMLElement | null = null;
+    let retryTimer: ReturnType<typeof setTimeout>;
+
+    function attach() {
+      osViewport = document.querySelector<HTMLElement>("[data-overlayscrollbars-viewport]");
+      viewportRef.current = osViewport;
+      if (osViewport) {
+        osViewport.addEventListener("scroll", handleScroll, { passive: true });
+      } else {
+        // Retry in 500ms — overlay scrollbars may not be mounted yet
+        retryTimer = setTimeout(attach, 500);
+      }
+    }
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    if (osViewport) {
-      osViewport.addEventListener("scroll", handleScroll, { passive: true });
-    }
+    attach();
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      if (osViewport) {
-        osViewport.removeEventListener("scroll", handleScroll);
-      }
+      if (osViewport) osViewport.removeEventListener("scroll", handleScroll);
+      clearTimeout(retryTimer);
     };
   }, [handleScroll]);
 
   const scrollUp = () => {
-    const osViewport = document.querySelector<HTMLElement>("[data-overlayscrollbars-viewport]");
-    if (osViewport) {
-      osViewport.scrollTo({ top: 0, behavior: "smooth" });
+    if (viewportRef.current) {
+      viewportRef.current.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
