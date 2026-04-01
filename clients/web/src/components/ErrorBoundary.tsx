@@ -27,21 +27,27 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const err = this.state.error;
       return (
         <div className="min-h-[400px] flex items-center justify-center p-8">
           <div className="max-w-md text-center">
             <div className="text-6xl mb-4">!</div>
             <h2 className="text-xl font-semibold text-foreground mb-2">
-              Nesto je poslo krivo
+              Nešto je pošlo krivo
             </h2>
             <p className="text-muted mb-6">
-              Doslo je do neocekivane greske. Pokusajte osvjeziti stranicu.
+              Došlo je do neočekivane greške. Pokušajte osvježiti stranicu.
             </p>
+            {err && (
+              <p className="text-xs text-muted-light mb-4 font-mono break-all bg-card border border-border rounded-lg p-3 text-left">
+                {err.name}: {err.message}
+              </p>
+            )}
             <button
               onClick={() => this.setState({ hasError: false, error: null })}
               className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
-              Pokusajte ponovo
+              Pokušajte ponovo
             </button>
           </div>
         </div>

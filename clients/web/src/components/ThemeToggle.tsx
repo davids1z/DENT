@@ -17,7 +17,7 @@ export function ThemeToggle() {
     } else {
       document.documentElement.classList.remove("dark");
     }
-    // Theme is session-only — always starts light on fresh page load
+    try { localStorage.setItem("dent_theme", next ? "dark" : "light"); } catch {}
   }, [dark]);
 
   return (

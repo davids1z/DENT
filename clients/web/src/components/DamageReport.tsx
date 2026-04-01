@@ -44,14 +44,8 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {riskLevel && (
-              <span className={cn(
-                "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium border whitespace-nowrap",
-                riskLevel === "Critical" ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" :
-                riskLevel === "High" ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" :
-                riskLevel === "Medium" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" :
-                "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20"
-              )}>
-                {riskLevel === "Low" ? "Niska" : riskLevel === "Medium" ? "Srednja" : riskLevel === "High" ? "Visoka" : "Kriticna"} hitnost
+              <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium border whitespace-nowrap bg-card text-muted border-border">
+                {riskLevel === "Low" ? "Niska" : riskLevel === "Medium" ? "Srednja" : riskLevel === "High" ? "Visoka" : "Kritična"} hitnost
               </span>
             )}
           </div>
@@ -83,41 +77,37 @@ export function DamageReport({ inspection, selectedDamageIndex, onSelectDamage, 
             </svg>
             <span className="font-medium">Nema sumnjivih nalaza</span>
           </div>
-          <p className="text-muted text-sm">Svi forenzicki moduli potvrduju autenticnost sadrzaja.</p>
+          <p className="text-muted text-sm">Svi forenzički moduli potvrđuju autentičnost sadržaja.</p>
         </GlassPanel>
       )}
 
-      {/* Unified module list — same layout for ALL risk levels */}
+      {/* Module check list — clean, neutral rows */}
       {(i.damages?.length ?? 0) === 0 && i.status === "Completed" && modules.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
-            Provedene provjere ({modules.filter(m => !m.error).length})
-          </h3>
-          {modules
-            .filter(m => !m.error)
-            .sort((a, b) => b.riskScore - a.riskScore)
-            .map((m, idx) => {
-              const risk = m.riskScore;
-              const iconColor = risk >= 0.65 ? "text-red-500" : risk >= 0.40 ? "text-orange-500" : risk >= 0.20 ? "text-amber-500" : "text-green-500";
-              const bgColor = risk >= 0.65 ? "bg-red-500/10 border-red-500/15" : risk >= 0.40 ? "bg-orange-500/10 border-orange-500/15" : risk >= 0.20 ? "bg-amber-500/10 border-amber-500/15" : "bg-green-500/10 border-green-500/15";
-              const textColor = risk >= 0.65 ? "text-red-600 dark:text-red-400" : risk >= 0.40 ? "text-orange-600 dark:text-orange-400" : risk >= 0.20 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400";
-              const isPass = risk < 0.20;
-              return (
-                <div key={m.moduleName || idx} className={cn("flex items-center gap-3 py-2 px-3 rounded-lg border", bgColor)}>
-                  {isPass ? (
-                    <svg className={cn("w-4 h-4 flex-shrink-0", iconColor)} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                  ) : (
-                    <svg className={cn("w-4 h-4 flex-shrink-0", iconColor)} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                  )}
-                  <span className={cn("text-sm flex-1", textColor)}>{m.moduleLabel || m.moduleName}</span>
-                  <span className={cn("text-xs font-mono", textColor)}>{Math.round(risk * 100)}%</span>
-                </div>
-              );
-            })}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
+              Provedene provjere ({modules.filter(m => !m.error).length})
+            </h3>
+            <span className="text-[10px] text-muted">0% = čisto · 100% = sumnjivo</span>
+          </div>
+          <div className="border border-border rounded-xl overflow-hidden divide-y divide-border">
+            {modules
+              .filter(m => !m.error)
+              .sort((a, b) => b.riskScore - a.riskScore)
+              .map((m, idx) => {
+                const pct = m.riskScore100;
+                const barColor = m.riskScore >= 0.40 ? "bg-foreground" : "bg-muted/40";
+                return (
+                  <div key={m.moduleName || idx} className="flex items-center gap-3 py-2.5 px-3.5 bg-card">
+                    <span className="text-sm text-foreground flex-1">{m.moduleLabel || m.moduleName}</span>
+                    <div className="w-16 h-1.5 rounded-full bg-border overflow-hidden flex-shrink-0">
+                      <div className={cn("h-full rounded-full", barColor)} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={cn("text-xs font-mono w-8 text-right flex-shrink-0", m.riskScore >= 0.40 ? "text-foreground font-medium" : "text-muted")}>{pct}%</span>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       )}
     </div>

@@ -135,11 +135,11 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground">
-              Forenzicka analiza
+              Forenzička analiza
             </span>
             <span className="text-xs text-muted">
               {allComplete ? (
-                <span className="text-emerald-600 font-medium">Zavrseno</span>
+                <span className="text-emerald-600 font-medium">Završeno</span>
               ) : (
                 `Datoteka ${Math.min(completedFiles + 1, totalFiles)}/${totalFiles}`
               )}
@@ -241,7 +241,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
             <div className="rounded-lg border border-accent/30 bg-accent/5 p-3">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-medium text-accent">Zavrsna evaluacija</span>
+                <span className="text-xs font-medium text-accent">Završna evaluacija</span>
               </div>
             </div>
           )}
@@ -265,11 +265,11 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-foreground">
-            Forenzicka analiza
+            Forenzička analiza
           </span>
           <span className="text-xs text-muted">
             {allComplete ? (
-              <span className="text-emerald-600 font-medium">Zavrseno</span>
+              <span className="text-emerald-600 font-medium">Završeno</span>
             ) : (
               `${completedCount}/${displaySteps.length} koraka`
             )}
@@ -286,7 +286,7 @@ export function ForensicProgress({ steps, progress, fileProgresses, currentFileI
         </div>
         {waitingForServer ? (
           <p className="text-xs text-muted animate-pulse">
-            Zavrsavanje analize — cekanje na server...
+            Završavanje analize — čekanje na server...
           </p>
         ) : activeStep && !allComplete ? (
           <p className="text-xs text-muted animate-pulse">

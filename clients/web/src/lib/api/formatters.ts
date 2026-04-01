@@ -69,7 +69,7 @@ export function carPartLabel(part: string): string {
 export function severityLabel(severity: string): string {
   const labels: Record<string, string> = {
     Minor: "Niska sumnja", Moderate: "Umjerena sumnja",
-    Severe: "Visoka sumnja", Critical: "Kriticna sumnja",
+    Severe: "Visoka sumnja", Critical: "Kritična sumnja",
   };
   return labels[severity] || severity;
 }
@@ -179,7 +179,7 @@ export function laborTypeLabel(type: string): string {
 
 export function fraudRiskLabel(level: string): string {
   const labels: Record<string, string> = {
-    Low: "Nizak rizik", Medium: "Srednji rizik", High: "Visok rizik", Critical: "Kritican rizik",
+    Low: "Nizak rizik", Medium: "Srednji rizik", High: "Visok rizik", Critical: "Kritičan rizik",
   };
   return labels[level] || level;
 }
@@ -207,8 +207,8 @@ export function fraudRiskBg(level: string): string {
 export function forensicModuleLabel(moduleName: string): string {
   const labels: Record<string, string> = {
     metadata_analysis: "Analiza metapodataka", modification_detection: "Detekcija modifikacija",
-    deep_modification_detection: "Duboka analiza modifikacija (CNN)", optical_forensics: "Opticka forenzika",
-    semantic_forensics: "Semanticka forenzika", document_forensics: "Forenzika dokumenata",
+    deep_modification_detection: "Duboka analiza modifikacija (CNN)", optical_forensics: "Optička forenzika",
+    semantic_forensics: "Semantička forenzika", document_forensics: "Forenzika dokumenata",
     office_forensics: "Office dokument forenzika", ai_generation_detection: "Detekcija AI generiranja",
     spectral_forensics: "Spektralna forenzika", clip_ai_detection: "CLIP AI detekcija",
     dinov2_ai_detection: "DINOv2 AI detekcija", safe_ai_detection: "SAFE AI detekcija",
@@ -217,7 +217,7 @@ export function forensicModuleLabel(moduleName: string): string {
     npr_ai_detection: "NPR detekcija artefakata", mesorch_detection: "Mesorch detekcija manipulacija",
     bfree_detection: "B-Free AI detekcija (CVPR 2025)", spai_detection: "SPAI spektralna AI detekcija (CVPR 2025)",
     vae_reconstruction: "VAE rekonstrukcija", text_ai_detection: "AI tekst detekcija",
-    content_validation: "Validacija sadrzaja", prnu_detection: "PRNU senzorska analiza",
+    content_validation: "Validacija sadržaja", prnu_detection: "PRNU senzorska analiza",
   };
   return labels[moduleName] || moduleName;
 }

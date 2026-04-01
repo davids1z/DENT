@@ -116,9 +116,7 @@ export function TrustScoreHero({
             </span>
           </div>
 
-          <div className="pt-1">
-            <ExportButton inspectionId={inspectionId} />
-          </div>
+          {/* ExportButton removed — report endpoint not implemented yet */}
         </div>
       </div>
     </div>

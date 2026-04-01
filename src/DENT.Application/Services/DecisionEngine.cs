@@ -31,41 +31,41 @@ public static class DecisionEngine
         var hasMediumFraud = fraudRiskScore >= 0.15;
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Kritican forenzicki rizik",
-            RuleDescription = "Forenzicka analiza indicira visoku vjerojatnost manipulacije ili krivotvorenja",
+            RuleName = "Kritičan forenzički rizik",
+            RuleDescription = "Forenzička analiza indicira visoku vjerojatnost manipulacije ili krivotvorenja",
             Triggered = hasCriticalFraud,
-            ThresholdValue = ">= 75% rizik",
-            ActualValue = $"{fraudRiskScore:P0} rizik ({inspection.FraudRiskLevel?.ToString() ?? "N/A"})",
+            ThresholdValue = ">= 75%",
+            ActualValue = $"{fraudRiskScore * 100:F1}%",
             EvaluationOrder = 1
         });
 
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Kriticni nalaz AI analize",
-            RuleDescription = "AI analiza detektirala kriticne znakove krivotvorenja",
+            RuleName = "Kritični nalaz AI analize",
+            RuleDescription = "AI analiza detektirala kritične znakove krivotvorenja",
             Triggered = hasCriticalFinding,
-            ThresholdValue = "0 kriticnih",
+            ThresholdValue = "Kritična oštećenja ili AI >= 75%",
             ActualValue = hasCriticalFinding ? "DA" : "NE",
             EvaluationOrder = 2
         });
 
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Krivotvoreni sadrzaj",
-            RuleDescription = "AI verdikt oznacio sadrzaj kao krivotvoreno",
+            RuleName = "Krivotvoreni sadržaj",
+            RuleDescription = "AI verdikt označio sadržaj kao krivotvoreno",
             Triggered = hasSafetyCritical,
-            ThresholdValue = "0 krivotvorenih",
+            ThresholdValue = "Kritična sigurnost ili rizik >= 60% + AI >= 60%",
             ActualValue = hasSafetyCritical ? "DA" : "NE",
             EvaluationOrder = 3
         });
 
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Povisen forenzicki rizik",
-            RuleDescription = "Forenzicka analiza pokazuje povisenu sumnju na manipulaciju",
+            RuleName = "Povišen forenzički rizik",
+            RuleDescription = "Forenzička analiza pokazuje povišenu sumnju na manipulaciju",
             Triggered = hasHighFraud,
-            ThresholdValue = ">= 50% rizik",
-            ActualValue = $"{fraudRiskScore:P0} rizik",
+            ThresholdValue = ">= 40%",
+            ActualValue = $"{fraudRiskScore * 100:F1}%",
             EvaluationOrder = 4
         });
 
@@ -74,7 +74,7 @@ public static class DecisionEngine
             RuleName = "Ozbiljni nalazi AI analize",
             RuleDescription = "AI analiza detektirala ozbiljne znakove manipulacije",
             Triggered = hasSevereFinding,
-            ThresholdValue = "0 ozbiljnih",
+            ThresholdValue = "Barem 1 ozbiljan nalaz",
             ActualValue = hasSevereFinding ? "DA" : "NE",
             EvaluationOrder = 5
         });
@@ -82,32 +82,32 @@ public static class DecisionEngine
         var findingsWithRisk = findingCount > 3 && hasMediumFraud;
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Vise nalaza uz poviseni rizik",
-            RuleDescription = "Detektirano vise od 3 sumnjiva nalaza uz forenzicki rizik >= 15%",
+            RuleName = "Više nalaza uz povišeni rizik",
+            RuleDescription = "Detektirano više od 3 sumnjiva nalaza uz forenzički rizik >= 15%",
             Triggered = findingsWithRisk,
-            ThresholdValue = "3 nalaza + >= 15% rizik",
-            ActualValue = $"{findingCount} nalaza, rizik {fraudRiskScore:P0}",
+            ThresholdValue = "> 3 nalaza + >= 15%",
+            ActualValue = $"{findingCount} nalaza, rizik {fraudRiskScore * 100:F1}%",
             EvaluationOrder = 6
         });
 
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Umjeren forenzicki rizik",
-            RuleDescription = "Forenzicka analiza pokazuje umjerenu sumnju",
+            RuleName = "Umjeren forenzički rizik",
+            RuleDescription = "Forenzička analiza pokazuje umjerenu sumnju",
             Triggered = hasMediumFraud,
-            ThresholdValue = ">= 25% rizik",
-            ActualValue = $"{fraudRiskScore:P0} rizik",
+            ThresholdValue = ">= 15%",
+            ActualValue = $"{fraudRiskScore * 100:F1}%",
             EvaluationOrder = 7
         });
 
         var aiGenTriggered = aiGenScore >= 0.60;
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "AI detektor (neuronska mreza)",
-            RuleDescription = "Swin Transformer ensemble detektirao AI-generirani sadrzaj",
+            RuleName = "AI detektor (neuronska mreža)",
+            RuleDescription = "Swin Transformer ensemble detektirao AI-generirani sadržaj",
             Triggered = aiGenTriggered,
-            ThresholdValue = ">= 60% rizik",
-            ActualValue = $"{aiGenScore:P0}",
+            ThresholdValue = ">= 60%",
+            ActualValue = $"{aiGenScore * 100:F1}%",
             EvaluationOrder = 8
         });
 
@@ -115,10 +115,10 @@ public static class DecisionEngine
         traces.Add(new DecisionTraceEntryDto
         {
             RuleName = "Spektralna cross-validacija",
-            RuleDescription = "Dva nezavisna pristupa (NN + frekvencijska analiza) potvrduju AI generiranje",
+            RuleDescription = "Dva nezavisna pristupa (NN + frekvencijska analiza) potvrđuju AI generiranje",
             Triggered = crossValidated,
-            ThresholdValue = "AI >= 50% I Spektral >= 40%",
-            ActualValue = $"AI: {aiGenScore:P0}, Spektral: {spectralScore:P0}",
+            ThresholdValue = "AI >= 50% i Spektral >= 40%",
+            ActualValue = $"AI: {aiGenScore * 100:F1}%, Spektral: {spectralScore * 100:F1}%",
             EvaluationOrder = 9
         });
 
@@ -126,11 +126,11 @@ public static class DecisionEngine
         var uploadWithRisk = isUpload && hasMediumFraud;
         traces.Add(new DecisionTraceEntryDto
         {
-            RuleName = "Upload s povisenim rizikom",
-            RuleDescription = "Datoteka uploadana (ne slikana kamerom) uz povisenu forenzicku sumnju",
+            RuleName = "Upload s povišenim rizikom",
+            RuleDescription = "Datoteka uploadana (ne slikana kamerom) uz povišenu forenzičku sumnju",
             Triggered = uploadWithRisk,
-            ThresholdValue = "Upload + >= 25% rizik",
-            ActualValue = $"Izvor: {inspection.CaptureSource?.ToString() ?? "N/A"}, Rizik: {fraudRiskScore:P0}",
+            ThresholdValue = "Upload + >= 15%",
+            ActualValue = $"Izvor: {(isUpload ? "Upload" : "Kamera")}, Rizik: {fraudRiskScore * 100:F1}%",
             EvaluationOrder = 10
         });
 
@@ -142,11 +142,11 @@ public static class DecisionEngine
         {
             outcome = DecisionOutcome.Escalate;
             var reasons = new List<string>();
-            if (hasCriticalFraud) reasons.Add($"kriticna sumnja na manipulaciju ({fraudRiskScore:P0})");
-            if (hasCriticalFinding) reasons.Add("kriticni nalazi AI analize");
-            if (hasSafetyCritical) reasons.Add("sadrzaj oznacen kao krivotvoreno");
-            if (aiGenTriggered) reasons.Add($"AI detektor: {aiGenScore:P0}");
-            if (crossValidated) reasons.Add($"cross-validacija AI ({aiGenScore:P0}) + spektral ({spectralScore:P0})");
+            if (hasCriticalFraud) reasons.Add($"kritična sumnja na manipulaciju ({fraudRiskScore * 100:F1}%)");
+            if (hasCriticalFinding) reasons.Add("kritični nalazi AI analize");
+            if (hasSafetyCritical) reasons.Add("sadržaj označen kao krivotvoreno");
+            if (aiGenTriggered) reasons.Add($"AI detektor: {aiGenScore * 100:F1}%");
+            if (crossValidated) reasons.Add($"cross-validacija AI ({aiGenScore * 100:F1}%) + spektral ({spectralScore * 100:F1}%)");
             reason = $"Sumnja na krivotvorinu: {string.Join(", ", reasons)}";
         }
         else if (hasHighFraud || hasSevereFinding || findingsWithRisk
@@ -154,22 +154,22 @@ public static class DecisionEngine
         {
             outcome = DecisionOutcome.HumanReview;
             var reasons = new List<string>();
-            if (hasHighFraud) reasons.Add($"povisen forenzicki rizik ({fraudRiskScore:P0})");
+            if (hasHighFraud) reasons.Add($"povišen forenzički rizik ({fraudRiskScore * 100:F1}%)");
             if (hasSevereFinding) reasons.Add("ozbiljni nalazi AI analize");
             if (findingCount > 3) reasons.Add($"{findingCount} sumnjivih nalaza");
-            if (uploadWithRisk) reasons.Add("datoteka uploadana uz forenzicku sumnju");
-            if (cnnScore >= 0.50) reasons.Add($"CNN detektor: {cnnScore:P0}");
+            if (uploadWithRisk) reasons.Add("datoteka uploadana uz forenzičku sumnju");
+            if (cnnScore >= 0.50) reasons.Add($"CNN detektor: {cnnScore * 100:F1}%");
             reason = $"Potreban pregled: {string.Join(", ", reasons)}";
         }
         else if (hasMediumFraud)
         {
             outcome = DecisionOutcome.HumanReview;
-            reason = $"Potreban pregled: umjeren forenzicki rizik ({fraudRiskScore:P0})";
+            reason = $"Potreban pregled: umjeren forenzički rizik ({fraudRiskScore * 100:F1}%)";
         }
         else
         {
             outcome = DecisionOutcome.AutoApprove;
-            reason = $"Autenticno: nizak forenzicki rizik ({fraudRiskScore:P0}), {findingCount} nalaza";
+            reason = $"Autentično: nizak forenzički rizik ({fraudRiskScore * 100:F1}%), {findingCount} nalaza";
         }
 
         var traceJson = JsonSerializer.Serialize(traces, new JsonSerializerOptions

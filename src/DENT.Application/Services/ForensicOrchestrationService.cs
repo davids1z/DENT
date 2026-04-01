@@ -3,6 +3,7 @@ using DENT.Application.Interfaces;
 using DENT.Application.Models;
 using DENT.Domain.Entities;
 using DENT.Domain.Enums;
+using DENT.Shared.DTOs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -287,31 +288,24 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
 
                 var (ruleOutcome, ruleReason, ruleTraceJson) = DecisionEngine.Evaluate(inspection);
 
-                string agentSummary = "";
-                agentSummary = await RunAgentEvaluation(inspection, primaryFr, ruleOutcome, ct);
-
+                // Save rule-based decision first — agent evaluation runs AFTER
+                // the initial save so the frontend sees results immediately.
                 inspection.DecisionOutcome = ruleOutcome;
-                inspection.DecisionReason = !string.IsNullOrEmpty(agentSummary) ? agentSummary : ruleReason;
+                inspection.DecisionReason = ruleReason;
                 inspection.DecisionTraceJson = ruleTraceJson;
 
-                if (inspection.AgentDecisionJson != null)
-                    inspection.AgentDecisionHash = _evidence.ComputeSha256(inspection.AgentDecisionJson);
-                custodyLog.Add(_evidence.CreateCustodyEvent(
-                    "decision_complete",
-                    inspection.AgentDecisionHash,
-                    inspection.DecisionOutcome?.ToString()));
-
-                // Evidence chain sealing
+                // Evidence chain sealing (without agent hash — will be updated after agent eval)
                 var allHashes = imageHashes
                     .Select(h => (string)((dynamic)h).sha256)
                     .ToList();
                 if (inspection.ForensicResultHash != null) allHashes.Add(inspection.ForensicResultHash);
-                if (inspection.AgentDecisionHash != null) allHashes.Add(inspection.AgentDecisionHash);
                 allHashes.Sort();
                 inspection.EvidenceHash = _evidence.ComputeSha256(string.Join(":", allHashes));
 
-                // Save custody log WITHOUT timestamp first — so the inspection
-                // is marked Completed and the frontend can show results immediately.
+                custodyLog.Add(_evidence.CreateCustodyEvent(
+                    "decision_complete",
+                    null,
+                    inspection.DecisionOutcome?.ToString()));
                 inspection.ChainOfCustodyJson = JsonSerializer.Serialize(custodyLog,
                     new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             }
@@ -329,29 +323,55 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
         }
 
         // Save FIRST — marks inspection as Completed so the frontend sees results.
-        // The timestamp is obtained AFTER the save (non-blocking for the user).
+        // Agent evaluation + timestamp run AFTER this save (non-blocking for the user).
         await _db.SaveChangesAsync(CancellationToken.None);
 
-        // Obtain RFC 3161 timestamp in the background (1-5s external call to freetsa.org).
-        // This updates the inspection after the user already sees the result.
-        if (inspection.Status == InspectionStatus.Completed && inspection.EvidenceHash != null)
+        // ── Post-completion: agent evaluation + timestamp (user already sees results) ──
+        if (inspection.Status == InspectionStatus.Completed)
         {
             try
             {
-                var custodyLog2 = !string.IsNullOrEmpty(inspection.ChainOfCustodyJson)
+                var postCustody = !string.IsNullOrEmpty(inspection.ChainOfCustodyJson)
                     ? JsonSerializer.Deserialize<List<EvidenceCustodyEvent>>(inspection.ChainOfCustodyJson,
                         new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) ?? []
                     : [];
 
-                await ObtainTimestamp(inspection, custodyLog2, CancellationToken.None);
+                // Agent evaluation (10-30s) — runs after user already sees forensic results
+                var primaryFrForAgent = inspection.ForensicResults.FirstOrDefault(f => f.SortOrder == 0);
+                var agentSummary = await RunAgentEvaluation(inspection, primaryFrForAgent, inspection.DecisionOutcome ?? DecisionOutcome.HumanReview, CancellationToken.None);
+                if (!string.IsNullOrEmpty(agentSummary))
+                    inspection.DecisionReason = agentSummary;
 
-                inspection.ChainOfCustodyJson = JsonSerializer.Serialize(custodyLog2,
+                if (inspection.AgentDecisionJson != null)
+                {
+                    inspection.AgentDecisionHash = _evidence.ComputeSha256(inspection.AgentDecisionJson);
+                    // Re-seal evidence hash with agent decision included
+                    var allHashes2 = inspection.ImageHashesJson != null
+                        ? JsonSerializer.Deserialize<List<ImageHashDto>>(inspection.ImageHashesJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                            ?.Select(h => h.Sha256).ToList() ?? []
+                        : [];
+                    if (inspection.ForensicResultHash != null) allHashes2.Add(inspection.ForensicResultHash);
+                    allHashes2.Add(inspection.AgentDecisionHash);
+                    allHashes2.Sort();
+                    inspection.EvidenceHash = _evidence.ComputeSha256(string.Join(":", allHashes2));
+
+                    postCustody.Add(_evidence.CreateCustodyEvent(
+                        "agent_evaluation_complete",
+                        inspection.AgentDecisionHash));
+                }
+
+                // RFC 3161 timestamp (1-5s)
+                if (inspection.EvidenceHash != null)
+                    await ObtainTimestamp(inspection, postCustody, CancellationToken.None);
+
+                inspection.ChainOfCustodyJson = JsonSerializer.Serialize(postCustody,
                     new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
                 await _db.SaveChangesAsync(CancellationToken.None);
             }
-            catch (Exception tsEx)
+            catch (Exception postEx)
             {
-                _logger.LogWarning(tsEx, "Post-completion timestamp failed for {Id}", inspection.Id);
+                _logger.LogWarning(postEx, "Post-completion processing (agent/timestamp) failed for {Id}", inspection.Id);
             }
         }
     }

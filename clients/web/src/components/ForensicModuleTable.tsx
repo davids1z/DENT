@@ -84,28 +84,22 @@ function statusDotColor(status: "pass" | "warning" | "fail"): string {
 }
 
 function statusLabel(status: "pass" | "warning" | "fail"): { text: string; cls: string } {
-  if (status === "fail") return { text: "Kriticno", cls: "text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/20" };
+  if (status === "fail") return { text: "Kritično", cls: "text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/20" };
   if (status === "warning") return { text: "Sumnjivo", cls: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" };
-  return { text: "Prolazi", cls: "text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/20" };
+  return { text: "Čisto", cls: "text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/20" };
 }
 
 // ── Module Row ───────────────────────────────────────────────────
 
 function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
   const [open, setOpen] = useState(false);
-  const riskPct = Math.round(mod.riskScore * 100);
-  // Filter out low-risk findings (< 0.20) to avoid showing noise/false positives
-  const visibleFindings = mod.findings.filter(f => f.riskScore >= 0.20);
-  const hasFindings = visibleFindings.length > 0;
+  const riskPct = mod.riskScore100;
 
   return (
     <div className="rounded-lg border border-border bg-background">
       <button
-        onClick={() => hasFindings && setOpen(!open)}
-        className={cn(
-          "w-full flex items-center gap-3 px-3 py-2 text-left",
-          hasFindings && "hover:bg-card transition-colors"
-        )}
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-card transition-colors"
       >
         <span className="text-xs font-medium flex-1 truncate text-foreground">
           {forensicModuleLabel(mod.moduleName)}
@@ -122,18 +116,16 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
         <span className={cn("text-xs font-mono w-8 text-right", fraudRiskColor(mod.riskLevel))}>
           {riskPct}%
         </span>
-        {hasFindings && (
-          <svg
-            className={cn("w-3 h-3 text-muted-light transition-transform flex-shrink-0", open && "rotate-180")}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-          </svg>
-        )}
+        <svg
+          className={cn("w-3 h-3 text-muted-light transition-transform flex-shrink-0", open && "rotate-180")}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
       </button>
 
       <AnimatePresence initial={false}>
-        {open && hasFindings && (
+        {open && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -141,26 +133,35 @@ function ModuleRow({ module: mod }: { module: ForensicModuleResult }) {
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-2 space-y-1 border-t border-border">
-              {visibleFindings.map((f, j) => (
-                <div key={j} className="flex items-start gap-2 py-1.5">
-                  <div
-                    className={cn(
-                      "w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5",
-                      f.riskScore >= 0.5 ? "bg-red-500" : f.riskScore >= 0.25 ? "bg-amber-400" : "bg-green-500"
-                    )}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-foreground block">{f.title}</span>
-                    {f.description && (
-                      <span className="text-[10px] text-muted-light block truncate">{f.description.slice(0, 100)}</span>
-                    )}
+            <div className="px-3 pb-2.5 pt-1.5 border-t border-border space-y-1.5">
+              {mod.findings.length > 0 ? (
+                mod.findings.map((f, j) => (
+                  <div key={j} className="flex items-start gap-2 py-1">
+                    <div
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5",
+                        f.riskScore >= 0.5 ? "bg-red-500" : f.riskScore >= 0.25 ? "bg-amber-400" : "bg-green-500"
+                      )}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[11px] text-foreground block">{f.title}</span>
+                      {f.description && (
+                        <span className="text-[10px] text-muted-light block">{f.description}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-mono text-muted-light flex-shrink-0">
+                      {Math.round(f.confidence * 100)}%
+                    </span>
                   </div>
-                  <span className="text-[10px] font-mono text-muted-light flex-shrink-0">
-                    {Math.round(f.confidence * 100)}%
-                  </span>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-[10px] text-muted-light py-1">
+                  Nije utvrđena anomalija ovim modulom.
+                </p>
+              )}
+              <div className="text-[10px] text-muted-light pt-1 border-t border-border/50">
+                Vrijeme obrade: {(mod.processingTimeMs / 1000).toFixed(2)}s
+              </div>
             </div>
           </motion.div>
         )}
@@ -241,7 +242,7 @@ function HeatmapViewer({
       </div>
 
       {visible && activeUrl && (
-        <div className="relative rounded-lg overflow-hidden bg-foreground" style={{ maxHeight: 240 }}>
+        <div className="relative rounded-lg overflow-hidden bg-background" style={{ maxHeight: 240 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={originalImageUrl} alt="Original" className="w-full object-contain" style={{ maxHeight: 240 }} />
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -260,10 +261,10 @@ function HeatmapViewer({
 // ── Pillar Section ───────────────────────────────────────────────
 
 function PillarSection({ data, originalImageUrl }: { data: PillarData; originalImageUrl: string }) {
-  const [expanded, setExpanded] = useState(data.aggregateRiskScore >= 0.25);
+  const [expanded, setExpanded] = useState(false);
   const status = getPillarStatus(data.aggregateRiskScore);
   const riskPct = Math.round(data.aggregateRiskScore * 100);
-  const findingsCount = data.findings.length;
+  const moduleCount = data.modules.length;
   const sl = statusLabel(status);
 
   return (
@@ -278,7 +279,11 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
           <PillarIcon icon={data.pillar.icon} />
           <div className="flex-1 min-w-0">
             <span className="text-sm font-medium text-foreground block truncate">{data.pillar.label}</span>
-            <span className="text-[11px] text-muted-light block truncate hidden sm:block">{data.pillar.description}</span>
+            <span className="text-[11px] text-muted-light block truncate hidden sm:block">{data.modules.length} {data.modules.length === 1 ? "modul" : "modula"}: {data.modules.map(m => {
+              const label = forensicModuleLabel(m.moduleName);
+              // Shorten: remove "AI detekcija", "detekcija", "(CVPR 2025)" etc.
+              return label.replace(/ AI detekcija| detekcija| \(.*?\)| manipulacije| analiza/g, "").trim();
+            }).join(", ")}</span>
           </div>
           {/* Desktop: all inline */}
           <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
@@ -286,12 +291,10 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
               <div className="flex-1 h-1.5 bg-card-hover rounded-full overflow-hidden">
                 <div className={cn("h-full rounded-full", statusDotColor(status))} style={{ width: `${riskPct}%` }} />
               </div>
-              <span className={cn("text-xs font-mono w-8 text-right", fraudRiskColor(data.aggregateRiskLevel))}>{riskPct}%</span>
+              <span className={cn("text-xs font-mono w-8 text-right", status === "fail" ? "text-red-500" : status === "warning" ? "text-amber-500" : "text-green-500")}>{riskPct}%</span>
             </div>
-            {findingsCount > 0 && (
-              <span className="text-[10px] bg-card-hover text-muted px-2 py-0.5 rounded-full">{findingsCount}</span>
-            )}
-            <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border", sl.cls)}>{sl.text}</span>
+            <span className="text-[10px] bg-card-hover text-muted px-2 py-0.5 rounded-full">{moduleCount} analiza</span>
+            <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border w-16 text-center", sl.cls)}>{sl.text}</span>
           </div>
           <svg className={cn("w-4 h-4 text-muted-light transition-transform flex-shrink-0", expanded && "rotate-180")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -303,8 +306,8 @@ function PillarSection({ data, originalImageUrl }: { data: PillarData; originalI
             <div className={cn("h-full rounded-full", statusDotColor(status))} style={{ width: `${riskPct}%` }} />
           </div>
           <span className={cn("text-xs font-mono w-8 text-right flex-shrink-0", fraudRiskColor(data.aggregateRiskLevel))}>{riskPct}%</span>
-          {findingsCount > 0 && (
-            <span className="text-[10px] bg-card-hover text-muted px-1.5 py-0.5 rounded-full flex-shrink-0">{findingsCount}</span>
+          {moduleCount > 0 && (
+            <span className="text-[10px] bg-card-hover text-muted px-1.5 py-0.5 rounded-full flex-shrink-0">{moduleCount} analiza</span>
           )}
           <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0", sl.cls)}>{sl.text}</span>
         </div>
@@ -349,6 +352,16 @@ export function ForensicModuleTable({ result, originalImageUrl }: ForensicModule
   const pillars = groupModulesIntoPillars(result.modules, result);
   if (pillars.length === 0) return null;
 
+  // Find modules not assigned to any pillar
+  const assignedModules = new Set(pillars.flatMap(p => p.modules.map(m => m.moduleName)));
+  const unassigned = result.modules.filter(m => !assignedModules.has(m.moduleName) && !m.error);
+
+  // Consensus: count high/low modules
+  const allModules = result.modules.filter(m => !m.error);
+  const highModules = allModules.filter(m => m.riskScore >= 0.40);
+  const lowModules = allModules.filter(m => m.riskScore < 0.20);
+  const totalTime = allModules.reduce((s, m) => s + m.processingTimeMs, 0);
+
   return (
     <div>
       <h2 className="font-heading text-lg font-semibold mb-4">
@@ -358,6 +371,41 @@ export function ForensicModuleTable({ result, originalImageUrl }: ForensicModule
         {pillars.map((p) => (
           <PillarSection key={p.pillar.id} data={p} originalImageUrl={originalImageUrl} />
         ))}
+      </div>
+
+      {/* Unassigned modules (if any exist outside pillar groups) */}
+      {unassigned.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Ostali moduli ({unassigned.length})</h3>
+          <div className="bg-background rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="px-5 py-3 space-y-2">
+              {unassigned.map((mod) => (
+                <ModuleRow key={mod.moduleName} module={mod} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Consensus summary */}
+      <div className="mt-4 p-4 bg-card border border-border rounded-xl">
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Konsenzus modula</h3>
+        <p className="text-sm text-foreground">
+          {allModules.length} modula analizirano u {(totalTime / 1000).toFixed(2)}s.
+          {highModules.length > 0 && (
+            <> <span className="font-medium">{highModules.length}</span> {highModules.length === 1 ? "modul je prijavio" : "modula su prijavila"} povišen rizik
+            ({highModules.map(m => forensicModuleLabel(m.moduleName)).join(", ")}).</>
+          )}
+          {highModules.length === 0 && lowModules.length === allModules.length && (
+            <> Svi moduli potvrđuju nizak rizik.</>
+          )}
+          {highModules.length === 0 && lowModules.length < allModules.length && (
+            <> Niti jedan modul nije prijavio značajan rizik, ali {allModules.length - lowModules.length} {allModules.length - lowModules.length === 1 ? "modul pokazuje" : "modula pokazuju"} umjerenu aktivnost.</>
+          )}
+        </p>
+        <p className="text-xs text-muted mt-1">
+          Završni rezultat: {result.overallRiskScore100}% ({result.overallRiskLevel})
+        </p>
       </div>
     </div>
   );

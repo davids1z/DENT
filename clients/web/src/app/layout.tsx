@@ -54,7 +54,7 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=document.documentElement;d.classList.remove("dark");if(document.cookie.indexOf("dent_has_auth=1")!==-1)d.dataset.auth="1"}catch(e){}})()`,
+            __html: `(function(){try{var d=document.documentElement;d.classList.remove("dark");if(localStorage.getItem("dent_theme")==="dark")d.classList.add("dark");if(document.cookie.indexOf("dent_has_auth=1")!==-1)d.dataset.auth="1"}catch(e){}})()`,
           }}
         />
       </head>

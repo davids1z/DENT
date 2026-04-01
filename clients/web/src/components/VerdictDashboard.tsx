@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { sanitizeLlmText } from "@/lib/forensicPillars";
 import { decisionOutcomeLabel } from "@/lib/api";
@@ -106,11 +106,12 @@ function getVerdictBadge(riskPercent: number) {
 // ── Risk Gauge ──────────────────────────────────────────────────
 
 function getRiskColor(value: number): { main: string; glow: string } {
-  if (value <= 15) return { main: "#10b981", glow: "#10b98130" };
-  if (value <= 35) return { main: "#06b6d4", glow: "#06b6d430" };
-  if (value <= 55) return { main: "#f59e0b", glow: "#f59e0b30" };
-  if (value <= 75) return { main: "#f97316", glow: "#f9731630" };
-  return { main: "#ef4444", glow: "#ef444440" };
+  // Balanced palette — visible on both light/dark, not neon
+  if (value <= 15) return { main: "#34D399", glow: "#34D39925" }; // emerald
+  if (value <= 35) return { main: "#2DD4BF", glow: "#2DD4BF25" }; // teal
+  if (value <= 55) return { main: "#FBBF24", glow: "#FBBF2425" }; // amber
+  if (value <= 75) return { main: "#F97316", glow: "#F9731625" }; // orange
+  return { main: "#EF4444", glow: "#EF444430" };                  // red
 }
 
 function getRiskLabel(value: number): string {
@@ -121,17 +122,22 @@ function getRiskLabel(value: number): string {
   return "Kritičan";
 }
 
-function useCountUp(target: number, enabled: boolean, duration = 1500) {
+function useCountUp(target: number, enabled: boolean, duration = 800) {
   const [current, setCurrent] = useState(0);
+  const fromRef = useRef(0);
   useEffect(() => {
-    if (!enabled) { setCurrent(0); return; }
+    if (!enabled) { setCurrent(0); fromRef.current = 0; return; }
+    const from = fromRef.current;
+    fromRef.current = target;
+    // First animation (from 0): slower entrance
+    const dur = from === 0 ? 1500 : duration;
     const start = performance.now();
     let raf: number;
     function tick(now: number) {
       const elapsed = now - start;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 4);
-      setCurrent(eased * target);
+      const progress = Math.min(elapsed / dur, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCurrent(from + (target - from) * eased);
       if (progress < 1) raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
@@ -145,10 +151,10 @@ function RiskGauge({ value, animated, size = 192 }: { value: number; animated: b
   const trackStroke = 6;
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
-  const fillOffset = animated ? circumference * (1 - value / 100) : circumference;
+  const displayValue = useCountUp(value, animated);
+  const fillOffset = circumference * (1 - displayValue / 100);
   const { main, glow } = getRiskColor(value);
   const label = getRiskLabel(value);
-  const displayValue = useCountUp(value, animated);
   const whole = Math.floor(displayValue);
   const decimal = (displayValue % 1).toFixed(1).slice(1); // ".X"
 
@@ -174,7 +180,6 @@ function RiskGauge({ value, animated, size = 192 }: { value: number; animated: b
           strokeDasharray={circumference}
           strokeDashoffset={fillOffset}
           style={{
-            transition: animated ? "stroke-dashoffset 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)" : "none",
             filter: animated ? `drop-shadow(0 0 8px ${glow})` : "none",
           }}
         />
@@ -218,22 +223,53 @@ function ModuleBar({
   color: string;
   animated: boolean;
 }) {
+  const display = useCountUp(value, animated);
+  const dominant = value >= 30;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted">{label}</span>
-        <span className="text-sm font-mono font-bold text-foreground">
-          {value.toFixed(1)}%
+        <span className={cn("text-sm", dominant ? "text-foreground font-medium" : "text-muted")}>{label}</span>
+        <span className={cn("text-sm font-mono tabular-nums", dominant ? "font-bold text-foreground" : "text-muted")}>
+          {display.toFixed(1)}%
         </span>
       </div>
-      <div className="h-1.5 bg-card-hover rounded-full overflow-hidden">
+      <div className="h-1.5 bg-border/40 rounded-full overflow-hidden">
         <div
-          className="h-full rounded-full transition-all duration-[600ms] ease-out"
-          style={{
-            width: animated ? `${value}%` : "0%",
-            backgroundColor: color,
-          }}
+          className="h-full rounded-full"
+          style={{ width: `${display}%`, backgroundColor: dominant ? color : "var(--color-muted)", opacity: dominant ? 1 : 0.3 }}
         />
+      </div>
+    </div>
+  );
+}
+
+// ── Decision Badge (inline styles, immune to purge) ──────────────
+
+function DecisionBadge({ outcome, reason }: { outcome: string; reason?: string | null }) {
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  const styles = decisionInlineStyles[outcome];
+  if (!styles) return null;
+  const s = isDark ? styles.dark : styles.light;
+
+  return (
+    <div className="flex justify-center mb-8">
+      <div
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-semibold text-center max-w-full"
+        style={s}
+      >
+        <span className="flex-shrink-0">{decisionOutcomeLabel(outcome)}</span>
+        {reason && (
+          <span className="font-normal" style={{ opacity: 0.8 }}>— {reason}</span>
+        )}
       </div>
     </div>
   );
@@ -259,10 +295,20 @@ function WarningIcon() {
 
 // ── Decision Outcome Label ───────────────────────────────────────
 
-const decisionStyles: Record<string, string> = {
-  AutoApprove: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20",
-  HumanReview: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-  Escalate: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+// Inline styles per outcome — immune to Tailwind purge
+const decisionInlineStyles: Record<string, { light: React.CSSProperties; dark: React.CSSProperties }> = {
+  AutoApprove: {
+    light: { backgroundColor: "#D1FAE5", color: "#064E3B", borderColor: "#34D399" },
+    dark: { backgroundColor: "rgba(52,211,153,0.15)", color: "#6EE7B7", borderColor: "rgba(52,211,153,0.3)" },
+  },
+  HumanReview: {
+    light: { backgroundColor: "#FDE68A", color: "#78350F", borderColor: "#D97706" },
+    dark: { backgroundColor: "rgba(245,158,11,0.2)", color: "#FCD34D", borderColor: "rgba(245,158,11,0.4)" },
+  },
+  Escalate: {
+    light: { backgroundColor: "#FECACA", color: "#7F1D1D", borderColor: "#EF4444" },
+    dark: { backgroundColor: "rgba(239,68,68,0.2)", color: "#FCA5A5", borderColor: "rgba(239,68,68,0.4)" },
+  },
 };
 
 // ── Main Component ───────────────────────────────────────────────
@@ -313,6 +359,7 @@ export function VerdictDashboard({
   const riskPercent = riskScore * 100;
   const badge = getVerdictBadge(riskPercent);
 
+  // Animate on first mount only — useCountUp handles transitions between values
   useEffect(() => {
     const timer = setTimeout(() => setAnimated(true), 30);
     return () => clearTimeout(timer);
@@ -321,18 +368,8 @@ export function VerdictDashboard({
   return (
     <div className="bg-background shadow-sm rounded-2xl border border-border p-4 sm:p-6 md:p-8">
       {/* Decision Outcome (if available) */}
-      {decisionOutcome && (
-        <div className="flex justify-center mb-4">
-          <div className={cn(
-            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold text-center max-w-full",
-            decisionStyles[decisionOutcome] || "bg-card text-foreground border-border"
-          )}>
-            <span className="flex-shrink-0">{decisionOutcomeLabel(decisionOutcome)}</span>
-            {decisionReason && (
-              <span className="font-normal opacity-75 line-clamp-2">— {decisionReason}</span>
-            )}
-          </div>
-        </div>
+      {decisionOutcome && decisionInlineStyles[decisionOutcome] && (
+        <DecisionBadge outcome={decisionOutcome} reason={decisionReason} />
       )}
 
       {/* Verdict Badge — hidden when decision outcome already shown (avoids contradictions) */}
@@ -373,19 +410,19 @@ export function VerdictDashboard({
               <ModuleBar
                 label={isDocument ? "Autentičan dokument" : "Autentična slika"}
                 value={verdict.scores.authentic}
-                color="#22c55e"
+                color="#34D399"
                 animated={animated}
               />
               <ModuleBar
                 label="Umjetno generirana"
                 value={verdict.scores.ai_generated}
-                color="#a855f7"
+                color="#818CF8"
                 animated={animated}
               />
               <ModuleBar
                 label="Digitalno izmijenjena"
                 value={verdict.scores.tampered}
-                color="#f97316"
+                color="#F97316"
                 animated={animated}
               />
             </>
@@ -394,7 +431,7 @@ export function VerdictDashboard({
           {/* Badges */}
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border">
             {c2paStatus === "valid" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-card text-muted border border-border">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -402,7 +439,7 @@ export function VerdictDashboard({
               </span>
             )}
             {c2paStatus === "ai_generated" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-card text-muted border border-border">
                 C2PA: AI generirano
               </span>
             )}
@@ -414,7 +451,7 @@ export function VerdictDashboard({
             <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-card text-muted border border-border">
               {(totalProcessingTimeMs / 1000).toFixed(1)}s
             </span>
-            <ExportButton inspectionId={inspectionId} />
+            {/* ExportButton removed — report endpoint not implemented yet */}
           </div>
         </div>
       </div>

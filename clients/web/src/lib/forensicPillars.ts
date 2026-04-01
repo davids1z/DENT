@@ -18,30 +18,43 @@ export const FORENSIC_PILLARS: ForensicPillar[] = [
     label: "AI detekcija",
     icon: "sparkles",
     moduleNames: [
-      "safe_ai_detection",           // SAFE (KDD 2025) — pixel correlation
-      "dinov2_ai_detection",         // DINOv2 probe
+      "safe_ai_detection",             // SAFE (KDD 2025) — pixel correlation
+      "dinov2_ai_detection",           // DINOv2 probe
       "community_forensics_detection", // CommFor (CVPR 2025)
-      "efficientnet_ai_detection",   // EfficientNet-B4 pre-trained
-      "clip_ai_detection",           // CLIP ViT-L/14 probe
-      "bfree_detection",             // B-Free (CVPR 2025) — bias-free DINOv2
-      "spai_detection",              // SPAI (CVPR 2025) — FFT spectral
+      "efficientnet_ai_detection",     // EfficientNet-B4 pre-trained
+      "clip_ai_detection",             // CLIP ViT-L/14 probe
+      "bfree_detection",               // B-Free (CVPR 2025) — bias-free DINOv2
+      "spai_detection",                // SPAI (CVPR 2025) — FFT spectral
+      "ai_generation_detection",       // EfficientNet legacy AI gen
+      "vae_reconstruction",            // VAE reconstruction anomaly
+      "npr_ai_detection",              // NPR AI detection
     ],
-    description: "7 nezavisnih AI detektora: SAFE, DINOv2, CommFor, EfficientNet, CLIP, B-Free, SPAI",
+    description: "10 nezavisnih AI detektora: SAFE, DINOv2, CommFor, EfficientNet, CLIP, B-Free, SPAI, VAE, NPR",
   },
   {
     id: "modification",
     label: "Detekcija manipulacija",
     icon: "pencil",
-    moduleNames: ["modification_detection", "mesorch_detection"],
+    moduleNames: [
+      "modification_detection",        // ELA + heuristic
+      "mesorch_detection",             // Mesorch (AAAI 2025)
+      "deep_modification_detection",   // CNN deep modification
+    ],
     heatmapField: "elaHeatmapUrl",
-    description: "ELA, copy-move, Mesorch (AAAI 2025) detekcija manipulacija",
+    description: "ELA, copy-move, CNN duboka analiza, Mesorch (AAAI 2025)",
   },
   {
     id: "crypto_meta",
     label: "Metapodaci i potpisi",
     icon: "lock",
-    moduleNames: ["metadata_analysis", "prnu_detection"],
-    description: "EXIF analiza, C2PA potpis, PRNU senzorski otisak",
+    moduleNames: [
+      "metadata_analysis",             // EXIF/metadata
+      "prnu_detection",                // PRNU sensor fingerprint
+      "spectral_forensics",            // Spectral/frequency analysis
+      "optical_forensics",             // Optical forensics
+      "semantic_forensics",            // Semantic analysis
+    ],
+    description: "EXIF analiza, C2PA potpis, PRNU senzorski otisak, spektralna i optička forenzika",
   },
   {
     id: "documents",
@@ -77,7 +90,8 @@ export function groupModulesIntoPillars(
     );
     if (pillarModules.length === 0) return null;
 
-    const maxRisk = Math.max(...pillarModules.map((m) => m.riskScore), 0);
+    // Average risk across all modules in this pillar
+    const avgRisk = pillarModules.reduce((sum, m) => sum + m.riskScore, 0) / pillarModules.length;
     const riskOrder: Record<string, number> = { Low: 0, Medium: 1, High: 2, Critical: 3 };
     const worstLevel = pillarModules.reduce(
       (worst, m) => ((riskOrder[m.riskLevel] ?? 0) > (riskOrder[worst] ?? 0) ? m.riskLevel : worst),
@@ -92,7 +106,7 @@ export function groupModulesIntoPillars(
     return {
       pillar,
       modules: pillarModules,
-      aggregateRiskScore: maxRisk,
+      aggregateRiskScore: avgRisk,
       aggregateRiskLevel: worstLevel,
       findings: allFindings,
       hasError,
@@ -110,7 +124,8 @@ export function getPillarStatus(riskScore: number): PillarStatus {
 
 // ── Text helpers ───────────────────────────────────────────────
 
-export function sanitizeLlmText(text: string): string {
+export function sanitizeLlmText(text: string | null | undefined): string {
+  if (!text) return "";
   return text.replace(/\s*\[C#\s*safety\s*net:[^\]]*\]/gi, "").trim();
 }
 
@@ -124,13 +139,13 @@ export function getVerdictSentence(
     case "Low":
       return c2paStatus === "valid"
         ? "Slika ima valjan kriptografski potpis i ne pokazuje znakove manipulacije."
-        : "Forenzicka analiza nije utvrdila znakove manipulacije.";
+        : "Forenzička analiza nije utvrdila znakove manipulacije.";
     case "Medium":
-      return `Forenzicka analiza ukazuje na umjerenu sumnju (${pct}%). Preporuca se rucni pregled.`;
+      return `Forenzička analiza ukazuje na umjerenu sumnju (${pct}%). Preporučuje se ručni pregled.`;
     case "High":
-      return `Utvrdjena visoka sumnja na manipulaciju (${pct}%). Vise modula detektiralo anomalije.`;
+      return `Utvrđena visoka sumnja na manipulaciju (${pct}%). Više modula detektiralo anomalije.`;
     case "Critical":
-      return `Kriticna razina rizika (${pct}%). Snazni dokazi manipulacije ili AI generiranja.`;
+      return `Kritična razina rizika (${pct}%). Snažni dokazi manipulacije ili AI generiranja.`;
     default:
       return "Analiza u tijeku.";
   }

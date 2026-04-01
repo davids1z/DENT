@@ -41,10 +41,10 @@ export function CrossImageFindings({ report, files }: CrossImageFindingsProps) {
   return (
     <div className="bg-card border border-border rounded-2xl p-5 sm:p-6">
       <h3 className="font-heading font-semibold text-base mb-1">
-        Usporedba medu datotekama
+        Usporedba među datotekama
       </h3>
       <p className="text-xs text-muted mb-4">
-        Pronadeno {report.findings.length} nekonzistentnost{report.findings.length > 1 ? "i" : ""} analizom visestrukih datoteka
+        Pronađeno {report.findings.length} nekonzistentnost{report.findings.length > 1 ? "i" : ""} analizom višestrukih datoteka
       </p>
 
       <div className="space-y-3">

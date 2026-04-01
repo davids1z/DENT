@@ -16,6 +16,10 @@ export interface ImageOverlayProps {
   selectedIndex?: number | null;
   onSelectDamage?: (index: number | null) => void;
   activeImageIndex?: number;
+  allImageUrls?: string[];
+  onLightboxNavigate?: (url: string) => void;
+  fileName?: string;
+  fileLabel?: string;
 }
 
 interface ParsedDamage {
@@ -68,7 +72,7 @@ function Legend() {
       <LegendItem color="#22c55e" label="Niska" />
       <LegendItem color="#f59e0b" label="Umjerena" />
       <LegendItem color="#f97316" label="Visoka" />
-      <LegendItem color="#ef4444" label="Kriticna" />
+      <LegendItem color="#ef4444" label="Kritična" />
     </div>
   );
 }
@@ -82,12 +86,26 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   );
 }
 
+function truncateFileName(name: string, maxLen = 20): string {
+  if (name.length <= maxLen) return name;
+  const ext = name.lastIndexOf(".");
+  if (ext === -1) return name.slice(0, maxLen - 3) + "…";
+  const extension = name.slice(ext); // e.g. ".jpg"
+  const base = name.slice(0, ext);
+  const available = maxLen - extension.length - 1;
+  return base.slice(0, available) + "…" + extension;
+}
+
 export function ImageOverlay({
   imageUrl,
   damages,
   selectedIndex = null,
   onSelectDamage,
   activeImageIndex = 0,
+  allImageUrls,
+  onLightboxNavigate,
+  fileName,
+  fileLabel,
 }: ImageOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showOverlay, setShowOverlay] = useState(true);
@@ -109,10 +127,10 @@ export function ImageOverlay({
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden" ref={containerRef}>
-      {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="Analizirani sadrzaj" onClose={() => setLightboxSrc(null)} />}
-      <div className="relative">
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="Analizirani sadrzaj" onClose={() => setLightboxSrc(null)} allImages={allImageUrls} onNavigate={onLightboxNavigate} />}
+      <div className="relative aspect-[4/3] bg-card">
         <div
-          className="cursor-pointer"
+          className="absolute inset-0 cursor-pointer flex items-center justify-center"
           onClick={() => {
             if (!hasBoundingBoxes || !showOverlay) setLightboxSrc(imageUrl);
           }}
@@ -120,7 +138,7 @@ export function ImageOverlay({
           <img
             src={imageUrl}
             alt="Analizirani sadrzaj"
-            className="w-full h-auto object-contain bg-card"
+            className="w-full h-full object-contain"
             onLoad={() => setImageLoaded(true)}
           />
         </div>
@@ -200,38 +218,46 @@ export function ImageOverlay({
       </div>
 
       <div className="flex items-center justify-between px-3 py-2 border-t border-border">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {fileName && (
+            <span className="text-[10px] text-muted truncate">{truncateFileName(fileName)}</span>
+          )}
+          {fileLabel && (
+            <>
+              <span className="text-[10px] text-muted">·</span>
+              <span className="text-[10px] text-muted flex-shrink-0">{fileLabel}</span>
+            </>
+          )}
           {hasBoundingBoxes && (
             <>
+              <div className="h-3 w-px bg-border flex-shrink-0" />
               <button
                 onClick={() => setShowOverlay(!showOverlay)}
                 className={cn(
-                  "flex items-center gap-1.5 text-xs transition-colors",
+                  "flex items-center gap-1 text-[10px] transition-colors flex-shrink-0",
                   showOverlay ? "text-foreground" : "text-muted hover:text-foreground"
                 )}
               >
                 <div className={cn(
-                  "w-3.5 h-3.5 rounded border flex items-center justify-center",
+                  "w-3 h-3 rounded border flex items-center justify-center",
                   showOverlay ? "bg-accent/10 border-accent" : "border-border"
                 )}>
                   {showOverlay && (
-                    <svg className="w-2.5 h-2.5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <svg className="w-2 h-2 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   )}
                 </div>
                 Prekrivanje
               </button>
-              <div className="h-3 w-px bg-border" />
-              <Legend />
             </>
           )}
         </div>
         <button
           onClick={() => setLightboxSrc(imageUrl)}
-          className="text-[10px] text-muted hover:text-foreground transition-colors"
+          className="text-[10px] text-muted hover:text-foreground transition-colors flex-shrink-0"
         >
-          Puna velicina
+          Puna veličina
         </button>
       </div>
     </div>

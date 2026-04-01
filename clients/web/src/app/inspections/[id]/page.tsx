@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getInspection, deleteInspection, formatDate, type Inspection } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
+import { useAuth } from "@/lib/auth";
 import { DamageReport } from "@/components/DamageReport";
 import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionTrace } from "@/components/DecisionTrace";
@@ -27,6 +28,8 @@ export default function InspectionDetailPage() {
 function InspectionDetailContent() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin";
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -45,6 +48,58 @@ function InspectionDetailContent() {
   }, [params.id, router]);
 
   useEffect(() => { loadInspection(); }, [loadInspection]);
+
+  // All hooks must be called unconditionally (before any early returns) — Rules of Hooks
+  const isGroupInspection = (inspection?.additionalImages?.length ?? 0) > 0;
+  const groupFiles = useMemo(() => {
+    if (!inspection || !isGroupInspection) return [];
+    const files: { url: string; fileName: string; sortOrder: number; forensicResult: ForensicResult | null }[] = [];
+    const primaryFr = inspection.fileForensicResults?.find((fr: ForensicResult) => fr.sortOrder === 0) || inspection.forensicResult;
+    files.push({ url: inspection.imageUrl, fileName: inspection.originalFileName, sortOrder: 0, forensicResult: primaryFr });
+    for (const img of (inspection.additionalImages ?? [])) {
+      const fr = inspection.fileForensicResults?.find(
+        (fr: ForensicResult) => fr.sortOrder === img.sortOrder || fr.fileName === img.originalFileName
+      ) || null;
+      files.push({ url: img.imageUrl, fileName: img.originalFileName, sortOrder: img.sortOrder, forensicResult: fr });
+    }
+    return files;
+  }, [inspection, isGroupInspection]);
+
+  // Dynamic forensic result — switches when user selects a different image
+  const activeForensicResult = useMemo<ForensicResult | null>(() => {
+    if (!inspection) return null;
+    const fileResults = inspection.fileForensicResults;
+    if (!fileResults || fileResults.length === 0) return inspection.forensicResult;
+
+    const currentUrl = activeImageUrl || inspection.imageUrl;
+
+    // Match by fileUrl (exact)
+    const matchByUrl = fileResults.find((fr) => fr.fileUrl && fr.fileUrl === currentUrl);
+    if (matchByUrl) return matchByUrl;
+
+    // Primary image → sort=0
+    if (currentUrl === inspection.imageUrl) {
+      return fileResults.find((fr) => fr.sortOrder === 0) || inspection.forensicResult;
+    }
+
+    // Additional image → match by fileName
+    const additionalImg = (inspection.additionalImages ?? []).find((img) => img.imageUrl === currentUrl);
+    if (additionalImg) {
+      const matchByName = fileResults.find((fr) => fr.fileName === additionalImg.originalFileName);
+      if (matchByName) return matchByName;
+    }
+
+    return inspection.forensicResult;
+  }, [inspection, activeImageUrl]);
+
+  // Active file name for display
+  const activeFileName = useMemo(() => {
+    if (!inspection) return "";
+    const currentUrl = activeImageUrl || inspection.imageUrl;
+    if (currentUrl === inspection.imageUrl) return inspection.originalFileName;
+    const img = (inspection.additionalImages ?? []).find((i) => i.imageUrl === currentUrl);
+    return img?.originalFileName || inspection.originalFileName;
+  }, [inspection, activeImageUrl]);
 
   const handleDelete = async () => {
     if (!inspection || !confirm("Jeste li sigurni da želite obrisati ovu analizu?")) return;
@@ -77,26 +132,9 @@ function InspectionDetailContent() {
 
   if (!inspection) return null;
 
-  const isHighRisk = inspection.forensicResult
-    ? ["High", "Critical"].includes(inspection.forensicResult.overallRiskLevel)
+  const isHighRisk = activeForensicResult
+    ? ["High", "Critical"].includes(activeForensicResult.overallRiskLevel)
     : false;
-
-  const isGroupInspection = (inspection.additionalImages?.length ?? 0) > 0;
-
-  // Build group file list for GroupOverviewCard
-  const groupFiles = useMemo(() => {
-    if (!inspection || !isGroupInspection) return [];
-    const files: { url: string; fileName: string; sortOrder: number; forensicResult: ForensicResult | null }[] = [];
-    const primaryFr = inspection.fileForensicResults?.find((fr: ForensicResult) => fr.sortOrder === 0) || inspection.forensicResult;
-    files.push({ url: inspection.imageUrl, fileName: inspection.originalFileName, sortOrder: 0, forensicResult: primaryFr });
-    for (const img of (inspection.additionalImages ?? [])) {
-      const fr = inspection.fileForensicResults?.find(
-        (fr: ForensicResult) => fr.sortOrder === img.sortOrder || fr.fileName === img.originalFileName
-      ) || null;
-      files.push({ url: img.imageUrl, fileName: img.originalFileName, sortOrder: img.sortOrder, forensicResult: fr });
-    }
-    return files;
-  }, [inspection, isGroupInspection]);
 
   return (
     <div className="relative">
@@ -138,21 +176,21 @@ function InspectionDetailContent() {
       )}
 
       {/* ── 1. VERDICT HERO ── */}
-      {inspection.forensicResult && (
+      {activeForensicResult && (
         <div className="mb-8">
           <VerdictDashboard
-            riskScore={inspection.forensicResult.overallRiskScore}
-            riskLevel={inspection.forensicResult.overallRiskLevel}
-            c2paStatus={inspection.forensicResult.c2paStatus}
-            predictedSource={inspection.forensicResult.predictedSource}
-            sourceConfidence={inspection.forensicResult.sourceConfidence}
-            totalProcessingTimeMs={inspection.forensicResult.totalProcessingTimeMs}
+            riskScore={activeForensicResult.overallRiskScore}
+            riskLevel={activeForensicResult.overallRiskLevel}
+            c2paStatus={activeForensicResult.c2paStatus}
+            predictedSource={activeForensicResult.predictedSource}
+            sourceConfidence={activeForensicResult.sourceConfidence}
+            totalProcessingTimeMs={activeForensicResult.totalProcessingTimeMs}
             inspectionId={inspection.id}
             summary={inspection.summary}
             decisionOutcome={inspection.decisionOutcome}
             decisionReason={inspection.decisionReason}
-            verdictProbabilities={inspection.forensicResult.verdictProbabilities}
-            fileName={inspection.originalFileName}
+            verdictProbabilities={activeForensicResult.verdictProbabilities}
+            fileName={activeFileName}
           />
         </div>
       )}
@@ -160,17 +198,10 @@ function InspectionDetailContent() {
       {/* ── 2. IMAGE + FINDINGS ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
-          <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages ?? []} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} fileName={inspection.originalFileName} pagePreviewUrls={inspection.forensicResult?.pagePreviewUrls} />
+          <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages ?? []} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} fileName={activeFileName} pagePreviewUrls={activeForensicResult?.pagePreviewUrls} allImageUrls={isGroupInspection ? [inspection.imageUrl, ...(inspection.additionalImages ?? []).map(i => i.imageUrl)] : undefined} onLightboxNavigate={handleImageSelect} fileLabel={isGroupInspection ? `${activeImageIndex + 1} od ${1 + (inspection.additionalImages?.length ?? 0)}` : undefined} />
           <ImageGallery primaryImageUrl={inspection.imageUrl} additionalImages={inspection.additionalImages ?? []} activeImageUrl={activeImageUrl || inspection.imageUrl} onSelect={handleImageSelect} />
-          <GlassPanel className="p-3 sm:p-5">
-            <div className="text-[11px] sm:text-xs text-muted flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
-              <span className="truncate">Datoteka: {inspection.originalFileName}</span>
-              <span className="hidden sm:inline mx-2">|</span>
-              <span>ID: {inspection.id.slice(0, 8)}...</span>
-            </div>
-          </GlassPanel>
         </div>
-        <DamageReport inspection={inspection} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} forensicResult={inspection.forensicResult} />
+        <DamageReport inspection={inspection} selectedDamageIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} forensicResult={activeForensicResult} />
       </div>
 
       {/* ── 3. HOW WE DECIDED ── */}
@@ -201,10 +232,10 @@ function InspectionDetailContent() {
       )}
 
       {/* ── 4. FORENSIC MODULES ── */}
-      {inspection.forensicResult && (
+      {activeForensicResult && (
         <div className="mt-8">
           <ForensicModuleTable
-            result={inspection.forensicResult}
+            result={activeForensicResult}
             originalImageUrl={activeImageUrl || inspection.imageUrl}
           />
         </div>
@@ -216,7 +247,7 @@ function InspectionDetailContent() {
           <EvidenceIntegrity inspection={inspection} />
         )}
 
-        {inspection.decisionOutcome && (
+        {isAdmin && inspection.decisionOutcome && (
           <OverridePanel inspectionId={inspection.id} currentOutcome={inspection.decisionOutcome} overrides={inspection.decisionOverrides} onOverrideComplete={loadInspection} />
         )}
       </div>

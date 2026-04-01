@@ -105,7 +105,7 @@ function InspectContent() {
         setActiveImageUrl(firstCompleted.imageUrl);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Doslo je do greske");
+      setError(e instanceof Error ? e.message : "Došlo je do greške");
     } finally {
       setIsLoading(false);
     }
@@ -167,7 +167,7 @@ function InspectContent() {
             Nova analiza
           </h1>
           <p className="text-muted text-sm sm:text-base mb-6">
-            Forenzicka verifikacija digitalnih medija
+            Forenzička verifikacija digitalnih medija
           </p>
           <ProgressSteps currentStep={currentStep} />
         </div>
@@ -207,7 +207,7 @@ function InspectContent() {
           {/* Mode description */}
           <p className="text-xs text-muted text-center">
             {isGroupMode
-              ? "Sve datoteke analiziraju se zajedno — sustav trazi nekonzistentnosti medu datotekama i daje skupnu ocjenu."
+              ? "Sve datoteke analiziraju se zajedno — sustav trazi nekonzistentnosti među datotekama i daje skupnu ocjenu."
               : "Svaka datoteka analizira se zasebno kao nezavisna inspekcija."}
           </p>
 
@@ -225,14 +225,14 @@ function InspectContent() {
       {isLoading && (
         <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 max-w-lg mx-auto">
           <h3 className="font-heading font-semibold text-lg mb-1 text-center">
-            {isGroupMode ? "Skupna forenzicka analiza u tijeku" : "Forenzicka analiza u tijeku"}
+            {isGroupMode ? "Skupna forenzička analiza u tijeku" : "Forenzička analiza u tijeku"}
           </h3>
           <p className="text-sm text-muted mb-6 text-center">
             {isGroupMode
-              ? `Analiziram ${uploadedFiles.length} datoteka kao skupinu — individualna analiza + usporedba medu datotekama.`
+              ? `Analiziram ${uploadedFiles.length} datoteka kao skupinu — individualna analiza + usporedba među datotekama.`
               : uploadedFiles.length > 1
-                ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi zasebnu forenzicku analizu.`
-                : "Forenzicki moduli provjeravaju autenticnost, detektiraju manipulacije i AI-generirani sadrzaj."}
+                ? `Analiziram ${uploadedFiles.length} datoteka — svaka prolazi zasebnu forenzičku analizu.`
+                : "Forenzički moduli provjeravaju autentičnost, detektiraju manipulacije i AI-generirani sadržaj."}
           </p>
           <ForensicProgress
             steps={forensicProgress.steps}

@@ -92,11 +92,11 @@ const navItems = [
 
 const viewMeta: Record<string, { title: string; desc: string }> = {
   pregled: { title: "Pregled", desc: "Pregled sustava i performanse" },
-  aktivnost: { title: "Aktivnost", desc: "Detaljni vremenski obrasci koristenja" },
-  korisnici: { title: "Korisnici", desc: "Upravljanje korisnickim racunima" },
+  aktivnost: { title: "Aktivnost", desc: "Detaljni vremenski obrasci korištenja" },
+  korisnici: { title: "Korisnici", desc: "Upravljanje korisničkim računima" },
   analize: { title: "Analize", desc: "Sve analize u sustavu" },
-  statistika: { title: "Statistika", desc: "Detaljni statisticki podaci" },
-  dnevnik: { title: "Dnevnik", desc: "Pracenje posjeta i aktivnosti korisnika" },
+  statistika: { title: "Statistika", desc: "Detaljni statistički podaci" },
+  dnevnik: { title: "Dnevnik", desc: "Praćenje posjeta i aktivnosti korisnika" },
 };
 
 type View = (typeof navItems)[number]["id"] | "user";
@@ -1020,7 +1020,7 @@ function StatisticsTab({ stats, loading }: { stats: AdminStats | null; loading: 
 
       {/* Top errors */}
       {topErrors.length > 0 && (
-        <Card title="Najcesce greske">
+        <Card title="Najčešće greške">
           <div className="space-y-2">
             {topErrors.map(([msg, count], idx) => (
               <div key={idx} className="flex items-start gap-3 p-2.5 -mx-1 rounded-lg hover:bg-red-500/[0.03] transition-colors">

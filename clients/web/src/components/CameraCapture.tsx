@@ -98,13 +98,13 @@ export function CameraCapture({
         const name = (err as DOMException)?.name;
         if (name === "NotAllowedError") {
           setCameraError(
-            "Pristup kameri odbijen. Omogucite pristup kameri u postavkama preglednika."
+            "Pristup kameri odbijen. Omogućite pristup kameri u postavkama preglednika."
           );
         } else if (name === "NotFoundError") {
-          setCameraError("Kamera nije pronadena na ovom uredaju.");
+          setCameraError("Kamera nije pronađena na ovom uredaju.");
           onCameraUnavailable?.();
         } else {
-          setCameraError("Greska pri pokretanju kamere.");
+          setCameraError("Greška pri pokretanju kamere.");
           onCameraUnavailable?.();
         }
       }
@@ -115,7 +115,7 @@ export function CameraCapture({
   // Init camera + probe GPS
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Vas preglednik ne podrzava pristup kameri. Koristite moderan preglednik (Chrome, Safari, Firefox).");
+      setCameraError("Vaš preglednik ne podržava pristup kameri. Koristite moderan preglednik (Chrome, Safari, Firefox).");
       onCameraUnavailable?.();
       return;
     }

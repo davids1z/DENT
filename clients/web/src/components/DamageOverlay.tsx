@@ -12,6 +12,10 @@ interface DamageOverlayProps {
   activeImageIndex?: number;
   fileName?: string;
   pagePreviewUrls?: string[] | null;
+  allImageUrls?: string[];
+  onLightboxNavigate?: (url: string) => void;
+  /** e.g. "1 od 3" for group display */
+  fileLabel?: string;
 }
 
 function isDocumentUrl(url: string, name?: string): boolean {
@@ -27,6 +31,9 @@ export function DamageOverlay({
   activeImageIndex,
   fileName,
   pagePreviewUrls,
+  allImageUrls,
+  onLightboxNavigate,
+  fileLabel,
 }: DamageOverlayProps) {
   if (isDocumentUrl(imageUrl, fileName)) {
     return (
@@ -45,6 +52,10 @@ export function DamageOverlay({
       selectedIndex={selectedIndex}
       onSelectDamage={onSelectDamage}
       activeImageIndex={activeImageIndex}
+      allImageUrls={allImageUrls}
+      onLightboxNavigate={onLightboxNavigate}
+      fileName={fileName}
+      fileLabel={fileLabel}
     />
   );
 }
