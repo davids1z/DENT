@@ -10,6 +10,7 @@ import { DamageOverlay } from "@/components/DamageOverlay";
 import { DecisionTrace } from "@/components/DecisionTrace";
 import { VerdictDashboard } from "@/components/VerdictDashboard";
 import { ForensicModuleTable } from "@/components/ForensicModuleTable";
+import { DocumentForensicsView } from "@/components/DocumentForensicsView";
 import { AgentReasoningTrace } from "@/components/AgentReasoningTrace";
 import { EvidenceIntegrity } from "@/components/EvidenceIntegrity";
 import { OverridePanel } from "@/components/OverridePanel";
@@ -264,15 +265,29 @@ function InspectionDetailContent() {
       })()}
 
       {/* ── 4. FORENSIC MODULES ── */}
-      {activeForensicResult && (
-        <div className="mt-8">
-          <ForensicModuleTable
-            result={activeForensicResult}
-            originalImageUrl={activeImageUrl || inspection.imageUrl}
-            pagePreviewUrls={activeForensicResult.pagePreviewUrls}
-          />
-        </div>
-      )}
+      {activeForensicResult && (() => {
+        const isDoc = activeForensicResult.modules?.some(m =>
+          ["document_forensics", "office_forensics"].includes(m.moduleName)
+        );
+        return isDoc ? (
+          <div className="mt-8">
+            <h2 className="font-heading text-lg font-semibold mb-4">Forenzika dokumenata</h2>
+            <DocumentForensicsView
+              forensicResult={activeForensicResult}
+              pagePreviewUrls={activeForensicResult.pagePreviewUrls ?? []}
+              fileName={inspection.originalFileName}
+            />
+          </div>
+        ) : (
+          <div className="mt-8">
+            <ForensicModuleTable
+              result={activeForensicResult}
+              originalImageUrl={activeImageUrl || inspection.imageUrl}
+              pagePreviewUrls={activeForensicResult.pagePreviewUrls}
+            />
+          </div>
+        );
+      })()}
 
       {/* ── 5. EVIDENCE & ACTIONS ── */}
       <div className="mt-8 space-y-4">

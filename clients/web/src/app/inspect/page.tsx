@@ -14,6 +14,7 @@ import { ForensicProgress, useForensicProgress } from "@/components/ForensicProg
 import { GroupOverviewCard } from "@/components/GroupOverviewCard";
 import { CrossImageFindings } from "@/components/CrossImageFindings";
 import { ForensicModuleTable } from "@/components/ForensicModuleTable";
+import { DocumentForensicsView } from "@/components/DocumentForensicsView";
 import { VerdictDashboard } from "@/components/VerdictDashboard";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
@@ -331,9 +332,14 @@ function InspectContent() {
                           verdictProbabilities={fr.verdictProbabilities}
                           fileName={file.fileName}
                         />
-                        {fr.modules && fr.modules.length > 0 && (
-                          <ForensicModuleTable result={fr} originalImageUrl={file.url} pagePreviewUrls={fr.pagePreviewUrls} />
-                        )}
+                        {fr.modules && fr.modules.length > 0 && (() => {
+                          const isDoc = fr.modules.some(m => ["document_forensics", "office_forensics"].includes(m.moduleName));
+                          return isDoc ? (
+                            <DocumentForensicsView forensicResult={fr} pagePreviewUrls={fr.pagePreviewUrls ?? []} fileName={file.fileName} />
+                          ) : (
+                            <ForensicModuleTable result={fr} originalImageUrl={file.url} pagePreviewUrls={fr.pagePreviewUrls} />
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
