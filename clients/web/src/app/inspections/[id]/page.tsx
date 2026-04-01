@@ -89,7 +89,7 @@ function InspectionDetailContent() {
     const files: { url: string; fileName: string; sortOrder: number; forensicResult: ForensicResult | null }[] = [];
     const primaryFr = inspection.fileForensicResults?.find((fr: ForensicResult) => fr.sortOrder === 0) || inspection.forensicResult;
     files.push({ url: inspection.imageUrl, fileName: inspection.originalFileName, sortOrder: 0, forensicResult: primaryFr });
-    for (const img of inspection.additionalImages) {
+    for (const img of (inspection.additionalImages ?? [])) {
       const fr = inspection.fileForensicResults?.find(
         (fr: ForensicResult) => fr.sortOrder === img.sortOrder || fr.fileName === img.originalFileName
       ) || null;
@@ -131,7 +131,7 @@ function InspectionDetailContent() {
       {isGroupInspection && (
         <div className="mb-6 space-y-4">
           <GroupOverviewCard inspection={inspection} files={groupFiles} />
-          {inspection.crossImageReport && inspection.crossImageReport.findings.length > 0 && (
+          {inspection.crossImageReport && (inspection.crossImageReport.findings?.length ?? 0) > 0 && (
             <CrossImageFindings report={inspection.crossImageReport} files={groupFiles} />
           )}
         </div>
@@ -160,8 +160,8 @@ function InspectionDetailContent() {
       {/* ── 2. IMAGE + FINDINGS ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
-          <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} fileName={inspection.originalFileName} pagePreviewUrls={inspection.forensicResult?.pagePreviewUrls} />
-          <ImageGallery primaryImageUrl={inspection.imageUrl} additionalImages={inspection.additionalImages} activeImageUrl={activeImageUrl || inspection.imageUrl} onSelect={handleImageSelect} />
+          <DamageOverlay imageUrl={activeImageUrl || inspection.imageUrl} damages={inspection.damages ?? []} selectedIndex={selectedDamageIndex} onSelectDamage={setSelectedDamageIndex} activeImageIndex={activeImageIndex} fileName={inspection.originalFileName} pagePreviewUrls={inspection.forensicResult?.pagePreviewUrls} />
+          <ImageGallery primaryImageUrl={inspection.imageUrl} additionalImages={inspection.additionalImages ?? []} activeImageUrl={activeImageUrl || inspection.imageUrl} onSelect={handleImageSelect} />
           <GlassPanel className="p-3 sm:p-5">
             <div className="text-[11px] sm:text-xs text-muted flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
               <span className="truncate">Datoteka: {inspection.originalFileName}</span>
@@ -174,7 +174,7 @@ function InspectionDetailContent() {
       </div>
 
       {/* ── 3. HOW WE DECIDED ── */}
-      {(inspection.agentDecision || (inspection.decisionTraces && inspection.decisionTraces.length > 0)) && (
+      {(inspection.agentDecision || (inspection.decisionTraces && (inspection.decisionTraces?.length ?? 0) > 0)) && (
         <section className="mt-8">
           <h2 className="font-heading text-lg font-semibold mb-4 flex items-center gap-2">
             <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -192,7 +192,7 @@ function InspectionDetailContent() {
             />
           )}
 
-          {inspection.decisionTraces && inspection.decisionTraces.length > 0 && (
+          {inspection.decisionTraces && (inspection.decisionTraces?.length ?? 0) > 0 && (
             <div className="mt-4">
               <DecisionTrace traces={inspection.decisionTraces} />
             </div>
