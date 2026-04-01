@@ -222,46 +222,44 @@ export default function Dashboard() {
               Forenzički pipeline
             </p>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-4">
-              6 modula forenzičke analize
+              22 modula forenzičke analize
             </h2>
             <p className="text-muted max-w-2xl mx-auto">
-              Svaka slika i dokument prolazi kroz višeslojnu provjeru autentičnosti
-              koja detektira Photoshop manipulacije, AI-generirane slike, lažne metapodatke i falsificirane dokumente.
+              Svaka slika i dokument prolazi kroz višeslojnu provjeru autentičnosti koja uključuje
+              10 AI detektora, 3 detektora manipulacija, 5 analiza metapodataka i 4 modula za dokumente.
             </p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: "Analiza metapodataka", desc: "EXIF, GPS, kamera, softver" },
-              { label: "Detekcija modifikacija", desc: "ELA, FFT spektar, JPEG artefakti" },
-              { label: "CNN duboka analiza", desc: "CatNet, TruFor neuralne mreže" },
-              { label: "Optička forenzika", desc: "Razina šuma, CFA uzorci" },
-              { label: "Semantička forenzika", desc: "AI detekcija, VLM provjera" },
-              { label: "Forenzika dokumenata", desc: "PDF struktura, potpisi, fontovi" },
+              { label: "AI detekcija", count: "10", desc: "SAFE, DINOv2, CommFor, EfficientNet, CLIP, B-Free, SPAI, VAE, NPR" },
+              { label: "Detekcija manipulacija", count: "3", desc: "ELA, CNN duboka analiza, Mesorch (AAAI 2025)" },
+              { label: "Metapodaci i potpisi", count: "5", desc: "EXIF, PRNU senzorski otisak, spektralna, optička, semantička forenzika" },
+              { label: "Forenzika dokumenata", count: "4", desc: "PDF struktura, Office analiza, AI tekst detekcija, OIB/IBAN validacija" },
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col px-4 py-4 bg-background rounded-xl border border-border"
+                className="flex flex-col px-4 py-5 bg-background rounded-xl border border-border"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-xs font-mono font-bold text-accent">{item.count}</span>
                 </div>
-                <span className="text-xs text-muted pl-4">{item.desc}</span>
+                <span className="text-[11px] text-muted leading-relaxed">{item.desc}</span>
               </div>
             ))}
           </div>
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
             <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
-              <div className="font-heading text-3xl font-bold text-accent mb-1">6</div>
+              <div className="font-heading text-3xl font-bold text-accent mb-1">22</div>
               <div className="text-xs text-muted">Forenzičkih modula</div>
             </div>
             <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
-              <div className="font-heading text-3xl font-bold text-accent mb-1">CNN</div>
-              <div className="text-xs text-muted">Deepfake detekcija</div>
+              <div className="font-heading text-3xl font-bold text-accent mb-1">10</div>
+              <div className="text-xs text-muted">AI detektora</div>
             </div>
             <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
-              <div className="font-heading text-3xl font-bold text-accent mb-1">VLM</div>
-              <div className="text-xs text-muted">Vizualno-jezična analiza</div>
+              <div className="font-heading text-3xl font-bold text-accent mb-1">C2PA</div>
+              <div className="text-xs text-muted">Kriptografski potpis</div>
             </div>
             <div className="text-center py-6 px-4 bg-background rounded-2xl border border-border">
               <div className="font-heading text-3xl font-bold text-accent mb-1">RFC 3161</div>
