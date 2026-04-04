@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     forensics_bfree_enabled: bool = True
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
+    # RINE AI detection (ECCV 2024, intermediate CLIP layers, 91.5% accuracy)
+    forensics_rine_ai_enabled: bool = True
+
     # SigLIP AI detection (fine-tuned SigLIP, 92.9M params, 99.23% accuracy)
     forensics_siglip_ai_enabled: bool = False
 

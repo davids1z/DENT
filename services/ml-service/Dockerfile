@@ -60,6 +60,10 @@ COPY models/meta/gbm_multi.joblib /app/models_stage/stacking_meta/gbm_multi.jobl
 COPY models/meta/meta_weights.npz /app/models_stage/stacking_meta/meta_weights.npz
 COPY models/meta/gbm_meta.json /app/models_stage/stacking_meta/gbm_meta.json
 
+# RINE checkpoint (ECCV 2024, 25MB)
+RUN mkdir -p /app/models/rine
+COPY models/rine/model_4class_trainable.pth /app/models/rine/model_4class_trainable.pth
+
 COPY app/ app/
 COPY scripts/ scripts/
 COPY gunicorn.conf.py /app/gunicorn.conf.py

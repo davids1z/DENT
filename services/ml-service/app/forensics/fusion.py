@@ -84,6 +84,7 @@ _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
+    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
 })
 
 # Reliable AI detectors for consensus checking
@@ -95,6 +96,7 @@ _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
     "spai_detection",
     "bfree_detection",
+    "rine_detection",
 })
 
 # Independent detectors for consensus boost.
@@ -102,6 +104,7 @@ _INDEPENDENT_DETECTORS = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
+    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
 })
 
 

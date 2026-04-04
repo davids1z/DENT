@@ -25,6 +25,7 @@ export const FORENSIC_PILLARS: ForensicPillar[] = [
       "clip_ai_detection",             // CLIP ViT-L/14 probe
       "bfree_detection",               // B-Free (CVPR 2025) — bias-free DINOv2
       "spai_detection",                // SPAI (CVPR 2025) — FFT spectral
+      "rine_detection",                // RINE (ECCV 2024) — intermediate CLIP
       "siglip_ai_detection",           // SigLIP fine-tuned (99.23% acc)
       "ai_generation_detection",       // EfficientNet legacy AI gen
       "vae_reconstruction",            // VAE reconstruction anomaly
