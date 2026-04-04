@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { uploadInspections, uploadInspection, pollInspectionUntilComplete, type Inspection, type ForensicResult } from "@/lib/api";
+import { uploadInspections, uploadInspection, pollInspectionUntilComplete, PollTimeoutError, type Inspection, type ForensicResult } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ImageUpload } from "@/components/ImageUpload";
 import { DamageReport } from "@/components/DamageReport";
@@ -32,6 +32,7 @@ function InspectContent() {
   const [result, setResult] = useState<Inspection | null>(null);
   const [allResults, setAllResults] = useState<Inspection[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [timeoutInspectionId, setTimeoutInspectionId] = useState<string | null>(null);
   const [selectedDamageIndex, setSelectedDamageIndex] = useState<number | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -72,6 +73,7 @@ function InspectContent() {
   const handleUploadSubmit = async (files: File[]) => {
     setIsLoading(true);
     setError(null);
+    setTimeoutInspectionId(null);
     setResult(null);
     setAllResults([]);
     setSelectedDamageIndex(null);
@@ -106,6 +108,9 @@ function InspectContent() {
         setActiveImageUrl(firstCompleted.imageUrl);
       }
     } catch (e) {
+      if (e instanceof PollTimeoutError) {
+        setTimeoutInspectionId(e.inspectionId);
+      }
       setError(e instanceof Error ? e.message : "Došlo je do greške");
     } finally {
       setIsLoading(false);
@@ -116,6 +121,7 @@ function InspectContent() {
     setResult(null);
     setAllResults([]);
     setError(null);
+    setTimeoutInspectionId(null);
     setSelectedDamageIndex(null);
     setActiveImageUrl(null);
     setActiveImageIndex(0);
@@ -218,7 +224,12 @@ function InspectContent() {
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
-              {error}
+              <p>{error}</p>
+              {timeoutInspectionId && (
+                <Link href={`/inspections/${timeoutInspectionId}`} className="inline-block mt-2 text-accent underline hover:text-accent-hover">
+                  Pogledaj status inspekcije →
+                </Link>
+              )}
             </div>
           )}
         </div>
@@ -243,7 +254,7 @@ function InspectContent() {
             fileProgresses={forensicProgress.fileProgresses}
             currentFileIndex={forensicProgress.currentFileIndex}
           />
-          <p className="text-xs text-muted mt-5 text-center">Ovo moze potrajati do 2 minute za vise datoteka</p>
+          <p className="text-xs text-muted mt-5 text-center">Ovo moze potrajati do 5 minuta ovisno o broju datoteka</p>
         </div>
       )}
 

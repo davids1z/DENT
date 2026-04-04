@@ -3,7 +3,7 @@ import type { CaptureMetadata, DashboardStats, Inspection, VehicleContext } from
 
 const UPLOAD_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 1_000;
-const POLL_MAX_MS = 300_000;
+const POLL_MAX_MS = 600_000;
 
 // ---------------------------------------------------------------------------
 // Client-side image compression — reduces upload from 5-10MB to ~150-300KB
@@ -168,6 +168,15 @@ export async function uploadInspectionsSeparate(
   return Promise.all(uploads);
 }
 
+export class PollTimeoutError extends Error {
+  public readonly inspectionId: string;
+  constructor(id: string) {
+    super("Analiza traje predugo. Provjerite rezultat na popisu inspekcija.");
+    this.name = "PollTimeoutError";
+    this.inspectionId = id;
+  }
+}
+
 export async function pollInspectionUntilComplete(id: string): Promise<Inspection> {
   const start = Date.now();
 
@@ -181,7 +190,7 @@ export async function pollInspectionUntilComplete(id: string): Promise<Inspectio
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 
-  throw new Error("Analiza traje predugo. Provjerite rezultat na popisu inspekcija.");
+  throw new PollTimeoutError(id);
 }
 
 export async function overrideDecision(
