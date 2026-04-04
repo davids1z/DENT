@@ -20,9 +20,9 @@ preload_app = True
 # Binding
 bind = "0.0.0.0:8000"
 
-# Timeouts — forensic analysis can take up to 3 minutes per image
-timeout = 300
-graceful_timeout = 120
+# Timeouts — forensic analysis takes ~120-180s on CPU with 10 modules
+timeout = 600
+graceful_timeout = 300
 keepalive = 5
 
 # Logging
