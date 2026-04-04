@@ -92,7 +92,7 @@ class FusionThresholds:
     # independent_confirm: score for an independent detector to confirm
     detector_high: float = 0.45
     detector_low: float = 0.15
-    independent_confirm: float = 0.20
+    independent_confirm: float = 0.25
     # Strong boost: 3+ reliable high AND 1+ independent (SAFE/CommFor/SPAI)
     boost_strong_min_high: int = 3
     boost_strong_floor: float = 0.75

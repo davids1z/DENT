@@ -87,8 +87,7 @@ _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
-    "rine_detection",
-    "pixel_forensics",                 # RINE intermediate CLIP (ECCV 2024)
+    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
@@ -111,8 +110,7 @@ _INDEPENDENT_DETECTORS = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
-    "rine_detection",
-    "pixel_forensics",                 # RINE intermediate CLIP (ECCV 2024)
+    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
@@ -168,17 +166,16 @@ def fuse_scores(
         meta_learner = get_meta_learner(_settings.forensics_stacking_meta_weights)
         verdict_probs = meta_learner.predict_proba(modules)
 
+    # ── Debug: log all module scores ──────────────────────────────────
+    _scores_debug = {m.module_name: round(m.risk_score, 4) for m in active}
+    logger.info("FUSION module scores: %s", _scores_debug)
+
     # ── Step 1: Core AI pixel score (PRIMARY signal) ──────────────────
     #
     # CNN dampening: DINOv2, EfficientNet, bfree, and CLIP share an
     # embedding-based architecture. When they fire high but SAFE, CommFor,
     # and SPAI (fundamentally different methods) stay low, it's likely a
     # shared bias false positive. Dampen CNN-family contributions.
-    #
-    # v3: Raised floor from 0.30 to 0.50 — CNN detectors always contribute
-    # at least 50% of their signal. Old floor was too aggressive and caused
-    # false negatives on real AI images where independent detectors were
-    # borderline (e.g., SAFE=0.20, CommFor=0.15).
 
     max_independent_score = max(
         (m.risk_score for m in active
@@ -194,27 +191,28 @@ def fuse_scores(
             max_independent_score / ft.cnn_dampening_threshold
         )
 
-    # v3: Removed SAFE isolation dampening. SAFE uses pixel correlation
-    # analysis (KDD 2025) — a fundamentally different method from CNN/ViT
-    # detectors. When SAFE fires alone at 0.80, that's a legitimate signal
-    # from an independent method, not a false positive.
-    # Old behavior dampened SAFE to 0.50 when other core modules < 0.20,
-    # causing false negatives on AI images that only SAFE could detect.
+    logger.info(
+        "FUSION CNN dampening: max_independent=%.4f threshold=%.2f factor=%.4f",
+        max_independent_score, ft.cnn_dampening_threshold, cnn_dampening,
+    )
 
     core_weighted = 0.0
     core_total_w = 0.0
+    _core_details = {}
     for m in active:
         if m.module_name in _CORE_AI_WEIGHTS:
             w = _CORE_AI_WEIGHTS[m.module_name]
             score = m.risk_score
             if m.module_name in _CNN_FAMILY_DETECTORS:
                 score *= cnn_dampening
+                _core_details[m.module_name] = f"{m.risk_score:.4f}*{cnn_dampening:.2f}={score:.4f} w={w}"
+            else:
+                _core_details[m.module_name] = f"{score:.4f} w={w}"
             core_weighted += score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
-    # CNN dampening already applied above via cnn_dampening factor.
-    # No additional cap — let the weighted average and consensus logic decide.
+    logger.info("FUSION core breakdown: %s → core_score=%.4f", _core_details, core_score)
 
     # ── Step 2: Context modifiers from metadata + PRNU ────────────────
     meta = _get_module(active, "metadata_analysis")
@@ -283,26 +281,55 @@ def fuse_scores(
         if m.module_name in _RELIABLE_AI_DETECTORS and not m.error:
             reliable_scores[m.module_name] = m.risk_score
 
-    n_high = sum(1 for s in reliable_scores.values() if s >= ft.detector_high)
+    # Count high detectors separately for CNN-family vs non-CNN.
+    # CNN-family detectors (DINOv2/EfficientNet/bfree/CLIP) share embedding
+    # bias — 3 CNN detectors firing high is 1 signal, not 3.
+    n_high_cnn = sum(
+        1 for name, s in reliable_scores.items()
+        if s >= ft.detector_high and name in _CNN_FAMILY_DETECTORS
+    )
+    n_high_non_cnn = sum(
+        1 for name, s in reliable_scores.items()
+        if s >= ft.detector_high and name not in _CNN_FAMILY_DETECTORS
+    )
+    # Cap CNN-family contribution to 1 vote for consensus
+    n_high = min(n_high_cnn, 1) + n_high_non_cnn
     n_low = sum(1 for s in reliable_scores.values() if s < ft.detector_low)
 
-    # Count independent detectors (SAFE/CommFor/SPAI) that confirm AI signal
+    # Count independent detectors (SAFE/CommFor/SPAI/etc) that confirm AI signal
     independent_confirms = sum(
         1 for name in _INDEPENDENT_DETECTORS
         if reliable_scores.get(name, 0) >= ft.independent_confirm
     )
 
+    logger.info(
+        "FUSION consensus: n_high=%d (cnn=%d→capped=1, non_cnn=%d) n_low=%d "
+        "independent_confirms=%d (threshold=%.2f) reliable=%s",
+        n_high, n_high_cnn, n_high_non_cnn, n_low, independent_confirms,
+        ft.independent_confirm,
+        {k: f"{v:.4f}" for k, v in reliable_scores.items()},
+    )
+
     # Apply consensus boost (strongest matching tier wins)
+    boost_applied = "none"
     if n_high >= ft.boost_strong_min_high and n_low <= 1 and independent_confirms >= 1:
         overall = max(overall, ft.boost_strong_floor)
+        boost_applied = f"strong→{ft.boost_strong_floor}"
     elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 1:
         overall = max(overall, ft.boost_moderate_floor)
+        boost_applied = f"moderate→{ft.boost_moderate_floor}"
 
     # Swin (ai_generation_detection) boost ONLY if independent detectors confirm
     if ai_gen and ai_gen.risk_score >= ft.swin_min and independent_confirms >= 2:
         overall = max(overall, ai_gen.risk_score)
+        boost_applied = f"swin→{ai_gen.risk_score:.4f}"
 
     overall = max(0.0, min(1.0, overall))
+
+    logger.info(
+        "FUSION result: core=%.4f tamp=%.4f boost=%s → overall=%.4f (%s)",
+        core_score, tampering, boost_applied, overall, _risk_level(overall).value,
+    )
 
     # ── Verdict bars — always derive from rule-based scores ─────────
     # GBM verdict_probs may be stale (trained on different probe version).
