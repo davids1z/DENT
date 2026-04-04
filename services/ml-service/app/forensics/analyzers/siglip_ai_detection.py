@@ -55,7 +55,12 @@ class SigLIPAiDetectionAnalyzer(BaseAnalyzer):
             return
 
         try:
+            import os
             from transformers import AutoImageProcessor, SiglipForImageClassification
+
+            # Use persistent HF cache in model volume
+            hf_home = os.environ.get("HF_HOME", "/app/models/huggingface")
+            os.environ["HF_HOME"] = hf_home
 
             model_id = "Ateeqq/ai-vs-human-image-detector"
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
