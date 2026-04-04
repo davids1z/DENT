@@ -2,6 +2,9 @@
 
 Verifies that the rule-based fusion correctly combines module scores
 into an overall risk assessment.
+
+Updated for v4 config: only CLIP, bfree, Organika, DINOv2, pixel_forensics
+are active in core weights. SAFE, SPAI, RINE, CommFor, EfficientNet disabled.
 """
 import pytest
 
@@ -43,12 +46,16 @@ def test_core_ai_weights_sum_to_one():
     assert abs(total - 1.0) < 0.01, f"Core AI weights sum to {total}, expected ~1.0"
 
 
-def test_core_ai_weights_include_dinov2():
-    assert "dinov2_ai_detection" in _CORE_AI_WEIGHTS
+def test_core_ai_weights_include_clip():
+    assert "clip_ai_detection" in _CORE_AI_WEIGHTS
 
 
-def test_core_ai_weights_include_safe():
-    assert "safe_ai_detection" in _CORE_AI_WEIGHTS
+def test_core_ai_weights_include_bfree():
+    assert "bfree_detection" in _CORE_AI_WEIGHTS
+
+
+def test_core_ai_weights_include_organika():
+    assert "organika_ai_detection" in _CORE_AI_WEIGHTS
 
 
 # ---------------------------------------------------------------------------
@@ -57,9 +64,11 @@ def test_core_ai_weights_include_safe():
 
 def test_all_zero_scores():
     modules = [
-        _make_module("safe_ai_detection", 0.0),
-        _make_module("community_forensics_detection", 0.0),
         _make_module("clip_ai_detection", 0.0),
+        _make_module("bfree_detection", 0.0),
+        _make_module("organika_ai_detection", 0.0),
+        _make_module("dinov2_ai_detection", 0.0),
+        _make_module("pixel_forensics", 0.0),
         _make_module("metadata_analysis", 0.0),
     ]
     overall, score100, level, _ = fuse_scores(modules)
@@ -74,36 +83,65 @@ def test_empty_modules():
 
 
 # ---------------------------------------------------------------------------
-# Strong AI signal from multiple detectors → High risk
+# Strong AI signal — CLIP + bfree + Organika high → High risk
 # ---------------------------------------------------------------------------
 
-def test_strong_consensus_three_high():
-    """3 detectors high with 2 independent confirms → floor 0.65+."""
+def test_strong_ai_signal():
+    """CLIP=74%, bfree=98%, Organika=39%, pixel=33% → should be high."""
     modules = [
-        _make_module("safe_ai_detection", 0.80),       # Independent + high
-        _make_module("community_forensics_detection", 0.60),  # Independent + high
-        _make_module("dinov2_ai_detection", 0.70),     # high
-        _make_module("clip_ai_detection", 0.0),
-        _make_module("efficientnet_ai_detection", 0.0),
+        _make_module("clip_ai_detection", 0.74),
+        _make_module("bfree_detection", 0.98),
+        _make_module("organika_ai_detection", 0.39),
+        _make_module("dinov2_ai_detection", 0.27),
+        _make_module("pixel_forensics", 0.33),
     ]
     overall, _, level, _ = fuse_scores(modules)
-    # 3 high but 2 low → falls to rule 2 (2+high + independent confirms → 0.65)
-    assert overall >= 0.65, f"Expected >= 0.65, got {overall}"
+    assert overall >= 0.50, f"Strong AI signal should be >= 0.50, got {overall}"
     assert level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
 
 
-def test_single_safe_moderate():
-    """Only SAFE=0.60, others zero → moderate score (not high)."""
+def test_consensus_boost_clip_bfree_high():
+    """CLIP + bfree both high + independent confirms → boost to 0.65."""
     modules = [
-        _make_module("safe_ai_detection", 0.60),
-        _make_module("community_forensics_detection", 0.0),
-        _make_module("clip_ai_detection", 0.0),
-        _make_module("dinov2_ai_detection", 0.0),
+        _make_module("clip_ai_detection", 0.80),
+        _make_module("bfree_detection", 0.90),
+        _make_module("organika_ai_detection", 0.40),  # independent confirm
+        _make_module("pixel_forensics", 0.30),          # independent confirm
+        _make_module("dinov2_ai_detection", 0.30),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    # With only SAFE at 0.60 and weight 0.25, weighted = 0.15
-    # No cross-validation boost (only 1 detector above 0.50)
-    assert overall < 0.70, f"Single detector shouldn't reach 0.70, got {overall}"
+    assert overall >= 0.65, f"CLIP+bfree high + independent should reach 0.65, got {overall}"
+
+
+# ---------------------------------------------------------------------------
+# Authentic image: DINOv2 false positive dampened
+# ---------------------------------------------------------------------------
+
+def test_dinov2_fp_dampened():
+    """DINOv2=58% on authentic but no independent confirms → dampened."""
+    modules = [
+        _make_module("clip_ai_detection", 0.13),
+        _make_module("bfree_detection", 0.003),
+        _make_module("organika_ai_detection", 0.0),
+        _make_module("dinov2_ai_detection", 0.58),
+        _make_module("pixel_forensics", 0.22),
+    ]
+    overall, _, level, _ = fuse_scores(modules)
+    assert overall < 0.20, f"DINOv2 FP should be dampened to < 0.20, got {overall}"
+    assert level == RiskLevel.LOW
+
+
+def test_cnn_only_no_boost():
+    """Only DINOv2 high (CNN-family), no independent confirm → no boost."""
+    modules = [
+        _make_module("clip_ai_detection", 0.10),
+        _make_module("bfree_detection", 0.01),
+        _make_module("organika_ai_detection", 0.05),
+        _make_module("dinov2_ai_detection", 0.90),
+        _make_module("pixel_forensics", 0.10),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.30, f"DINOv2-only high should be dampened, got {overall}"
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +151,7 @@ def test_single_safe_moderate():
 def test_metadata_ai_tool_overrides():
     """AI tool in metadata (XMP/C2PA) should push overall to >= 0.90."""
     modules = [
-        _make_module("safe_ai_detection", 0.0),
+        _make_module("clip_ai_detection", 0.0),
         _make_module("metadata_analysis", 0.0, findings=[
             AnalyzerFinding(
                 code="META_XMP_AI_TOOL_HISTORY",
@@ -141,7 +179,6 @@ def test_single_mesorch_strong():
         _make_module("deep_modification_detection", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    # Single signal >= 0.65 → contributes at 0.85 factor
     assert overall > 0.0, "Strong single tampering signal should contribute"
 
 
@@ -157,76 +194,33 @@ def test_two_tampering_signals():
 
 
 # ---------------------------------------------------------------------------
-# Errored modules should not contribute
+# Edge cases and isolation
 # ---------------------------------------------------------------------------
 
-def test_safe_plus_swin_no_floor():
-    """SAFE FP + Swin FP should NOT trigger cross-validation floor.
-    Swin/NPR are unreliable and excluded from reliable detectors."""
+def test_single_detector_moderate():
+    """Single CLIP=0.60 alone → moderate, not high."""
     modules = [
-        _make_module("safe_ai_detection", 0.55),
-        _make_module("ai_generation_detection", 0.65),  # Swin — unreliable
-        _make_module("npr_ai_detection", 0.55),          # NPR — unreliable
-        _make_module("dinov2_ai_detection", 0.02),        # DINOv2 disagrees → not AI
+        _make_module("clip_ai_detection", 0.60),
+        _make_module("bfree_detection", 0.0),
+        _make_module("organika_ai_detection", 0.0),
+        _make_module("dinov2_ai_detection", 0.0),
+        _make_module("pixel_forensics", 0.0),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.40, f"Single detector shouldn't reach 0.40, got {overall}"
+
+
+def test_organika_only_moderate():
+    """Only Organika=0.90 → triggers via core weight, moderate score."""
+    modules = [
         _make_module("clip_ai_detection", 0.0),
-        _make_module("community_forensics_detection", 0.0),
+        _make_module("bfree_detection", 0.0),
+        _make_module("organika_ai_detection", 0.90),
+        _make_module("dinov2_ai_detection", 0.0),
+        _make_module("pixel_forensics", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.70, f"SAFE+Swin+NPR without DINOv2 should NOT reach 0.70, got {overall}"
-
-
-def test_moderate_consensus_with_independent():
-    """2 high + strict independent (CommFor) confirms → floor 0.65."""
-    modules = [
-        _make_module("efficientnet_ai_detection", 0.95),
-        _make_module("dinov2_ai_detection", 0.90),
-        _make_module("clip_ai_detection", 0.49),
-        _make_module("safe_ai_detection", 0.04),
-        _make_module("community_forensics_detection", 0.35),  # Strict independent confirms
-    ]
-    overall, _, _, _ = fuse_scores(modules)
-    assert overall >= 0.65, f"2 high + CommFor independent confirm should reach 0.65, got {overall}"
-
-
-def test_cnn_only_no_boost():
-    """CNN-family (Eff+bfree) high but no independent confirms → dampened.
-    CLIP and DINOv2 are now independent (insurance probes), so this test
-    uses low values for both to simulate pure CNN false positive."""
-    modules = [
-        _make_module("efficientnet_ai_detection", 0.98),
-        _make_module("dinov2_ai_detection", 0.79),
-        _make_module("clip_ai_detection", 0.85),
-        _make_module("safe_ai_detection", 0.04),
-        _make_module("community_forensics_detection", 0.01),
-        _make_module("spai_detection", 0.05),
-    ]
-    overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.50, f"CNN-only FP (no independent) should be < 0.50, got {overall}"
-
-
-def test_single_detector_no_floor():
-    """Single detector alone should NOT trigger floor — needs 2+."""
-    modules = [
-        _make_module("safe_ai_detection", 0.30),
-        _make_module("dinov2_ai_detection", 0.90),
-        _make_module("community_forensics_detection", 0.0),
-        _make_module("clip_ai_detection", 0.0),
-    ]
-    overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.70, f"Single detector should NOT reach 0.70, got {overall}"
-
-
-def test_disagreement_no_boost():
-    """CNN-family (Eff+bfree) high but all independents near-zero → no boost."""
-    modules = [
-        _make_module("efficientnet_ai_detection", 1.00),
-        _make_module("dinov2_ai_detection", 0.90),
-        _make_module("safe_ai_detection", 0.01),
-        _make_module("community_forensics_detection", 0.001),
-        _make_module("clip_ai_detection", 0.00),
-    ]
-    overall, _, level, _ = fuse_scores(modules)
-    assert overall < 0.15, f"CNN-only disagreement should be LOW risk, got {overall}"
+    assert 0.10 < overall < 0.50, f"Single Organika high expected 0.10-0.50, got {overall}"
 
 
 # ---------------------------------------------------------------------------
@@ -235,12 +229,34 @@ def test_disagreement_no_boost():
 
 def test_errored_modules_ignored():
     errored = ModuleResult(
-        module_name="safe_ai_detection",
-        module_label="SAFE",
+        module_name="clip_ai_detection",
+        module_label="CLIP",
         risk_score=0.99,
         risk_level=RiskLevel.CRITICAL,
         error="Model load failed",
     )
-    modules = [errored, _make_module("clip_ai_detection", 0.0)]
+    modules = [errored, _make_module("bfree_detection", 0.0)]
     overall, _, _, _ = fuse_scores(modules)
     assert overall < 0.10, "Errored module should be excluded from fusion"
+
+
+# ---------------------------------------------------------------------------
+# Disabled modules (EfficientNet, SAFE, etc.) don't affect core fusion
+# ---------------------------------------------------------------------------
+
+def test_disabled_modules_dont_affect_core():
+    """EfficientNet=98%, SAFE=20% on authentic → should NOT affect overall
+    because they're not in _CORE_AI_WEIGHTS."""
+    modules = [
+        _make_module("clip_ai_detection", 0.13),
+        _make_module("bfree_detection", 0.003),
+        _make_module("organika_ai_detection", 0.0),
+        _make_module("dinov2_ai_detection", 0.58),
+        _make_module("pixel_forensics", 0.22),
+        # Disabled modules with high scores
+        _make_module("efficientnet_ai_detection", 0.98),
+        _make_module("safe_ai_detection", 0.20),
+        _make_module("spai_detection", 0.0),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.20, f"Disabled modules shouldn't push score up, got {overall}"
