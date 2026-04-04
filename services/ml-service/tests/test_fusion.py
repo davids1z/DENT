@@ -189,18 +189,19 @@ def test_moderate_consensus_with_independent():
 
 
 def test_cnn_only_no_boost():
-    """CNN-family detectors (Eff+DINOv2+CLIP) high but no strict independent → NO boost.
-    This is the car6.jpg false positive scenario."""
+    """CNN-family (Eff+DINOv2) high but no independent confirms → dampened.
+    CLIP is now independent (insurance-domain probe), so this test uses
+    low CLIP to simulate pure CNN false positive without CLIP confirmation."""
     modules = [
         _make_module("efficientnet_ai_detection", 0.98),
         _make_module("dinov2_ai_detection", 0.79),
-        _make_module("clip_ai_detection", 0.85),
-        _make_module("safe_ai_detection", 0.04),       # Low — no pixel artifacts
-        _make_module("community_forensics_detection", 0.01),  # Low — doesn't see AI
-        _make_module("spai_detection", 0.05),           # Low — no FFT anomaly
+        _make_module("clip_ai_detection", 0.10),        # Insurance probe says NOT AI
+        _make_module("safe_ai_detection", 0.04),         # Low — no pixel artifacts
+        _make_module("community_forensics_detection", 0.01),  # Low
+        _make_module("spai_detection", 0.05),            # Low
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.50, f"CNN-only FP (no strict independent) should be < 0.50, got {overall}"
+    assert overall < 0.50, f"CNN-only FP (no independent) should be < 0.50, got {overall}"
 
 
 def test_single_detector_no_floor():
