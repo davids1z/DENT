@@ -209,8 +209,15 @@ def fuse_scores(
     # Extra dampening: if NO independent detector confirms (all < threshold),
     # CNN-family scores are likely OOD false positives. Cap core_score so
     # authentic images (car damage, medical, etc.) stay below Medium.
+    # Also overwrite CNN module risk_scores so the UI shows consistent
+    # low percentages instead of misleading 90%+ on authentic images.
     if max_independent_score < ft.independent_confirm:
         core_score = min(core_score, ft.risk_medium * 0.80)
+        # Overwrite CNN-family module scores to match the dampened reality
+        for m in modules:
+            if m.module_name in _CNN_FAMILY_DETECTORS and m.risk_score > 0.20:
+                m.risk_score = round(m.risk_score * cnn_dampening * 0.15, 4)
+                m.risk_score100 = round(m.risk_score * 100)
 
     # ── Step 2: Context modifiers from metadata + PRNU ────────────────
     meta = _get_module(active, "metadata_analysis")
