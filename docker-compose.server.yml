@@ -75,15 +75,15 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
+          memory: 10G
         reservations:
-          memory: 5G
+          memory: 6G
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 180s
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=30)"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 300s
     environment:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
@@ -91,7 +91,7 @@ services:
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"
       MALLOC_TRIM_THRESHOLD_: "131072"
-      DENT_UVICORN_WORKERS: "2"
+      DENT_UVICORN_WORKERS: "1"
       DENT_THREAD_POOL_SIZE: "6"
       DENT_MAX_CONCURRENT_ANALYSES: "1"
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
