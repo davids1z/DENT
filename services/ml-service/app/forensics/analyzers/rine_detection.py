@@ -151,7 +151,7 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
                 n_hooks=len(self._hooks),
                 backbone_dim=1024,
                 proj_dim=1024,
-                nproj=1,
+                nproj=2,
             ).to(self._device)
 
             state_dict = torch.load(ckpt_path, map_location=self._device, weights_only=True)
