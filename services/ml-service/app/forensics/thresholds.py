@@ -112,9 +112,11 @@ class FusionThresholds:
     verdict_high_threshold: float = 0.65
 
     # ── Risk level boundaries (fusion.py _risk_level) ──────────────
+    # Medium raised from 0.15 to 0.20 so CNN-dampened scores (16-19%)
+    # on authentic car photos stay Low instead of triggering "Potreban pregled"
     risk_critical: float = 0.85
     risk_high: float = 0.40
-    risk_medium: float = 0.15
+    risk_medium: float = 0.20
 
 
 # ── Risk level boundaries (base.py _risk_level — per-module) ────────
