@@ -33,22 +33,22 @@ class Settings(BaseSettings):
     forensics_aigen_enabled: bool = True
     forensics_aigen_methods: str = "sdxl,vit"
 
-    # Community Forensics AI detection (CVPR 2025, ViT-Small, 4803 generators)
-    forensics_community_forensics_enabled: bool = True
+    # Community Forensics — DISABLED: only covers open-source SD variants, 4% on modern AI
+    forensics_community_forensics_enabled: bool = False
 
-    # EfficientNet-B4 AI detection (fast CNN, 19.3M params, 0.5-1s CPU)
-    forensics_efficientnet_ai_enabled: bool = True
+    # EfficientNet-B4 AI detection — DISABLED: gated repo (401), 98% FP on authentic
+    forensics_efficientnet_ai_enabled: bool = False
     forensics_efficientnet_ai_model: str = "Dafilab/ai-image-detector"
 
-    # SAFE AI detection (KDD 2025, pixel correlation, 1.44M params, <15ms CPU)
-    forensics_safe_ai_enabled: bool = True
+    # SAFE AI detection — DISABLED: missing DWT wavelet preprocessing, inverted results
+    forensics_safe_ai_enabled: bool = False
 
     # DINOv2 AI detection (linear probe on frozen DINOv2-large, 1024-dim)
     forensics_dinov2_ai_enabled: bool = True
     forensics_dinov2_ai_model: str = "facebook/dinov2-large"
 
-    # SPAI spectral AI detection (CVPR 2025, FFT + ViT, compression-invariant)
-    forensics_spai_enabled: bool = True
+    # SPAI spectral AI detection — DISABLED: TorchScript trace broke frequency decomposition, outputs 0%
+    forensics_spai_enabled: bool = False
     forensics_spai_model_dir: str = "/app/models/spai"
 
     # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators)
@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     # Organika SDXL detector (Swin Transformer, 98.1% accuracy, Wikimedia)
     forensics_organika_ai_enabled: bool = True
 
-    # RINE AI detection (ECCV 2024, intermediate CLIP layers, 91.5% accuracy)
-    forensics_rine_ai_enabled: bool = True
+    # RINE AI detection — DISABLED: checkpoint trained with OpenAI CLIP, we use HF transformers CLIP
+    forensics_rine_ai_enabled: bool = False
 
     # SigLIP AI detection (fine-tuned SigLIP, 92.9M params, 99.23% accuracy)
     forensics_siglip_ai_enabled: bool = False

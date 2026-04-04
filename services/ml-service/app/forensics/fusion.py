@@ -59,58 +59,45 @@ _AI_DETECTOR_MODULES = frozenset({
     "dinov2_ai_detection",
 })
 
-# Core AI detection modules — only these determine AI generation score
+# Core AI detection modules — only these determine AI generation score.
+# Disabled modules (SAFE, SPAI, RINE, CommFor, EfficientNet) removed.
+# Weights auto-normalize via core_total_w division.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.18,            # F1=0.902, best on insurance
-    "dinov2_ai_detection": 0.18,          # F1=0.882
-    "community_forensics_detection": 0.14, # 4803 generators
-    "safe_ai_detection": 0.10,            # Pixel correlation (poor on modern AI)
-    "spai_detection": 0.08,              # FFT spectral
-    "bfree_detection": 0.08,             # DINOv2-family
-    "pixel_forensics": 0.08,             # 8 content-independent signals
-    "organika_ai_detection": 0.08,       # Swin Transformer
-    "ai_generation_detection": 0.04,
-    "rine_detection": 0.04,              # CLIP intermediate layers
+    "clip_ai_detection": 0.30,            # F1=0.902, best separator (74% AI, 13% auth)
+    "bfree_detection": 0.25,              # CVPR 2025, 0.3% FP, 98.8% TP when loaded correctly
+    "organika_ai_detection": 0.20,        # Swin, 98.1% acc (39% AI, 0% auth)
+    "dinov2_ai_detection": 0.10,          # Has FP bias on car damage — dampened
+    "pixel_forensics": 0.10,             # 8 content-independent signals
+    "ai_generation_detection": 0.05,      # Legacy Swin detector
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
-# CLIP and DINOv2 removed — insurance-domain probes are reliable.
+# Only DINOv2 remains — has severe FP bias on car damage photos.
+# CLIP works correctly (74% AI, 13% auth). bfree works when loaded correctly.
 _CNN_FAMILY_DETECTORS = frozenset({
     "dinov2_ai_detection",
-    "efficientnet_ai_detection",
-    "bfree_detection",
-    "clip_ai_detection",
 })
 
-# DAMPENING independent: methods used to check if CNN detectors are correct.
+# DAMPENING independent: methods used to check if DINOv2 FPs are real.
+# Only modules that actually WORK and are independent of DINOv2 embeddings.
 _DAMPENING_INDEPENDENT = frozenset({
-    "safe_ai_detection",              # Pixel correlation (KDD 2025)
-    "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
-    "spai_detection",                 # FFT spectral (CVPR 2025)
-    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
+    "clip_ai_detection",              # CLIP MLP probe (different backbone)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "bfree_detection",                # B-Free DINOv2 ViT-Base (different probe)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 
-# Reliable AI detectors for consensus checking
+# Reliable AI detectors for consensus checking — only WORKING modules
 _RELIABLE_AI_DETECTORS = frozenset({
-    "safe_ai_detection",
-    "dinov2_ai_detection",
-    "community_forensics_detection",
-    # "efficientnet_ai_detection",  # REMOVED: 98% FP on authentic
     "clip_ai_detection",
-    "spai_detection",
     "bfree_detection",
-    "rine_detection",
+    "organika_ai_detection",
+    "dinov2_ai_detection",
     "pixel_forensics",
 })
 
-# Independent detectors for consensus boost.
+# Independent detectors for consensus boost — non-CNN methods that confirm AI
 _INDEPENDENT_DETECTORS = frozenset({
-    "safe_ai_detection",              # Pixel correlation (KDD 2025)
-    "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
-    "spai_detection",                 # FFT spectral (CVPR 2025)
-    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })

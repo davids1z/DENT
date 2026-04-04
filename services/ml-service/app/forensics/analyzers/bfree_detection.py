@@ -7,15 +7,17 @@ Uses DINOv2 ViT-Base with 4 register tokens, fine-tuned end-to-end on
 
 Key insight: Standard training creates biases toward training-set compression
 formats and generators. B-Free generates training fakes from real images via
-SD conditioning, ensuring semantic alignment. The 5-crop wrapper captures both
-local and global AI artifacts.
+SD conditioning, ensuring semantic alignment.
 
 Architecture:
-1. Input: 504×504 RGB image
-2. Extract 14×14 patch embeddings from DINOv2 ViT-Base (with registers)
-3. 5-crop spatial splits (center + 4 corners) through the ViT
-4. Average 5 predictions → sigmoid score
-5. Score > 0.50 → AI-generated
+1. Input: 504×504 RGB image (36×36 patch grid)
+2. DINOv2 ViT-Base with 4 register tokens → single logit
+3. sigmoid(logit) → AI probability
+4. Score > 0.50 → AI-generated
+
+Official results: 0.3% on real, 98.8% on AI (demo images).
+Validated on 27 generators across 4 benchmarks (Synthbuster, GenImage,
+FakeInversion, SynthWildX), including Flux and SD 3.5.
 
 Paper: https://arxiv.org/abs/2412.17671
 GitHub: https://github.com/grip-unina/B-Free
@@ -54,14 +56,14 @@ if _TORCH_AVAILABLE:
     except ImportError:
         pass
 
-# ImageNet normalization (ResNet-style, as used in B-Free)
+# ImageNet normalization (as used in B-Free / DINOv2)
 _IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 _IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-_INPUT_SIZE = 504  # B-Free expects 504×504 for 36×36 patch grid
+_INPUT_SIZE = 504  # B-Free expects 504×504 for 36×36 patch grid (504/14=36)
 
 
 class BFreeDetectionAnalyzer(BaseAnalyzer):
-    """B-Free DINOv2 ViT-Base with 5-crop for AI image detection."""
+    """B-Free DINOv2 ViT-Base for AI image detection."""
 
     MODULE_NAME = "bfree_detection"
     MODULE_LABEL = "B-Free AI detekcija"
@@ -102,29 +104,67 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
         try:
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            # Create DINOv2 ViT-Base with 4 register tokens
-            base_model = timm.create_model(
+            # Create DINOv2 ViT-Base with 4 register tokens, single output
+            self._model = timm.create_model(
                 "vit_base_patch14_reg4_dinov2.lvd142m",
                 pretrained=False,
                 num_classes=1,
             )
 
-            # Wrap in 5-crop strategy
-            self._model = _Wrapper5Crops(base_model).to(self._device)
+            # Set input size to 504 to match checkpoint (36×36 patch grid)
+            # This adjusts positional embeddings to the right size
+            if hasattr(self._model, 'set_input_size'):
+                self._model.set_input_size(img_size=_INPUT_SIZE)
 
-            # Load fine-tuned weights
-            state_dict = torch.load(weights_path, map_location=self._device, weights_only=True)
-            # Handle nested state_dict (some checkpoints wrap in 'state_dict' key)
-            if "state_dict" in state_dict:
-                state_dict = state_dict["state_dict"]
-            self._model.load_state_dict(state_dict, strict=False)
+            # Load checkpoint — B-Free wraps state_dict under "model" key
+            checkpoint = torch.load(weights_path, map_location=self._device, weights_only=True)
+
+            # Extract nested state_dict
+            if "model" in checkpoint:
+                raw_sd = checkpoint["model"]
+            elif "state_dict" in checkpoint:
+                raw_sd = checkpoint["state_dict"]
+            else:
+                raw_sd = checkpoint
+
+            # Remap keys from official Wrapper5crops format:
+            # Official structure has patch_embed separate + model.* for the rest
+            #   "patch_embed.*" → "patch_embed.*" (direct match)
+            #   "model.X"       → "X" (strip "model." prefix)
+            state_dict = {}
+            for k, v in raw_sd.items():
+                if k.startswith("model."):
+                    state_dict[k[len("model."):]] = v
+                else:
+                    state_dict[k] = v
+
+            missing, unexpected = self._model.load_state_dict(state_dict, strict=False)
+
+            n_loaded = len(state_dict) - len(unexpected)
+            if n_loaded < 10:
+                logger.error(
+                    "B-Free: only %d keys loaded! %d missing, %d unexpected. "
+                    "Model will produce garbage results.",
+                    n_loaded, len(missing), len(unexpected),
+                )
+                self._model = None
+                self._models_loaded = True
+                return
+
+            self._model.to(self._device)
             self._model.eval()
 
             param_count = sum(p.numel() for p in self._model.parameters()) / 1e6
             logger.info(
-                "B-Free model loaded on %s: %.1fM params, input=%dx%d",
+                "B-Free model loaded on %s: %.1fM params, input=%dx%d, "
+                "%d keys matched, %d missing, %d unexpected",
                 self._device, param_count, _INPUT_SIZE, _INPUT_SIZE,
+                n_loaded, len(missing), len(unexpected),
             )
+            if missing:
+                logger.debug("B-Free missing keys (first 5): %s", missing[:5])
+            if unexpected:
+                logger.debug("B-Free unexpected keys (first 5): %s", unexpected[:5])
 
         except Exception as e:
             logger.warning("Failed to load B-Free model: %s", e)
@@ -167,8 +207,7 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
 
         elapsed = int((time.monotonic() - start) * 1000)
         result = self._make_result(findings, elapsed)
-        # Raw score passthrough for fusion — _make_result derives risk_score
-        # from findings which have scaled/capped values, losing signal.
+        # Raw score passthrough for fusion
         result.risk_score = round(score, 4)
         result.risk_score100 = round(score * 100)
         return result
@@ -177,14 +216,14 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
         return self._make_result([], 0)
 
     # ------------------------------------------------------------------
-    # Scoring
+    # Scoring — single forward pass (no 5-crop for simplicity)
     # ------------------------------------------------------------------
 
     def _compute_score(self, img: Image.Image) -> float:
-        """Compute AI-generation probability via B-Free 5-crop inference."""
+        """Compute AI-generation probability via B-Free single-crop inference."""
         import torch
 
-        # Resize to 504×504 and normalize
+        # Resize to 504×504 (matching checkpoint's training size)
         img_resized = img.resize((_INPUT_SIZE, _INPUT_SIZE), Image.LANCZOS)
         arr = np.array(img_resized, dtype=np.float32) / 255.0
         arr = (arr - _IMAGENET_MEAN) / _IMAGENET_STD
@@ -193,9 +232,6 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
 
         with torch.no_grad():
             logit = self._model(tensor)
-            # B-Free outputs a single logit (or 2 logits where score = logit[1] - logit[0])
-            if logit.dim() > 1 and logit.shape[-1] == 2:
-                logit = logit[:, 1] - logit[:, 0]
             score = float(torch.sigmoid(logit.squeeze()).cpu().item())
 
         return float(np.clip(score, 0.0, 1.0))
@@ -217,7 +253,7 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                     ),
                     risk_score=min(0.90, max(0.65, score * 0.90)),
                     confidence=min(0.90, 0.60 + score * 0.25),
-                    evidence={"bfree_score": round(score, 4), "method": "bfree_dinov2_5crop"},
+                    evidence={"bfree_score": round(score, 4), "method": "bfree_dinov2"},
                 )
             )
         elif score > 0.45:
@@ -231,7 +267,7 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                     ),
                     risk_score=max(0.40, score * 0.75),
                     confidence=min(0.80, 0.45 + score * 0.30),
-                    evidence={"bfree_score": round(score, 4), "method": "bfree_dinov2_5crop"},
+                    evidence={"bfree_score": round(score, 4), "method": "bfree_dinov2"},
                 )
             )
         elif score > 0.25:
@@ -245,65 +281,6 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                     ),
                     risk_score=score * 0.50,
                     confidence=0.40 + score * 0.15,
-                    evidence={"bfree_score": round(score, 4), "method": "bfree_dinov2_5crop"},
+                    evidence={"bfree_score": round(score, 4), "method": "bfree_dinov2"},
                 )
             )
-
-
-# ---------------------------------------------------------------------------
-# 5-crop wrapper (reimplemented from B-Free paper)
-# ---------------------------------------------------------------------------
-
-class _Wrapper5Crops(torch.nn.Module if _TORCH_AVAILABLE else object):
-    """Wraps a ViT model with 5-crop spatial augmentation at inference time.
-
-    Extracts patch embeddings, creates 5 spatial crops (center + 4 corners),
-    processes each through the backbone, and averages the predictions.
-    """
-
-    def __init__(self, base_model):
-        if not _TORCH_AVAILABLE:
-            return
-        import torch.nn as nn
-        super().__init__()
-        self.base = base_model
-
-    def forward(self, x):
-        """
-        x: (B, 3, 504, 504)
-        Returns: (B, 1) average logit across 5 crops
-        """
-        import torch
-
-        # Simple approach: resize to 5 different crops and average
-        B, C, H, W = x.shape
-        crop_size = H * 3 // 4  # 378px from 504px input
-
-        crops = []
-        # Center crop
-        s = (H - crop_size) // 2
-        crops.append(x[:, :, s:s + crop_size, s:s + crop_size])
-        # 4 corner crops
-        crops.append(x[:, :, :crop_size, :crop_size])          # top-left
-        crops.append(x[:, :, :crop_size, W - crop_size:])      # top-right
-        crops.append(x[:, :, H - crop_size:, :crop_size])      # bottom-left
-        crops.append(x[:, :, H - crop_size:, W - crop_size:])  # bottom-right
-
-        # Resize all crops to the model's expected input size (224×224 or whatever timm uses)
-        import torch.nn.functional as F
-        default_size = 518  # DINOv2 reg4 default: 518 = 37 patches × 14
-        resized = [
-            F.interpolate(crop, size=(default_size, default_size), mode="bilinear", align_corners=False)
-            for crop in crops
-        ]
-
-        # Forward each crop
-        logits = []
-        for crop_tensor in resized:
-            out = self.base(crop_tensor)
-            logits.append(out)
-
-        # Average predictions
-        stacked = torch.stack(logits, dim=0)  # (5, B, num_classes)
-        avg = stacked.mean(dim=0)  # (B, num_classes)
-        return avg
