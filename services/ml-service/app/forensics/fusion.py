@@ -71,10 +71,8 @@ _CORE_AI_WEIGHTS = {
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
-# CLIP removed from CNN-family — insurance-domain probe trained on car
-# damage images, no longer shares OOD false positive bias.
+# CLIP and DINOv2 removed — insurance-domain probes are reliable.
 _CNN_FAMILY_DETECTORS = frozenset({
-    "dinov2_ai_detection",
     "efficientnet_ai_detection",
     "bfree_detection",
 })
@@ -85,6 +83,7 @@ _DAMPENING_INDEPENDENT = frozenset({
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
     "clip_ai_detection",              # Insurance-domain MLP probe
+    "dinov2_ai_detection",            # Insurance-domain MLP probe
 })
 
 # Reliable AI detectors for consensus checking
@@ -104,6 +103,7 @@ _INDEPENDENT_DETECTORS = frozenset({
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
     "clip_ai_detection",              # Insurance-domain MLP probe
+    "dinov2_ai_detection",            # Insurance-domain MLP probe
 })
 
 

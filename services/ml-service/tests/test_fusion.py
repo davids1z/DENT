@@ -189,16 +189,17 @@ def test_moderate_consensus_with_independent():
 
 
 def test_cnn_only_no_boost():
-    """CNN-family (Eff+DINOv2) high but no independent confirms → dampened.
-    CLIP is now independent (insurance-domain probe), so this test uses
-    low CLIP to simulate pure CNN false positive without CLIP confirmation."""
+    """CNN-family (Eff+bfree) high but no independent confirms → dampened.
+    CLIP and DINOv2 are now independent (insurance probes), so this test
+    uses low values for both to simulate pure CNN false positive."""
     modules = [
         _make_module("efficientnet_ai_detection", 0.98),
-        _make_module("dinov2_ai_detection", 0.79),
-        _make_module("clip_ai_detection", 0.10),        # Insurance probe says NOT AI
-        _make_module("safe_ai_detection", 0.04),         # Low — no pixel artifacts
-        _make_module("community_forensics_detection", 0.01),  # Low
-        _make_module("spai_detection", 0.05),            # Low
+        _make_module("bfree_detection", 0.80),
+        _make_module("dinov2_ai_detection", 0.10),       # Insurance probe says NOT AI
+        _make_module("clip_ai_detection", 0.10),          # Insurance probe says NOT AI
+        _make_module("safe_ai_detection", 0.04),
+        _make_module("community_forensics_detection", 0.01),
+        _make_module("spai_detection", 0.05),
     ]
     overall, _, _, _ = fuse_scores(modules)
     assert overall < 0.50, f"CNN-only FP (no independent) should be < 0.50, got {overall}"
@@ -217,16 +218,16 @@ def test_single_detector_no_floor():
 
 
 def test_disagreement_no_boost():
-    """CNN-family high but SAFE/CommFor/CLIP near-zero → disagreement, no boost."""
+    """CNN-family (Eff+bfree) high but all independents near-zero → no boost."""
     modules = [
         _make_module("efficientnet_ai_detection", 1.00),
-        _make_module("dinov2_ai_detection", 0.90),
+        _make_module("bfree_detection", 0.80),
+        _make_module("dinov2_ai_detection", 0.05),        # Insurance probe: NOT AI
+        _make_module("clip_ai_detection", 0.05),           # Insurance probe: NOT AI
         _make_module("safe_ai_detection", 0.01),
         _make_module("community_forensics_detection", 0.001),
-        _make_module("clip_ai_detection", 0.00),
     ]
     overall, _, level, _ = fuse_scores(modules)
-    # CNN scores dampened + no consensus boost (SAFE/CommFor/CLIP all < 0.30)
     assert overall < 0.15, f"CNN-only disagreement should be LOW risk, got {overall}"
 
 
