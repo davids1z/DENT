@@ -27,6 +27,7 @@ export const FORENSIC_PILLARS: ForensicPillar[] = [
       "spai_detection",                // SPAI (CVPR 2025) — FFT spectral
       "rine_detection",                // RINE (ECCV 2024) — intermediate CLIP
       "organika_ai_detection",        // Organika Swin (98.1% accuracy)
+      "pixel_forensics",              // 8 pixel-level signals
       "siglip_ai_detection",           // SigLIP fine-tuned (99.23% acc)
       "ai_generation_detection",       // EfficientNet legacy AI gen
       "vae_reconstruction",            // VAE reconstruction anomaly

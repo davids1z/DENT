@@ -28,6 +28,7 @@ from .analyzers.spai_detection import SPAIDetectionAnalyzer
 from .analyzers.siglip_ai_detection import SigLIPAiDetectionAnalyzer
 from .analyzers.rine_detection import RINEDetectionAnalyzer
 from .analyzers.organika_detection import OrganikaDetectionAnalyzer
+from .analyzers.pixel_forensics import PixelForensicsAnalyzer
 from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
@@ -60,6 +61,7 @@ class ForensicPipeline:
         siglip_ai_enabled: bool = True,
         rine_ai_enabled: bool = True,
         organika_ai_enabled: bool = True,
+        pixel_forensics_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
@@ -148,6 +150,9 @@ class ForensicPipeline:
         )
         self._organika: OrganikaDetectionAnalyzer | None = (
             OrganikaDetectionAnalyzer() if organika_ai_enabled else None
+        )
+        self._pixel_forensics: PixelForensicsAnalyzer | None = (
+            PixelForensicsAnalyzer() if pixel_forensics_enabled else None
         )
         self._npr: NprDetectionAnalyzer | None = (
             NprDetectionAnalyzer() if npr_enabled else None
@@ -389,6 +394,8 @@ class ForensicPipeline:
             count += 1
         if self._organika and self._organika.MODULE_NAME not in skip:
             count += 1
+        if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
+            count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
             count += 1
         if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
@@ -626,6 +633,8 @@ class ForensicPipeline:
                 all_analyzers.append((self._rine.MODULE_NAME, self._rine))
             if self._organika and self._organika.MODULE_NAME not in skip:
                 all_analyzers.append((self._organika.MODULE_NAME, self._organika))
+            if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
+                all_analyzers.append((self._pixel_forensics.MODULE_NAME, self._pixel_forensics))
             if self._commfor and self._commfor.MODULE_NAME not in skip:
                 all_analyzers.append((self._commfor.MODULE_NAME, self._commfor))
             if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:

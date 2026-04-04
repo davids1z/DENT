@@ -61,13 +61,16 @@ _AI_DETECTOR_MODULES = frozenset({
 
 # Core AI detection modules — only these determine AI generation score
 _CORE_AI_WEIGHTS = {
-    "safe_ai_detection": 0.25,
-    "dinov2_ai_detection": 0.20,
-    "community_forensics_detection": 0.20,
-    "spai_detection": 0.15,              # FFT+ViT, independent architecture
-    "clip_ai_detection": 0.10,
-    "bfree_detection": 0.05,             # DINOv2-family (bias-free)
-    "ai_generation_detection": 0.05,
+    "clip_ai_detection": 0.18,            # F1=0.902, best on insurance
+    "dinov2_ai_detection": 0.18,          # F1=0.882
+    "community_forensics_detection": 0.14, # 4803 generators
+    "safe_ai_detection": 0.10,            # Pixel correlation (poor on modern AI)
+    "spai_detection": 0.08,              # FFT spectral
+    "bfree_detection": 0.08,             # DINOv2-family
+    "pixel_forensics": 0.08,             # 8 content-independent signals
+    "organika_ai_detection": 0.08,       # Swin Transformer
+    "ai_generation_detection": 0.04,
+    "rine_detection": 0.04,              # CLIP intermediate layers
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -84,8 +87,10 @@ _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
-    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
+    "rine_detection",
+    "pixel_forensics",                 # RINE intermediate CLIP (ECCV 2024)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 
 # Reliable AI detectors for consensus checking
@@ -93,11 +98,12 @@ _RELIABLE_AI_DETECTORS = frozenset({
     "safe_ai_detection",
     "dinov2_ai_detection",
     "community_forensics_detection",
-    "efficientnet_ai_detection",
+    # "efficientnet_ai_detection",  # REMOVED: 98% FP on authentic
     "clip_ai_detection",
     "spai_detection",
     "bfree_detection",
     "rine_detection",
+    "pixel_forensics",
 })
 
 # Independent detectors for consensus boost.
@@ -105,8 +111,10 @@ _INDEPENDENT_DETECTORS = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
-    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
+    "rine_detection",
+    "pixel_forensics",                 # RINE intermediate CLIP (ECCV 2024)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 
 

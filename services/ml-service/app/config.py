@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     forensics_bfree_enabled: bool = True
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
+    # Pixel Forensics (8 content-independent signals, numpy only)
+    forensics_pixel_forensics_enabled: bool = True
+
     # Organika SDXL detector (Swin Transformer, 98.1% accuracy, Wikimedia)
     forensics_organika_ai_enabled: bool = True
 
