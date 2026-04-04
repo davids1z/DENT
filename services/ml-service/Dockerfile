@@ -68,6 +68,7 @@ RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["/app/entrypoint.sh"]
-# Use gunicorn with UvicornWorker for multi-process serving.
-# --preload loads models once in master, workers share via COW.
-CMD ["gunicorn", "app.main:app", "-c", "gunicorn.conf.py"]
+# Use uvicorn directly — gunicorn heartbeat kills async workers during
+# long-running analyses (known UvicornWorker + gunicorn issue).
+# Models loaded at startup via FastAPI lifespan in app/main.py.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "300", "--log-level", "info"]
