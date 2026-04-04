@@ -295,33 +295,37 @@ def fuse_scores(
 
     overall = max(0.0, min(1.0, overall))
 
-    # ── Reconcile meta-learner verdict bars with rule-based score ────
-    if verdict_probs is not None:
-        if overall < ft.verdict_low_threshold:
-            verdict_probs = {
-                "authentic": round(max(0.85, 1.0 - overall * 2), 4),
-                "ai_generated": round(overall * 0.4, 4),
-                "tampered": round(overall * 0.6 * overall, 4),
-            }
-        else:
-            meta_max_class = max(verdict_probs, key=verdict_probs.get)
-            meta_max_prob = verdict_probs[meta_max_class]
+    # ── Verdict bars — always derive from rule-based scores ─────────
+    # GBM verdict_probs may be stale (trained on different probe version).
+    # Override with rule-based derivation that's always consistent.
+    ai_signal = max(ai_combined, core_score)
+    tamp_signal = tampering
 
-            if overall < ft.verdict_mid_threshold and meta_max_class != "authentic" and meta_max_prob > 0.50:
-                verdict_probs = {
-                    "authentic": max(0.60, 1.0 - overall),
-                    "ai_generated": overall * 0.6,
-                    "tampered": overall * 0.4,
-                }
-            elif overall >= ft.verdict_high_threshold:
-                verdict_probs = {
-                    "authentic": round(max(0.02, 1.0 - overall), 4),
-                    "ai_generated": round(ai_combined / max(overall, 0.01) * overall * 0.7, 4),
-                    "tampered": round(tampering / max(overall, 0.01) * overall * 0.7, 4),
-                }
-                total_bad = verdict_probs["ai_generated"] + verdict_probs["tampered"]
-                if total_bad < 0.01:
-                    verdict_probs["ai_generated"] = round(overall * 0.7, 4)
-                    verdict_probs["tampered"] = round(overall * 0.3, 4)
+    if overall < ft.verdict_low_threshold:
+        # Low risk → strongly authentic
+        verdict_probs = {
+            "authentic": round(max(0.85, 1.0 - overall * 2), 4),
+            "ai_generated": round(overall * 0.4, 4),
+            "tampered": round(overall * 0.6 * overall, 4),
+        }
+    elif overall >= ft.verdict_high_threshold:
+        # High risk → determine AI vs tampered from signal sources
+        p_auth = round(max(0.02, 1.0 - overall), 4)
+        remaining = 1.0 - p_auth
+        if ai_signal > 0 or tamp_signal > 0:
+            total_signal = ai_signal + tamp_signal
+            p_ai = round(remaining * (ai_signal / total_signal), 4)
+            p_tamp = round(remaining * (tamp_signal / total_signal), 4)
+        else:
+            p_ai = round(remaining * 0.7, 4)
+            p_tamp = round(remaining * 0.3, 4)
+        verdict_probs = {"authentic": p_auth, "ai_generated": p_ai, "tampered": p_tamp}
+    else:
+        # Medium risk
+        verdict_probs = {
+            "authentic": round(max(0.40, 1.0 - overall), 4),
+            "ai_generated": round(overall * 0.6, 4),
+            "tampered": round(overall * 0.4, 4),
+        }
 
     return overall, round(overall * 100), _risk_level(overall), verdict_probs
