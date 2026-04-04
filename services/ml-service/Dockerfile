@@ -54,9 +54,11 @@ RUN mkdir -p /app/models/stacking_meta /app/models_stage/stacking_meta
 COPY models/meta/gbm_binary.joblib /app/models/stacking_meta/gbm_binary.joblib
 COPY models/meta/gbm_multi.joblib /app/models/stacking_meta/gbm_multi.joblib
 COPY models/meta/meta_weights.npz /app/models/stacking_meta/meta_weights.npz
+COPY models/meta/gbm_meta.json /app/models/stacking_meta/gbm_meta.json
 COPY models/meta/gbm_binary.joblib /app/models_stage/stacking_meta/gbm_binary.joblib
 COPY models/meta/gbm_multi.joblib /app/models_stage/stacking_meta/gbm_multi.joblib
 COPY models/meta/meta_weights.npz /app/models_stage/stacking_meta/meta_weights.npz
+COPY models/meta/gbm_meta.json /app/models_stage/stacking_meta/gbm_meta.json
 
 COPY app/ app/
 COPY scripts/ scripts/
