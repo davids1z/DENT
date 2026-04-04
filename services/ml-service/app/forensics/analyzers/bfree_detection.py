@@ -248,10 +248,14 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
 
         with torch.no_grad():
             # Step 1: Run patch_embed on full 504×504 image
-            embeddings = self._patch_embed(tensor)  # (1, 1296, 768) for 36×36 grid
+            embeddings = self._patch_embed(tensor)
+            # timm patch_embed may return (B, N, D) or (B, H, W, D)
+            if embeddings.dim() == 4:
+                B, H, W, D = embeddings.shape
+                embeddings = embeddings.reshape(B, H * W, D)
+            B, N, D = embeddings.shape
 
             # Step 2: Reshape to 2D spatial grid
-            B, N, D = embeddings.shape
             side = int(N ** 0.5)  # 36
             grid = embeddings.reshape(B, side, side, D)
 
