@@ -68,10 +68,11 @@ class FusionThresholds:
     # ── CNN dampening ──────────────────────────────────────────────
     # When independent methods (SAFE/CommFor/SPAI) don't confirm CNN-family
     # detectors (DINOv2/EfficientNet/bfree/CLIP), dampen CNN contributions.
-    # Floor: minimum dampening factor (0.50 = CNN contributes at least 50%).
-    # Threshold: independent score below which dampening activates.
-    cnn_dampening_floor: float = 0.50
-    cnn_dampening_threshold: float = 0.25
+    # Floor: minimum dampening factor (0.30 = CNN contributes at least 30%).
+    # Threshold: independent score above which dampening is disabled.
+    # SAFE=0.20 on authentic photos should NOT disable dampening.
+    cnn_dampening_floor: float = 0.30
+    cnn_dampening_threshold: float = 0.35
 
     # ── Tampering thresholds ───────────────────────────────────────
     deep_mod_min: float = 0.55
