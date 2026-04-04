@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     forensics_bfree_enabled: bool = True
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
+    # SigLIP AI detection (fine-tuned SigLIP, 92.9M params, 99.23% accuracy)
+    forensics_siglip_ai_enabled: bool = True
+
     # NPR AI detection (CVPR 2024, upsampling artifact detection, 1.44M params)
     # Disabled: 0.023 separation (noise), gives 1.00 on authentic JPEGs
     forensics_npr_enabled: bool = False

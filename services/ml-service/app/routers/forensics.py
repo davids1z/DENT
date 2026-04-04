@@ -44,6 +44,7 @@ def get_pipeline() -> ForensicPipeline:
             dinov2_ai_enabled=settings.forensics_dinov2_ai_enabled,
             bfree_enabled=settings.forensics_bfree_enabled,
             spai_enabled=settings.forensics_spai_enabled,
+            siglip_ai_enabled=settings.forensics_siglip_ai_enabled,
             spectral_enabled=settings.forensics_spectral_enabled,
             office_enabled=settings.forensics_office_enabled,
             community_forensics_enabled=settings.forensics_community_forensics_enabled,
