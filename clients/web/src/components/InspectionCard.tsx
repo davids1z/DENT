@@ -50,9 +50,14 @@ export function InspectionCard({ inspection: i }: InspectionCardProps) {
           <h3 className="font-medium truncate mb-1 text-xs sm:text-base">{i.originalFileName}</h3>
           <div className="flex items-center justify-between">
             <span className="text-[10px] sm:text-xs text-muted">{formatDate(i.createdAt)}</span>
-            {i.fraudRiskLevel && (
+            {i.fraudRiskLevel && i.status !== "Failed" && (
               <span className={cn("text-[10px] sm:text-sm font-semibold", fraudRiskColor(i.fraudRiskLevel))}>
                 {fraudRiskLabel(i.fraudRiskLevel)}
+              </span>
+            )}
+            {i.status === "Failed" && (
+              <span className="text-[10px] sm:text-sm font-semibold text-red-500">
+                Neuspjelo
               </span>
             )}
           </div>

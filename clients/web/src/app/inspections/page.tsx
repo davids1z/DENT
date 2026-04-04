@@ -162,7 +162,7 @@ function InspectionsContent() {
                       )}>{i.status === "Completed" ? "Završeno" : i.status === "Failed" ? "Greška" : "U obradi"}</span>
                     </td>
                     <td className="px-4 py-3">
-                      {i.fraudRiskScore != null ? (
+                      {i.fraudRiskScore != null && i.status !== "Failed" ? (
                         <div className="flex items-center gap-2">
                           <div className="w-16 h-1.5 bg-card-hover rounded-full overflow-hidden">
                             <div className="h-full rounded-full" style={{

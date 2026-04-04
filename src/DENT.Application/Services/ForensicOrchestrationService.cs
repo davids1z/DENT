@@ -293,9 +293,14 @@ public class ForensicOrchestrationService : IForensicOrchestrationService
                     }
                 }
 
-                inspection.FraudRiskScore = maxRiskScore;
-                inspection.FraudRiskLevel = Enum.TryParse<FraudRiskLevel>(maxRiskLevel, true, out var frl)
-                    ? frl : FraudRiskLevel.Low;
+                // Only set fraud risk when at least one forensic module returned results;
+                // otherwise the default "Low" is misleading on failed inspections.
+                if (inspection.ForensicResults.Count > 0)
+                {
+                    inspection.FraudRiskScore = maxRiskScore;
+                    inspection.FraudRiskLevel = Enum.TryParse<FraudRiskLevel>(maxRiskLevel, true, out var frl)
+                        ? frl : FraudRiskLevel.Low;
+                }
 
                 if (primaryFr != null)
                     inspection.ForensicResultHash = _evidence.ComputeSha256(primaryFr.ModuleResultsJson ?? "[]");
