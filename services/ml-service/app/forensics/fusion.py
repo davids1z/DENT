@@ -85,6 +85,7 @@ _DAMPENING_INDEPENDENT = frozenset({
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
+    "organika_ai_detection",          # Organika Swin (98.1% acc)
 })
 
 # Reliable AI detectors for consensus checking
@@ -105,6 +106,7 @@ _INDEPENDENT_DETECTORS = frozenset({
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
+    "organika_ai_detection",          # Organika Swin (98.1% acc)
 })
 
 

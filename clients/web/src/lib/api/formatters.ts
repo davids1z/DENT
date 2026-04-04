@@ -215,7 +215,7 @@ export function forensicModuleLabel(moduleName: string): string {
     efficientnet_ai_detection: "EfficientNet AI detekcija",
     community_forensics_detection: "Community Forensics detekcija",
     npr_ai_detection: "NPR detekcija artefakata", mesorch_detection: "Mesorch detekcija manipulacija",
-    bfree_detection: "B-Free AI detekcija (CVPR 2025)", spai_detection: "SPAI spektralna AI detekcija (CVPR 2025)", siglip_ai_detection: "SigLIP AI detekcija", rine_detection: "RINE AI detekcija (ECCV 2024)",
+    bfree_detection: "B-Free AI detekcija (CVPR 2025)", spai_detection: "SPAI spektralna AI detekcija (CVPR 2025)", siglip_ai_detection: "SigLIP AI detekcija", rine_detection: "RINE AI detekcija (ECCV 2024)", organika_ai_detection: "Organika AI detekcija (Swin)",
     vae_reconstruction: "VAE rekonstrukcija", text_ai_detection: "AI tekst detekcija",
     content_validation: "Validacija sadržaja", prnu_detection: "PRNU senzorska analiza",
   };

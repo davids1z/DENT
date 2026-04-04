@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     forensics_bfree_enabled: bool = True
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
+    # Organika SDXL detector (Swin Transformer, 98.1% accuracy, Wikimedia)
+    forensics_organika_ai_enabled: bool = True
+
     # RINE AI detection (ECCV 2024, intermediate CLIP layers, 91.5% accuracy)
     forensics_rine_ai_enabled: bool = True
 
