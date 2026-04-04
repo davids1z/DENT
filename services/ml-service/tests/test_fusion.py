@@ -194,9 +194,8 @@ def test_cnn_only_no_boost():
     uses low values for both to simulate pure CNN false positive."""
     modules = [
         _make_module("efficientnet_ai_detection", 0.98),
-        _make_module("bfree_detection", 0.80),
-        _make_module("dinov2_ai_detection", 0.10),       # Insurance probe says NOT AI
-        _make_module("clip_ai_detection", 0.10),          # Insurance probe says NOT AI
+        _make_module("dinov2_ai_detection", 0.79),
+        _make_module("clip_ai_detection", 0.85),
         _make_module("safe_ai_detection", 0.04),
         _make_module("community_forensics_detection", 0.01),
         _make_module("spai_detection", 0.05),
@@ -221,11 +220,10 @@ def test_disagreement_no_boost():
     """CNN-family (Eff+bfree) high but all independents near-zero → no boost."""
     modules = [
         _make_module("efficientnet_ai_detection", 1.00),
-        _make_module("bfree_detection", 0.80),
-        _make_module("dinov2_ai_detection", 0.05),        # Insurance probe: NOT AI
-        _make_module("clip_ai_detection", 0.05),           # Insurance probe: NOT AI
+        _make_module("dinov2_ai_detection", 0.90),
         _make_module("safe_ai_detection", 0.01),
         _make_module("community_forensics_detection", 0.001),
+        _make_module("clip_ai_detection", 0.00),
     ]
     overall, _, level, _ = fuse_scores(modules)
     assert overall < 0.15, f"CNN-only disagreement should be LOW risk, got {overall}"

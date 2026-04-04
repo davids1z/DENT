@@ -73,8 +73,10 @@ _CORE_AI_WEIGHTS = {
 # CNN-family: detectors dampened when independents don't confirm.
 # CLIP and DINOv2 removed — insurance-domain probes are reliable.
 _CNN_FAMILY_DETECTORS = frozenset({
+    "dinov2_ai_detection",
     "efficientnet_ai_detection",
     "bfree_detection",
+    "clip_ai_detection",
 })
 
 # DAMPENING independent: methods used to check if CNN detectors are correct.
@@ -82,8 +84,6 @@ _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
-    "clip_ai_detection",              # Insurance-domain MLP probe
-    "dinov2_ai_detection",            # Insurance-domain MLP probe
 })
 
 # Reliable AI detectors for consensus checking
@@ -102,8 +102,6 @@ _INDEPENDENT_DETECTORS = frozenset({
     "safe_ai_detection",              # Pixel correlation (KDD 2025)
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
-    "clip_ai_detection",              # Insurance-domain MLP probe
-    "dinov2_ai_detection",            # Insurance-domain MLP probe
 })
 
 
