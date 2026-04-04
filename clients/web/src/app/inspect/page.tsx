@@ -175,7 +175,6 @@ function InspectContent() {
       </div>
 
       {/* System training notice — removed, calibration complete */}
-      )}
 
       {/* Upload state */}
       {!result && !isLoading && (
