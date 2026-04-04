@@ -124,9 +124,13 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
         try:
             from transformers import CLIPModel, CLIPProcessor
 
+            # Use persistent HF cache
+            hf_home = os.environ.get("HF_HOME", "/app/models/huggingface")
+            os.environ["HF_HOME"] = hf_home
+
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            # Load frozen CLIP ViT-L/14 via transformers (already cached on server)
+            # Load frozen CLIP ViT-L/14 via transformers (cached in HF_HOME)
             clip_id = "openai/clip-vit-large-patch14"
             self._clip_model = CLIPModel.from_pretrained(clip_id).to(self._device)
             self._clip_preprocess = CLIPProcessor.from_pretrained(clip_id)
