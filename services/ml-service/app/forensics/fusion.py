@@ -85,7 +85,6 @@ _DAMPENING_INDEPENDENT = frozenset({
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
     "clip_ai_detection",              # Insurance-domain MLP probe
-    "siglip_ai_detection",            # SigLIP fine-tuned (99.23% acc)
 })
 
 # Reliable AI detectors for consensus checking
@@ -97,7 +96,6 @@ _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
     "spai_detection",
     "bfree_detection",
-    "siglip_ai_detection",
 })
 
 # Independent detectors for consensus boost.
@@ -106,7 +104,6 @@ _INDEPENDENT_DETECTORS = frozenset({
     "community_forensics_detection",  # 4803-generator ViT (CVPR 2025)
     "spai_detection",                 # FFT spectral (CVPR 2025)
     "clip_ai_detection",              # Insurance-domain MLP probe
-    "siglip_ai_detection",            # SigLIP fine-tuned classifier
 })
 
 
