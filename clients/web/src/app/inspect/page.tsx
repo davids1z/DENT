@@ -174,21 +174,7 @@ function InspectContent() {
         </div>
       </div>
 
-      {/* System training notice */}
-      {!result && (
-        <div className="max-w-lg mx-auto mb-4">
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-            <div>
-              <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Sustav se trenutno trenira</p>
-              <p className="text-[11px] text-amber-600/80 dark:text-amber-400/70 mt-0.5">
-                Analiza može trajati duže od uobičajenog i postoji mogućnost da ne uspije iz prvog pokušaja. Ako analiza ne uspije, pokušajte ponovno.
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* System training notice — removed, calibration complete */}
       )}
 
       {/* Upload state */}
