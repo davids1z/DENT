@@ -335,6 +335,16 @@ def fuse_scores(
             overall = clip_floor
             boost_applied = f"clip_high→{clip_floor:.4f}"
 
+    # CLIP isolation dampening: when CLIP is moderate (50-70%) but ALL other
+    # detectors disagree (n_low >= 4), CLIP is likely a false positive.
+    # Car damage photos trigger CLIP FP because the domain is OOD for the
+    # generic probe. Cap the score to prevent false "Potreban pregled".
+    if clip_m and 0.50 <= clip_m.risk_score < 0.70 and n_low >= 4:
+        clip_isolated_cap = 0.20
+        if overall > clip_isolated_cap:
+            overall = clip_isolated_cap
+            boost_applied = f"clip_isolated_cap→{clip_isolated_cap}"
+
     overall = max(0.0, min(1.0, overall))
 
     logger.info(
