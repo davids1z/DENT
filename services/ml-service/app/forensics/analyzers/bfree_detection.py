@@ -255,7 +255,7 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                 embeddings = embeddings.reshape(B, H * W, D)
             B, N, D = embeddings.shape
 
-            # Step 2: Reshape to 2D spatial grid
+            # Step 2: Reshape to 2D spatial grid (NHWC format)
             side = int(N ** 0.5)  # 36
             grid = embeddings.reshape(B, side, side, D)
 
@@ -271,12 +271,11 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                 grid[:, -crop_side:, -crop_side:, :],             # bottom-right
             ]
 
-            # Flatten spatial dims and concatenate along batch
-            flat_crops = [c.reshape(B, crop_side * crop_side, D) for c in crops]
-            batch_crops = torch.cat(flat_crops, dim=0)  # (5, 729, 768)
+            # Keep as 4D NHWC — dynamic_img_size=True expects (B, H, W, D)
+            # for positional embedding interpolation in _pos_embed
+            batch_crops = torch.cat(crops, dim=0)  # (5, 27, 27, 768)
 
             # Step 4: Forward through ViT backbone (patch_embed = Identity)
-            # dynamic_img_size=True handles pos_embed interpolation from 36×36 to 27×27
             logits = self._model(batch_crops)  # (5, 1)
 
             # Step 5: Average the 5 predictions
