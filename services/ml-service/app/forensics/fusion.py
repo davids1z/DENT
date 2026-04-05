@@ -233,8 +233,12 @@ def fuse_scores(
 
     if has_c2pa_valid:
         core_score *= ft.c2pa_factor  # Strong camera/provenance evidence
-    if has_ai_tool or has_ai_filename:
-        core_score = max(core_score, ft.ai_metadata_floor)  # Definitive AI signal
+    if has_ai_tool:
+        core_score = max(core_score, ft.ai_metadata_floor)  # XMP/C2PA = definitive AI signal
+    # Filename is trivially spoofable — use as soft boost, not definitive.
+    # "Gemini_Generated_Image.jpg" bumps score but doesn't override detectors.
+    if has_ai_filename and not has_ai_tool:
+        core_score = max(core_score, min(core_score + 0.15, 0.50))
 
     ai_combined = core_score
 

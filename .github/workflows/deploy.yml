@@ -110,6 +110,9 @@ jobs:
 
             # ── Rolling update: only app services ─────────────────
             # Do NOT restart nginx (SSL certs), postgres (data), minio (storage)
+            # Remove stale containers first to prevent "No such container" errors
+            # when containers were manually removed outside CI
+            $COMPOSE rm -sf api ml-service web 2>/dev/null || true
             $COMPOSE up -d --no-deps api
             $COMPOSE up -d --no-deps ml-service
             $COMPOSE up -d --no-deps web
