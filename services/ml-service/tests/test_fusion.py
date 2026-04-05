@@ -50,8 +50,8 @@ def test_core_ai_weights_include_clip():
     assert "clip_ai_detection" in _CORE_AI_WEIGHTS
 
 
-def test_core_ai_weights_include_bfree():
-    assert "bfree_detection" in _CORE_AI_WEIGHTS
+def test_core_ai_weights_include_pixel_forensics():
+    assert "pixel_forensics" in _CORE_AI_WEIGHTS
 
 
 def test_core_ai_weights_include_organika():

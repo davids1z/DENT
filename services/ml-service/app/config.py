@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     forensics_spai_enabled: bool = False
     forensics_spai_model_dir: str = "/app/models/spai"
 
-    # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators)
-    forensics_bfree_enabled: bool = True
+    # B-Free — DISABLED: requires exact 5-crop Wrapper that's incompatible with timm internals
+    forensics_bfree_enabled: bool = False
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
     # Pixel Forensics (8 content-independent signals, numpy only)

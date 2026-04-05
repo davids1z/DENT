@@ -63,12 +63,11 @@ _AI_DETECTOR_MODULES = frozenset({
 # Disabled modules (SAFE, SPAI, RINE, CommFor, EfficientNet) removed.
 # Weights auto-normalize via core_total_w division.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.30,            # F1=0.902, best separator (74% AI, 13% auth)
-    "bfree_detection": 0.25,              # CVPR 2025, 0.3% FP, 98.8% TP when loaded correctly
-    "organika_ai_detection": 0.20,        # Swin, 98.1% acc (39% AI, 0% auth)
-    "dinov2_ai_detection": 0.10,          # Has FP bias on car damage — dampened
+    "clip_ai_detection": 0.45,            # F1=0.902, best separator (74% AI, 13% auth)
+    "organika_ai_detection": 0.25,        # Swin, 98.1% acc (39% AI, 0% auth)
     "pixel_forensics": 0.10,             # 8 content-independent signals
-    "ai_generation_detection": 0.05,      # Legacy Swin detector
+    "dinov2_ai_detection": 0.10,          # Has FP bias on car damage — dampened
+    "ai_generation_detection": 0.10,      # Legacy Swin detector
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -83,14 +82,12 @@ _CNN_FAMILY_DETECTORS = frozenset({
 _DAMPENING_INDEPENDENT = frozenset({
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
-    "bfree_detection",                # B-Free DINOv2 ViT-Base (different probe)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 
 # Reliable AI detectors for consensus checking — only WORKING modules
 _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
-    "bfree_detection",
     "organika_ai_detection",
     "dinov2_ai_detection",
     "pixel_forensics",
@@ -302,7 +299,7 @@ def fuse_scores(
     if n_high >= ft.boost_strong_min_high and n_low <= 1 and independent_confirms >= 1:
         overall = max(overall, ft.boost_strong_floor)
         boost_applied = f"strong→{ft.boost_strong_floor}"
-    elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 1:
+    elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 2:
         overall = max(overall, ft.boost_moderate_floor)
         boost_applied = f"moderate→{ft.boost_moderate_floor}"
 

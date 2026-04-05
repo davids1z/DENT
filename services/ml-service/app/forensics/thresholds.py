@@ -96,8 +96,8 @@ class FusionThresholds:
     # Strong boost: 3+ reliable high AND 1+ independent (SAFE/CommFor/SPAI)
     boost_strong_min_high: int = 3
     boost_strong_floor: float = 0.75
-    # Moderate boost: 2+ high AND 1+ independent (SAFE/CommFor/SPAI)
-    boost_moderate_min_high: int = 2
+    # Moderate boost: 1+ high AND 2+ independent confirms
+    boost_moderate_min_high: int = 1
     boost_moderate_floor: float = 0.65
     # Swin (ai_gen) boost: requires 2+ independent confirmation
     swin_min: float = 0.60
