@@ -10,12 +10,6 @@ secrets:
   minio_secret_key:
     file: ./secrets/minio_secret_key.txt
 
-networks:
-  proxy:
-    external: true      # shared network — nginx can reach dent-web, dent-api, dent-minio
-  internal:
-    driver: bridge      # private — postgres, ml-service, minio internal
-
 services:
   # ── PostgreSQL ────────────────────────────────────────────────────
   postgres:
@@ -29,8 +23,6 @@ services:
       - db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - internal
     deploy:
       resources:
         limits:
@@ -62,11 +54,8 @@ services:
       - minio_secret_key
     volumes:
       - minio_data:/data
-    networks:
-      - proxy             # nginx needs to reach minio for /storage/
-      - internal
-    expose:
-      - "9000"
+    ports:
+      - "127.0.0.1:3203:9000"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 15s
@@ -88,8 +77,6 @@ services:
     secrets:
       - minio_access_key
       - minio_secret_key
-    networks:
-      - internal
     entrypoint: >
       /bin/sh -c "
       MINIO_USER=$$(cat /run/secrets/minio_access_key);
@@ -117,11 +104,8 @@ services:
       timeout: 30s
       retries: 5
       start_period: 300s
-    networks:
-      - proxy             # nginx needs to reach ml for /ml/
-      - internal
-    expose:
-      - "8000"
+    ports:
+      - "127.0.0.1:3202:8000"
     environment:
       # ── Runtime ──────────────────────────────────────────────────
       HF_HUB_OFFLINE: "1"
@@ -185,11 +169,8 @@ services:
       - admin_password
       - minio_access_key
       - minio_secret_key
-    networks:
-      - proxy             # nginx needs to reach api for /api/
-      - internal
-    expose:
-      - "8080"
+    ports:
+      - "127.0.0.1:3201:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__DefaultConnection: "Host=postgres;Database=dent;Username=dent;Password=FROM_SECRET"
@@ -241,11 +222,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    networks:
-      - proxy             # nginx needs to reach web for /
-      - internal
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3200:3000"
     depends_on:
       - api
     restart: unless-stopped

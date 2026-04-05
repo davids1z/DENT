@@ -47,7 +47,6 @@ jobs:
           script: |
             set -e
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
-            NGINX_DIR="$DEPLOY_DIR/infra/nginx"
             COMPOSE="docker compose -f docker-compose.server.yml"
 
             # ── Git pull ──────────────────────────────────────────
@@ -80,23 +79,7 @@ jobs:
             echo -n "${MINIO_SECRET_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_secret_key.txt"
             chmod 600 "$DEPLOY_DIR/secrets/"*.txt
 
-            # ── Shared proxy network ─────────────────────────────
-            docker network create proxy 2>/dev/null || true
-
-            # ── Shared nginx (lives in $DEPLOY_DIR/infra/nginx) ──
-            # Stop old per-project nginx if still running
-            cd "$DEPLOY_DIR"
-            $COMPOSE stop nginx 2>/dev/null || true
-            $COMPOSE rm -f nginx 2>/dev/null || true
-            $COMPOSE stop certbot 2>/dev/null || true
-            $COMPOSE rm -f certbot 2>/dev/null || true
-
-            # Start/update shared nginx
-            cd "$NGINX_DIR"
-            docker compose up -d
-
             # ── Database backup ───────────────────────────────────
-            cd "$DEPLOY_DIR"
             mkdir -p "$DEPLOY_DIR/backups"
             $COMPOSE exec -T postgres \
               pg_dump -U dent --no-owner dent \
@@ -106,6 +89,7 @@ jobs:
             # ── Rolling update (build + replace atomically) ────────
             # up --build --no-deps: builds new image, then replaces
             # the container in one step — minimal downtime (~1-2s)
+            # Host nginx routes directly to these ports (no Docker nginx)
             $COMPOSE up -d --build --no-deps web
             $COMPOSE up -d --build --no-deps api
             $COMPOSE up -d --build --no-deps ml-service
@@ -113,11 +97,6 @@ jobs:
             # Wait for services to be healthy
             echo "Waiting for services..."
             sleep 15
-
-            # Reload shared nginx to pick up new container IPs
-            echo "Reloading shared nginx..."
-            docker exec shared-nginx nginx -s reload 2>/dev/null || \
-              (cd "$NGINX_DIR" && docker compose restart)
 
             docker image prune -f
 
