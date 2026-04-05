@@ -62,15 +62,18 @@ _AI_DETECTOR_MODULES = frozenset({
 # Core AI detection modules — only these determine AI generation score.
 # Disabled modules (SAFE, SPAI, RINE, CommFor, EfficientNet) removed.
 # Weights auto-normalize via core_total_w division.
+# Weights reflect ACTUAL detection performance, not theoretical accuracy.
+# Modules that don't detect modern AI (Flux/DALL-E) get low weight to avoid
+# diluting the working detectors.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.20,            # F1=0.902, best separator (74% AI, 13% auth)
-    "bfree_detection": 0.20,              # CVPR 2025, 98.8% TP, 0.3% FP, proper 5-crop
-    "organika_ai_detection": 0.15,        # Swin, 98.1% acc (39% AI, 0% auth)
-    "safe_ai_detection": 0.15,            # KDD 2025, DWT wavelet pixel correlation
-    "rine_detection": 0.10,               # ECCV 2024, OpenAI CLIP intermediate layers
-    "pixel_forensics": 0.08,              # 8 content-independent signals
-    "dinov2_ai_detection": 0.07,          # Has FP bias on car damage — dampened
-    "ai_generation_detection": 0.05,      # Legacy Swin detector
+    "clip_ai_detection": 0.40,            # BEST: 74% on AI, 13% on authentic
+    "organika_ai_detection": 0.25,        # GOOD: 39% on AI, 0% on authentic
+    "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
+    "dinov2_ai_detection": 0.07,          # FP BIAS: dampened on car damage
+    "ai_generation_detection": 0.05,      # Legacy Swin
+    "bfree_detection": 0.05,              # POOR on modern AI: 1% on Flux/DALL-E
+    "safe_ai_detection": 0.05,            # POOR on modern AI: 5% on Flux/DALL-E
+    "rine_detection": 0.03,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -318,6 +321,16 @@ def fuse_scores(
     if ai_gen and ai_gen.risk_score >= ft.swin_min and independent_confirms >= 2:
         overall = max(overall, ai_gen.risk_score)
         boost_applied = f"swin→{ai_gen.risk_score:.4f}"
+
+    # High-confidence CLIP boost: when CLIP is very confident (>70%) AND
+    # at least 1 independent confirms, use CLIP score directly as floor.
+    # CLIP at 74% with Organika+pixel confirming = strong AI signal.
+    clip_m = _get_module(active, "clip_ai_detection")
+    if clip_m and clip_m.risk_score >= 0.70 and independent_confirms >= 1:
+        clip_floor = clip_m.risk_score * 0.95  # 74% → 70% floor
+        if clip_floor > overall:
+            overall = clip_floor
+            boost_applied = f"clip_high→{clip_floor:.4f}"
 
     overall = max(0.0, min(1.0, overall))
 

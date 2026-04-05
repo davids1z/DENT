@@ -98,7 +98,7 @@ class FusionThresholds:
     boost_strong_floor: float = 0.75
     # Moderate boost: 1+ high AND 2+ independent confirms
     boost_moderate_min_high: int = 1
-    boost_moderate_floor: float = 0.65
+    boost_moderate_floor: float = 0.75
     # Swin (ai_gen) boost: requires 2+ independent confirmation
     swin_min: float = 0.60
 
