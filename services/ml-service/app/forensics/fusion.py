@@ -63,11 +63,14 @@ _AI_DETECTOR_MODULES = frozenset({
 # Disabled modules (SAFE, SPAI, RINE, CommFor, EfficientNet) removed.
 # Weights auto-normalize via core_total_w division.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.45,            # F1=0.902, best separator (74% AI, 13% auth)
-    "organika_ai_detection": 0.25,        # Swin, 98.1% acc (39% AI, 0% auth)
-    "pixel_forensics": 0.10,             # 8 content-independent signals
-    "dinov2_ai_detection": 0.10,          # Has FP bias on car damage — dampened
-    "ai_generation_detection": 0.10,      # Legacy Swin detector
+    "clip_ai_detection": 0.20,            # F1=0.902, best separator (74% AI, 13% auth)
+    "bfree_detection": 0.20,              # CVPR 2025, 98.8% TP, 0.3% FP, proper 5-crop
+    "organika_ai_detection": 0.15,        # Swin, 98.1% acc (39% AI, 0% auth)
+    "safe_ai_detection": 0.15,            # KDD 2025, DWT wavelet pixel correlation
+    "rine_detection": 0.10,               # ECCV 2024, OpenAI CLIP intermediate layers
+    "pixel_forensics": 0.08,              # 8 content-independent signals
+    "dinov2_ai_detection": 0.07,          # Has FP bias on car damage — dampened
+    "ai_generation_detection": 0.05,      # Legacy Swin detector
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -80,22 +83,30 @@ _CNN_FAMILY_DETECTORS = frozenset({
 # DAMPENING independent: methods used to check if DINOv2 FPs are real.
 # Only modules that actually WORK and are independent of DINOv2 embeddings.
 _DAMPENING_INDEPENDENT = frozenset({
+    "safe_ai_detection",              # DWT wavelet pixel correlation (KDD 2025)
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
+    "bfree_detection",                # B-Free DINOv2 ViT-Base (5-crop)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 
-# Reliable AI detectors for consensus checking — only WORKING modules
+# Reliable AI detectors for consensus checking — all WORKING modules
 _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
+    "bfree_detection",
     "organika_ai_detection",
+    "safe_ai_detection",
+    "rine_detection",
     "dinov2_ai_detection",
     "pixel_forensics",
 })
 
-# Independent detectors for consensus boost — non-CNN methods that confirm AI
+# Independent detectors for consensus boost — non-CNN methods
 _INDEPENDENT_DETECTORS = frozenset({
+    "safe_ai_detection",              # DWT wavelet (KDD 2025)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 

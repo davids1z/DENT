@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     forensics_efficientnet_ai_enabled: bool = False
     forensics_efficientnet_ai_model: str = "Dafilab/ai-image-detector"
 
-    # SAFE AI detection — DISABLED: missing DWT wavelet preprocessing, inverted results
-    forensics_safe_ai_enabled: bool = False
+    # SAFE AI detection (KDD 2025, DWT wavelet + pixel correlation, 1.44M params)
+    forensics_safe_ai_enabled: bool = True
 
     # DINOv2 AI detection (linear probe on frozen DINOv2-large, 1024-dim)
     forensics_dinov2_ai_enabled: bool = True
@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     forensics_spai_enabled: bool = False
     forensics_spai_model_dir: str = "/app/models/spai"
 
-    # B-Free — DISABLED: requires exact 5-crop Wrapper that's incompatible with timm internals
-    forensics_bfree_enabled: bool = False
+    # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators, 5-crop)
+    forensics_bfree_enabled: bool = True
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
     # Pixel Forensics (8 content-independent signals, numpy only)
@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     # Organika SDXL detector (Swin Transformer, 98.1% accuracy, Wikimedia)
     forensics_organika_ai_enabled: bool = True
 
-    # RINE AI detection — DISABLED: checkpoint trained with OpenAI CLIP, we use HF transformers CLIP
-    forensics_rine_ai_enabled: bool = False
+    # RINE AI detection (ECCV 2024, OpenAI CLIP intermediate layers, 91.5% acc)
+    forensics_rine_ai_enabled: bool = True
 
     # SigLIP AI detection (fine-tuned SigLIP, 92.9M params, 99.23% accuracy)
     forensics_siglip_ai_enabled: bool = False

@@ -38,6 +38,13 @@ RUN pip install --no-cache-dir timm>=1.0.0 safetensors>=0.4.0
 # ONNX Runtime for 2-3x faster CPU inference (separate layer for caching)
 RUN pip install --no-cache-dir onnxruntime>=1.17.0
 
+# OpenAI CLIP for RINE AI detection (ECCV 2024) — uses OpenAI's CLIP
+# implementation, NOT HuggingFace transformers CLIP (numerically different)
+RUN pip install --no-cache-dir "clip @ git+https://github.com/openai/CLIP.git"
+
+# pytorch_wavelets for SAFE AI detector DWT preprocessing
+RUN pip install --no-cache-dir pytorch-wavelets>=1.3.0
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

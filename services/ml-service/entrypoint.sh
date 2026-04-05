@@ -239,6 +239,26 @@ else
     echo "[entrypoint] SAFE checkpoint already cached"
 fi
 
+# OpenAI CLIP ViT-L/14 for RINE AI detection (~890 MB, cached in volume)
+# Separate from HuggingFace CLIP — different package, different cache location.
+# clip.load() uses download_root param, default ~/.cache/clip/
+rine_clip_path="/app/models/clip_openai/ViT-L-14.pt"
+if [ ! -f "$rine_clip_path" ]; then
+    echo "[entrypoint] Downloading OpenAI CLIP ViT-L/14 for RINE (~890 MB)..."
+    mkdir -p "$(dirname "$rine_clip_path")"
+    python3 -c "
+import sys
+try:
+    import clip
+    clip.load('ViT-L/14', device='cpu', jit=False, download_root='/app/models/clip_openai')
+    print('[entrypoint] OpenAI CLIP ViT-L/14 downloaded')
+except Exception as e:
+    print(f'[entrypoint] WARNING: OpenAI CLIP download failed: {e}', file=sys.stderr)
+" || true
+else
+    echo "[entrypoint] OpenAI CLIP ViT-L/14 already cached"
+fi
+
 # ── ONNX export (one-time, cached in volume) ─────────────────────────
 # Converts PyTorch models to ONNX for 2-3x faster CPU inference.
 # Only runs if ONNX files don't exist yet. Safe to skip on failure.

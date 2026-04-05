@@ -9,6 +9,11 @@ whether the image shows a car, face, or landscape.
 +10.6% accuracy over standard CLIP probe (91.5% vs 80.9%).
 Only 6.32M trainable parameters on top of frozen CLIP ViT-L/14.
 
+CRITICAL: This module requires the OpenAI CLIP package (not HuggingFace
+transformers CLIP). The checkpoint was trained with `import clip;
+clip.load("ViT-L/14")` which produces numerically different intermediate
+representations than HuggingFace's CLIPModel.
+
 Paper: https://arxiv.org/abs/2402.19091
 GitHub: https://github.com/mever-team/rine
 License: Apache 2.0
@@ -27,6 +32,8 @@ from ..base import AnalyzerFinding, BaseAnalyzer, ModuleResult
 logger = logging.getLogger(__name__)
 
 _TORCH_AVAILABLE = False
+_OPENAI_CLIP_AVAILABLE = False
+
 try:
     import torch
     import torch.nn as nn
@@ -34,10 +41,21 @@ try:
 except ImportError:
     pass
 
+if _TORCH_AVAILABLE:
+    try:
+        import clip as openai_clip
+        _OPENAI_CLIP_AVAILABLE = True
+    except ImportError:
+        logger.warning(
+            "OpenAI CLIP package not installed — RINE module disabled. "
+            "Install with: pip install git+https://github.com/openai/CLIP.git"
+        )
+
 
 class _Hook:
     """Captures intermediate layer output via register_forward_hook."""
-    def __init__(self, module):
+    def __init__(self, name, module):
+        self.name = name
         self.output = None
         self.hook = module.register_forward_hook(self._fn)
 
@@ -49,7 +67,14 @@ class _Hook:
 
 
 class _RINEHead(nn.Module):
-    """Trainable RINE head: proj1 → alpha weighting → proj2 → classifier."""
+    """Trainable RINE head: proj1 -> alpha weighting -> proj2 -> classifier.
+
+    Architecture matches the original RINE paper (mever-team/rine) exactly:
+    - proj1: Dropout + nproj x (Linear -> ReLU -> Dropout)
+    - alpha: learnable [1, n_hooks, proj_dim] softmax-weighted aggregation
+    - proj2: Dropout + nproj x (Linear -> ReLU -> Dropout)
+    - head: Linear -> ReLU -> Dropout -> Linear -> ReLU -> Dropout -> Linear(1)
+    """
     def __init__(self, n_hooks=24, backbone_dim=1024, proj_dim=1024, nproj=1):
         super().__init__()
         self.alpha = nn.Parameter(torch.randn(1, n_hooks, proj_dim))
@@ -79,19 +104,37 @@ class _RINEHead(nn.Module):
         )
 
     def forward(self, hook_outputs):
-        # hook_outputs: list of [batch, seq_len, dim] from each ln_2 layer
-        # Take CLS token (index 0) from each layer
-        g = torch.stack([h[:, 0, :] for h in hook_outputs], dim=1)  # [B, 24, 1024]
+        """Process intermediate CLIP hook outputs.
+
+        In OpenAI CLIP, intermediate representations are in LND format
+        (Length/seq_len, Batch, Dim). The original RINE code does:
+            g = torch.stack([h.output for h in hooks], dim=2)[0, :, :, :]
+        which stacks [L,N,D] tensors along dim=2 -> [L, N, n_hooks, D],
+        then takes index 0 on the L dimension (CLS token) -> [N, n_hooks, D].
+        """
+        # hook_outputs: list of [seq_len, batch, dim] from each ln_2 (LND format)
+        # Stack along dim=2: [seq_len, batch, n_hooks, dim]
+        g = torch.stack(hook_outputs, dim=2)
+        # Take CLS token (index 0 in sequence dimension): [batch, n_hooks, dim]
+        g = g[0, :, :, :]
+
         g = self.proj1(g.float())
         z = torch.softmax(self.alpha, dim=1) * g
-        z = torch.sum(z, dim=1)  # [B, 1024]
+        z = torch.sum(z, dim=1)  # [batch, proj_dim]
         z = self.proj2(z)
-        p = self.head(z)  # [B, 1]
+        p = self.head(z)  # [batch, 1]
         return p
 
 
 class RINEDetectionAnalyzer(BaseAnalyzer):
-    """RINE — intermediate CLIP features for content-independent AI detection."""
+    """RINE -- intermediate CLIP features for content-independent AI detection.
+
+    Uses OpenAI CLIP package (not HuggingFace transformers) because the
+    checkpoint was trained with the OpenAI implementation. The two CLIP
+    implementations produce numerically different intermediate representations
+    even for the same ViT-L/14 weights, causing the RINE head to output
+    ~0.0 when fed HuggingFace features.
+    """
 
     MODULE_NAME = "rine_detection"
     MODULE_LABEL = "RINE AI detekcija (ECCV 2024)"
@@ -101,7 +144,7 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
         self._clip_model = None
         self._clip_preprocess = None
         self._rine_head = None
-        self._hooks = []
+        self._hooks: list[_Hook] = []
         self._device = "cpu"
 
     def _ensure_models(self) -> None:
@@ -109,7 +152,12 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
             return
 
         if not _TORCH_AVAILABLE:
-            logger.warning("PyTorch not available — RINE disabled")
+            logger.warning("PyTorch not available -- RINE disabled")
+            self._models_loaded = True
+            return
+
+        if not _OPENAI_CLIP_AVAILABLE:
+            logger.warning("OpenAI CLIP not installed -- RINE disabled")
             self._models_loaded = True
             return
 
@@ -122,31 +170,47 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
             return
 
         try:
-            from transformers import CLIPModel, CLIPProcessor
-
-            # Use persistent HF cache
-            hf_home = os.environ.get("HF_HOME", "/app/models/huggingface")
-            os.environ["HF_HOME"] = hf_home
-
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            # Load frozen CLIP ViT-L/14 via transformers (cached in HF_HOME)
-            clip_id = "openai/clip-vit-large-patch14"
-            self._clip_model = CLIPModel.from_pretrained(clip_id).to(self._device)
-            self._clip_preprocess = CLIPProcessor.from_pretrained(clip_id)
+            # ---- Load frozen CLIP ViT-L/14 via OpenAI CLIP package ----
+            # clip.load() downloads the model on first run. We use a
+            # persistent download_root inside the models volume so the
+            # entrypoint.sh pre-download is reused.
+            clip_download_root = os.path.join(cache_dir, "clip_openai")
+            os.makedirs(clip_download_root, exist_ok=True)
+            self._clip_model, self._clip_preprocess = openai_clip.load(
+                "ViT-L/14", device=self._device, jit=False,
+                download_root=clip_download_root,
+            )
             self._clip_model.eval()
             for p in self._clip_model.parameters():
                 p.requires_grad = False
 
-            # Register hooks on all layer_norm2 in vision encoder (24 layers)
+            # ---- Register hooks on all ln_2 in visual transformer ----
+            # OpenAI CLIP structure: model.visual.transformer.resblocks[i].ln_2
+            # The RINE paper hooks into ln_2 of every ResidualAttentionBlock.
+            # named_modules() with "ln_2" filter matches the original RINE code:
+            #   [Hook(name, module) for name, module in
+            #    self.clip.visual.named_modules() if "ln_2" in name]
             self._hooks = []
-            for name, module in self._clip_model.vision_model.encoder.named_modules():
-                if name.endswith(".layer_norm2"):
-                    self._hooks.append(_Hook(module))
+            for name, module in self._clip_model.visual.named_modules():
+                if "ln_2" in name:
+                    self._hooks.append(_Hook(name, module))
 
-            logger.info("RINE: registered %d hooks on CLIP ViT-L/14", len(self._hooks))
+            logger.info(
+                "RINE: registered %d hooks on OpenAI CLIP ViT-L/14",
+                len(self._hooks),
+            )
 
-            # Load RINE trainable head
+            if len(self._hooks) != 24:
+                logger.warning(
+                    "RINE: expected 24 hooks but got %d -- "
+                    "checkpoint may not match this CLIP architecture",
+                    len(self._hooks),
+                )
+
+            # ---- Load RINE trainable head ----
+            # 4-class checkpoint config: nproj=2, proj_dim=1024, backbone_dim=1024
             self._rine_head = _RINEHead(
                 n_hooks=len(self._hooks),
                 backbone_dim=1024,
@@ -154,17 +218,22 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
                 nproj=2,
             ).to(self._device)
 
-            state_dict = torch.load(ckpt_path, map_location=self._device, weights_only=True)
+            state_dict = torch.load(
+                ckpt_path, map_location=self._device, weights_only=True,
+            )
             self._rine_head.load_state_dict(state_dict, strict=True)
             self._rine_head.eval()
 
             param_count = sum(p.numel() for p in self._rine_head.parameters()) / 1e6
-            logger.info("RINE head loaded: %.2fM params from %s", param_count, ckpt_path)
+            logger.info(
+                "RINE head loaded: %.2fM params from %s", param_count, ckpt_path,
+            )
 
         except Exception as e:
-            logger.warning("Failed to load RINE: %s", e)
+            logger.warning("Failed to load RINE: %s", e, exc_info=True)
             self._clip_model = None
             self._rine_head = None
+            self._hooks = []
 
         self._models_loaded = True
 
@@ -201,18 +270,27 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
         return self._make_result([], 0)
 
     def _compute_score(self, img: Image.Image) -> float:
-        """Run RINE: CLIP intermediate features → trainable head → sigmoid."""
-        inputs = self._clip_preprocess(images=img, return_tensors="pt")
-        pixel_values = inputs["pixel_values"].to(self._device)
+        """Run RINE: OpenAI CLIP intermediate features -> trainable head -> sigmoid.
+
+        The preprocessing uses the transform from clip.load() which does:
+            Resize(224, BICUBIC) -> CenterCrop(224) -> ToTensor() -> Normalize()
+        with CLIP-standard normalization values.
+        """
+        # Preprocess using OpenAI CLIP's transform (Resize+CenterCrop+Normalize)
+        pixel_values = self._clip_preprocess(img).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            # Forward through CLIP vision model — hooks capture intermediate outputs
-            self._clip_model.vision_model(pixel_values)
+            # Forward through CLIP vision encoder -- hooks capture ln_2 outputs.
+            # encode_image() calls self.visual() internally, which runs through
+            # all ResidualAttentionBlocks and triggers our hooks.
+            self._clip_model.encode_image(pixel_values)
 
-            # Collect hook outputs (each is [batch, seq_len, hidden_dim])
+            # Collect hook outputs.
+            # Each hook.output has shape [seq_len, batch, dim] (LND format)
+            # because OpenAI CLIP's transformer operates in LND internally.
             hook_outputs = [h.output for h in self._hooks]
 
-            # RINE head processes all 24 intermediate layer CLS tokens
+            # RINE head: stack, extract CLS, project, weight, classify
             logit = self._rine_head(hook_outputs)
             score = float(torch.sigmoid(logit.squeeze()).cpu().item())
 

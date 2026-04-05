@@ -32,6 +32,8 @@ fpdf2>=2.8.0
 # AI generation detection (optional — transformers installed in Dockerfile for layer caching)
 # Models: Organika/sdxl-detector, umm-maybe/AI-image-detector
 # CLIP AI detection (UniversalFakeDetect style — model downloaded via transformers)
+# RINE AI detection (ECCV 2024) — OpenAI CLIP package installed in Dockerfile for layer caching
+# pip install git+https://github.com/openai/CLIP.git (separate from HuggingFace transformers CLIP)
 # VAE reconstruction error detection (DIRE/CO-SPY style)
 diffusers>=0.27.0
 # Community Forensics ViT-Small (CVPR 2025, 4803 generators)
@@ -50,3 +52,5 @@ scikit-learn>=1.4.0
 joblib>=1.3.0
 # Perceptual hashing for duplicate/similarity detection
 imagehash>=4.3.0
+# SAFE AI detector DWT preprocessing (pytorch_wavelets.DWTForward)
+pytorch-wavelets>=1.3.0
