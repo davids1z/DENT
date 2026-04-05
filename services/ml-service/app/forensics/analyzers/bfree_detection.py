@@ -63,17 +63,22 @@ _INPUT_SIZE = 504  # B-Free expects 504×504 for 36×36 patch grid (504/14=36)
 
 
 class BFreeDetectionAnalyzer(BaseAnalyzer):
-    """B-Free DINOv2 ViT-Base with 5-crop for AI image detection."""
+    """B-Free DINOv2 ViT-Base for AI image detection.
+
+    Uses 378×378 input (27×27 patch grid = 729 tokens) to match the
+    token count the model was fine-tuned on via 5-crop training.
+    dynamic_img_size=True interpolates pos_embed from 36×36→27×27.
+    """
 
     MODULE_NAME = "bfree_detection"
     MODULE_LABEL = "B-Free AI detekcija"
 
-    _CROP_PERCENTAGE = 0.75  # 75% of grid = 27 patches from 36
+    # 27 patches × 14 pixels = 378 — matches 5-crop token count (729)
+    _INFER_SIZE = 378
 
     def __init__(self) -> None:
         self._models_loaded = False
-        self._model = None       # ViT backbone (patch_embed replaced with Identity)
-        self._patch_embed = None  # Extracted patch_embed Conv2d
+        self._model = None
         self._device = "cpu"
 
     # ------------------------------------------------------------------
@@ -108,23 +113,21 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
             # Create DINOv2 ViT-Base with 4 register tokens, single output.
-            # dynamic_img_size=True allows variable token counts (needed for
-            # 5-crop: each crop is 27×27=729 tokens, pos_embed is for 36×36=1296)
-            model = timm.create_model(
+            # dynamic_img_size=True lets timm interpolate pos_embed for any input size
+            self._model = timm.create_model(
                 "vit_base_patch14_reg4_dinov2.lvd142m",
                 pretrained=False,
                 num_classes=1,
                 dynamic_img_size=True,
             )
 
-            # Set input size to 504 to match checkpoint (36×36 patch grid)
-            if hasattr(model, 'set_input_size'):
-                model.set_input_size(img_size=_INPUT_SIZE)
+            # Set input size to 504 to match checkpoint pos_embed (36×36 grid)
+            if hasattr(self._model, 'set_input_size'):
+                self._model.set_input_size(img_size=_INPUT_SIZE)
 
             # Load checkpoint — B-Free wraps state_dict under "model" key
             checkpoint = torch.load(weights_path, map_location=self._device, weights_only=True)
 
-            # Extract nested state_dict
             if "model" in checkpoint:
                 raw_sd = checkpoint["model"]
             elif "state_dict" in checkpoint:
@@ -132,8 +135,7 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
             else:
                 raw_sd = checkpoint
 
-            # Remap keys from official Wrapper5crops format:
-            # Official structure: "patch_embed.*" stays, "model.X" → "X"
+            # Remap keys from Wrapper5crops: "model.X" → "X", "patch_embed.*" stays
             state_dict = {}
             for k, v in raw_sd.items():
                 if k.startswith("model."):
@@ -141,7 +143,7 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                 else:
                     state_dict[k] = v
 
-            missing, unexpected = model.load_state_dict(state_dict, strict=False)
+            missing, unexpected = self._model.load_state_dict(state_dict, strict=False)
 
             n_loaded = len(state_dict) - len(unexpected)
             if n_loaded < 10:
@@ -153,22 +155,15 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
                 self._models_loaded = True
                 return
 
-            # Extract patch_embed and replace with Identity (official 5-crop approach)
-            # The ViT backbone will receive pre-computed embeddings, not raw pixels
-            self._patch_embed = model.patch_embed
-            model.patch_embed = torch.nn.Identity()
+            self._model.to(self._device)
+            self._model.eval()
 
-            model.to(self._device)
-            model.eval()
-            self._model = model
-
-            param_count = sum(p.numel() for p in model.parameters()) / 1e6
-            pe_count = sum(p.numel() for p in self._patch_embed.parameters()) / 1e6
+            param_count = sum(p.numel() for p in self._model.parameters()) / 1e6
             logger.info(
-                "B-Free model loaded on %s: %.1fM params (backbone) + %.2fM (patch_embed), "
-                "input=%dx%d, 5-crop=%d patches, %d keys matched, %d missing, %d unexpected",
-                self._device, param_count, pe_count, _INPUT_SIZE, _INPUT_SIZE,
-                int((_INPUT_SIZE // 14 * self._CROP_PERCENTAGE) ** 2),
+                "B-Free model loaded on %s: %.1fM params, infer=%dx%d (%d patches), "
+                "%d keys matched, %d missing, %d unexpected",
+                self._device, param_count, self._INFER_SIZE, self._INFER_SIZE,
+                (self._INFER_SIZE // 14) ** 2,
                 n_loaded, len(missing), len(unexpected),
             )
             if missing:
@@ -225,62 +220,25 @@ class BFreeDetectionAnalyzer(BaseAnalyzer):
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
 
-    # ------------------------------------------------------------------
-    # Scoring — single forward pass (no 5-crop for simplicity)
-    # ------------------------------------------------------------------
-
     def _compute_score(self, img: Image.Image) -> float:
-        """Compute AI probability via B-Free 5-crop in embedding space.
+        """Compute AI probability via B-Free at 378×378 (27×27 patch grid).
 
-        Official approach (Wrapper5crops):
-        1. patch_embed(504×504 image) → 36×36 embedding grid
-        2. Crop 5 regions of 27×27 from the grid (center + 4 corners)
-        3. Run each crop through ViT backbone (729 tokens per crop)
-        4. Average 5 sigmoid outputs
+        The model was fine-tuned with 5-crop where each crop = 729 tokens.
+        Using 378×378 input gives the same 729 tokens (27×27) in a single
+        forward pass. dynamic_img_size=True interpolates pos_embed from
+        the checkpoint's 36×36 to inference 27×27.
         """
         import torch
 
-        # Resize to 504×504 and normalize
-        img_resized = img.resize((_INPUT_SIZE, _INPUT_SIZE), Image.LANCZOS)
+        # Resize to 378×378 (27 patches × 14 pixels — matches 5-crop token count)
+        img_resized = img.resize((self._INFER_SIZE, self._INFER_SIZE), Image.LANCZOS)
         arr = np.array(img_resized, dtype=np.float32) / 255.0
         arr = (arr - _IMAGENET_MEAN) / _IMAGENET_STD
         tensor = torch.from_numpy(arr.transpose(2, 0, 1)).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            # Step 1: Run patch_embed on full 504×504 image
-            embeddings = self._patch_embed(tensor)
-            # timm patch_embed may return (B, N, D) or (B, H, W, D)
-            if embeddings.dim() == 4:
-                B, H, W, D = embeddings.shape
-                embeddings = embeddings.reshape(B, H * W, D)
-            B, N, D = embeddings.shape
-
-            # Step 2: Reshape to 2D spatial grid (NHWC format)
-            side = int(N ** 0.5)  # 36
-            grid = embeddings.reshape(B, side, side, D)
-
-            # Step 3: Create 5 crops (center + 4 corners)
-            crop_side = int(side * self._CROP_PERCENTAGE)  # 27
-            s = (side - crop_side) // 2  # offset for center crop = 4
-
-            crops = [
-                grid[:, s:s + crop_side, s:s + crop_side, :],    # center
-                grid[:, :crop_side, :crop_side, :],               # top-left
-                grid[:, :crop_side, -crop_side:, :],              # top-right
-                grid[:, -crop_side:, :crop_side, :],              # bottom-left
-                grid[:, -crop_side:, -crop_side:, :],             # bottom-right
-            ]
-
-            # Keep as 4D NHWC — dynamic_img_size=True expects (B, H, W, D)
-            # for positional embedding interpolation in _pos_embed
-            batch_crops = torch.cat(crops, dim=0)  # (5, 27, 27, 768)
-
-            # Step 4: Forward through ViT backbone (patch_embed = Identity)
-            logits = self._model(batch_crops)  # (5, 1)
-
-            # Step 5: Average the 5 predictions
-            avg_logit = logits.mean(dim=0)
-            score = float(torch.sigmoid(avg_logit.squeeze()).cpu().item())
+            logit = self._model(tensor)  # (1, 1)
+            score = float(torch.sigmoid(logit.squeeze()).cpu().item())
 
         return float(np.clip(score, 0.0, 1.0))
 
