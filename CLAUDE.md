@@ -1,42 +1,51 @@
-# CLAUDE.md — DENT Project Rules
+# DENT — AI Vehicle Damage Detection Platform
 
-## Infrastructure Rules (MANDATORY)
+## Quick Commands
 
-- **Host nginx is the ONLY reverse proxy** — `/etc/nginx/sites-enabled/` on the server. NEVER create Docker nginx containers inside any project.
-- **Never modify `docker-compose.server.yml` or nginx config** without showing the diff first and waiting for explicit user confirmation.
-- **Never run `docker compose down` on production** — it destroys all containers including databases.
-- **Always use `--no-deps --build` for deploys** — `docker compose up -d --build --no-deps <service>` for atomic container replacement with minimal downtime.
-- **All services bind to `127.0.0.1`** — never expose ports to `0.0.0.0`. Host nginx handles external traffic.
-- **Stop after each step and wait for explicit user confirmation** before proceeding to the next step. Never chain multiple infrastructure changes.
-
-## DENT Port Map
-
-- web: `127.0.0.1:3200` → container :3000
-- api: `127.0.0.1:3201` → container :8080
-- ml:  `127.0.0.1:3202` → container :8000
-- minio: `127.0.0.1:3203` → container :9000
-- postgres: internal only (no host port)
-
-## Server Architecture
-
-```
-Cloudflare → Host Nginx (/etc/nginx) → 127.0.0.1:port → Docker containers
+```bash
+dotnet build src/DENT.API/DENT.API.csproj     # Build API
+dotnet test tests/DENT.Tests/                   # Run tests
+cd clients/web && npm run dev                   # Frontend dev server
 ```
 
-Each project on the server:
-- Has its own `/etc/nginx/sites-enabled/<domain>.conf`
-- Has its own docker-compose with `127.0.0.1:port` bindings
-- Does NOT have its own nginx container
+## Stack
+
+- **API**: .NET 9, MediatR (CQRS), EF Core + PostgreSQL, JWT auth (httpOnly cookies)
+- **Frontend**: Next.js 16 (App Router), TypeScript, Tailwind
+- **ML**: Python FastAPI, PyTorch forensic modules (ELA, FFT, CNN, CLIP, DINOv2)
+- **Storage**: MinIO (S3-compatible), images at `/storage/dent-images/`
+
+## Architecture
+
+```
+Next.js (:3200) ──→ .NET API (:3201) ──→ PostgreSQL (internal)
+                         ├──→ ML Service (:3202)
+                         └──→ MinIO (:3203)
+```
+
+API rewrites in `clients/web/next.config.ts`: `/api/*` → API, `/storage/*` → MinIO.
 
 ## Deploy
 
-- CI: GitHub Actions → SSH → `git pull` → `docker compose up -d --build --no-deps`
-- No nginx restart needed (host nginx, ports don't change)
-- Health checks: API + ML must pass before deploy is considered successful
+CI pushes to main → GitHub Actions → SSH → `docker compose up -d --build --no-deps web api ml-service`
+Container names: `dent-web`, `dent-api`, `dent-ml`, `dent-minio`, `dent-postgres`
 
-## Other Projects on Same Server (94.72.107.11)
+## Gotchas
 
-- DAM: ports 3100-3104
-- ShiftOneZero: ports 3300-3301
-- Aura: port 8080
-- Dinamo: ports 8001, 3001
+- ML service takes ~5 min to start (model loading). Health check has `start_period: 300s`
+- Frontend proxies `/api/` via Next.js rewrites — host nginx also routes `/api/` directly to :3201
+- Auth cookies: `dent_auth` (JWT, httpOnly), `dent_refresh` (httpOnly, path=/api/auth), `dent_has_auth` (JS-readable)
+- DB migrations run automatically on API startup (`MigrateAsync`)
+- Tests use InMemory DB — 3 DecisionEngine tests fail due to Croatian diacritics (pre-existing)
+- `docker-compose.server.yml` is the production compose file (not `docker-compose.yml`)
+
+## Code Conventions
+
+- Croatian UI text (error messages, labels). Code/comments in English
+- MediatR for all CRUD: Commands in `Application/Commands/`, Queries in `Application/Queries/`
+- DTOs in `Shared/DTOs/`, entities in `Domain/Entities/`
+- API controllers are thin — delegate to MediatR handlers
+
+## Compaction
+
+When compacting, preserve: container names, port numbers, file paths being edited, and any SSH commands run on 94.72.107.11.
