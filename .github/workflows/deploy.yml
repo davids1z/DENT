@@ -47,6 +47,7 @@ jobs:
           script: |
             set -e
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
+            NGINX_DIR="/opt/nginx"
             COMPOSE="docker compose -f docker-compose.server.yml"
 
             # ── Git pull ──────────────────────────────────────────
@@ -79,59 +80,56 @@ jobs:
             echo -n "${MINIO_SECRET_KEY:-minioadmin}" > "$DEPLOY_DIR/secrets/minio_secret_key.txt"
             chmod 600 "$DEPLOY_DIR/secrets/"*.txt
 
-            # ── SSL certs: copy from system letsencrypt if missing ─
-            # Use docker (runs as root) to copy certs since deploy user may not have access
-            CERT_DIR="$DEPLOY_DIR/infra/certbot/conf/live/dent.xyler.ai"
-            if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
-              echo "Copying SSL certs from /etc/letsencrypt..."
-              docker run --rm \
-                -v /etc/letsencrypt:/src:ro \
-                -v "$DEPLOY_DIR/infra/certbot/conf:/dst" \
-                alpine sh -c '
-                  mkdir -p /dst/live/dent.xyler.ai /dst/archive/dent.xyler.ai
-                  cp /src/archive/dent.xyler.ai/* /dst/archive/dent.xyler.ai/ 2>/dev/null || true
-                  for f in cert chain fullchain privkey; do
-                    [ -f "/src/live/dent.xyler.ai/${f}.pem" ] && cp -L "/src/live/dent.xyler.ai/${f}.pem" "/dst/live/dent.xyler.ai/${f}.pem"
-                  done
-                  chmod -R 644 /dst/live/ /dst/archive/ 2>/dev/null || true
-                  chmod 600 /dst/live/dent.xyler.ai/privkey.pem 2>/dev/null || true
-                '
-            fi
+            # ── Shared proxy network ─────────────────────────────
+            docker network create proxy 2>/dev/null || true
+
+            # ── Shared nginx setup ───────────────────────────────
+            mkdir -p "$NGINX_DIR/sites"
+            cp "$DEPLOY_DIR/infra/nginx/nginx.conf" "$NGINX_DIR/nginx.conf"
+            cp "$DEPLOY_DIR/infra/nginx/sites/dent.conf" "$NGINX_DIR/sites/dent.conf"
+            cp "$DEPLOY_DIR/infra/nginx/docker-compose.yml" "$NGINX_DIR/docker-compose.yml"
+
+            # Stop old per-project nginx if still running
+            cd "$DEPLOY_DIR"
+            $COMPOSE stop nginx 2>/dev/null || true
+            $COMPOSE rm -f nginx 2>/dev/null || true
+            $COMPOSE stop certbot 2>/dev/null || true
+            $COMPOSE rm -f certbot 2>/dev/null || true
+
+            # Start shared nginx if not running
+            cd "$NGINX_DIR"
+            docker compose up -d
 
             # ── Database backup ───────────────────────────────────
+            cd "$DEPLOY_DIR"
             mkdir -p "$DEPLOY_DIR/backups"
             $COMPOSE exec -T postgres \
               pg_dump -U dent --no-owner dent \
               | gzip > "$DEPLOY_DIR/backups/pre-deploy-$(date +%Y%m%d_%H%M%S).sql.gz" || \
               echo "WARNING: DB backup failed (DB may not be running)"
 
-            # ── Build only app images (NOT nginx/postgres/minio) ──
-            $COMPOSE build --parallel api ml-service web
-
-            # ── Rolling update: only app services ─────────────────
-            # Do NOT restart nginx (SSL certs), postgres (data), minio (storage)
-            # Remove stale containers first to prevent "No such container" errors
-            # when containers were manually removed outside CI
-            $COMPOSE rm -sf api ml-service web 2>/dev/null || true
-            $COMPOSE up -d --no-deps api
-            $COMPOSE up -d --no-deps ml-service
-            $COMPOSE up -d --no-deps web
+            # ── Rolling update (build + replace atomically) ────────
+            # up --build --no-deps: builds new image, then replaces
+            # the container in one step — minimal downtime (~1-2s)
+            $COMPOSE up -d --build --no-deps web
+            $COMPOSE up -d --build --no-deps api
+            $COMPOSE up -d --build --no-deps ml-service
 
             # Wait for services to be healthy
             echo "Waiting for services..."
-            sleep 30
+            sleep 15
 
-            # Restart nginx to pick up new container IPs after recreate.
-            # Without this, nginx keeps stale DNS → 502 Bad Gateway.
-            echo "Restarting nginx to refresh upstream DNS..."
-            $COMPOSE restart nginx 2>/dev/null || $COMPOSE up -d nginx
+            # Reload shared nginx to pick up new container IPs
+            echo "Reloading shared nginx..."
+            docker exec shared-nginx nginx -s reload 2>/dev/null || \
+              (cd "$NGINX_DIR" && docker compose restart)
 
             docker image prune -f
 
             # ── Health check ──────────────────────────────────────
             API_OK=false
             for i in 1 2 3 4 5; do
-              if docker exec dent-api-1 curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
+              if docker exec dent-api curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
                 API_OK=true
                 break
               fi
@@ -141,7 +139,7 @@ jobs:
 
             ML_OK=false
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              if docker exec dent-ml-service-1 python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; then
+              if docker exec dent-ml python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; then
                 ML_OK=true
                 break
               fi

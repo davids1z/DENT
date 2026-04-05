@@ -10,10 +10,17 @@ secrets:
   minio_secret_key:
     file: ./secrets/minio_secret_key.txt
 
+networks:
+  proxy:
+    external: true      # shared network — nginx can reach dent-web, dent-api, dent-minio
+  internal:
+    driver: bridge      # private — postgres, ml-service, minio internal
+
 services:
   # ── PostgreSQL ────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
+    container_name: dent-postgres
     environment:
       POSTGRES_DB: dent
       POSTGRES_USER: dent
@@ -22,6 +29,8 @@ services:
       - db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
     deploy:
       resources:
         limits:
@@ -43,6 +52,7 @@ services:
   # ── MinIO (S3-compatible object storage) ──────────────────────────
   minio:
     image: minio/minio:latest
+    container_name: dent-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER_FILE: /run/secrets/minio_access_key
@@ -52,6 +62,11 @@ services:
       - minio_secret_key
     volumes:
       - minio_data:/data
+    networks:
+      - proxy             # nginx needs to reach minio for /storage/
+      - internal
+    expose:
+      - "9000"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 15s
@@ -73,6 +88,8 @@ services:
     secrets:
       - minio_access_key
       - minio_secret_key
+    networks:
+      - internal
     entrypoint: >
       /bin/sh -c "
       MINIO_USER=$$(cat /run/secrets/minio_access_key);
@@ -87,6 +104,7 @@ services:
   # ── ML Service (Python forensic analysis) ─────────────────────────
   ml-service:
     build: ./services/ml-service
+    container_name: dent-ml
     deploy:
       resources:
         limits:
@@ -99,6 +117,11 @@ services:
       timeout: 30s
       retries: 5
       start_period: 300s
+    networks:
+      - proxy             # nginx needs to reach ml for /ml/
+      - internal
+    expose:
+      - "8000"
     environment:
       # ── Runtime ──────────────────────────────────────────────────
       HF_HUB_OFFLINE: "1"
@@ -116,8 +139,6 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_DEFAULT_REGION: eu-central-1
       # ── Module enables (must match config.py defaults) ───────────
-      # Only list modules that DIFFER from config.py defaults.
-      # config.py is the source of truth. These env vars override it.
       DENT_FORENSICS_CNN_ENABLED: "false"
       DENT_FORENSICS_OPTICAL_ENABLED: "false"
       DENT_FORENSICS_SEMANTIC_ENABLED: "false"
@@ -145,6 +166,7 @@ services:
     build:
       context: ./src
       dockerfile: DENT.API/Dockerfile
+    container_name: dent-api
     deploy:
       resources:
         limits:
@@ -163,6 +185,11 @@ services:
       - admin_password
       - minio_access_key
       - minio_secret_key
+    networks:
+      - proxy             # nginx needs to reach api for /api/
+      - internal
+    expose:
+      - "8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__DefaultConnection: "Host=postgres;Database=dent;Username=dent;Password=FROM_SECRET"
@@ -201,6 +228,7 @@ services:
       context: ./clients/web
       args:
         NEXT_PUBLIC_API_URL: "/api"
+    container_name: dent-web
     deploy:
       resources:
         limits:
@@ -213,6 +241,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    networks:
+      - proxy             # nginx needs to reach web for /
+      - internal
+    expose:
+      - "3000"
     depends_on:
       - api
     restart: unless-stopped
@@ -221,47 +254,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  # ── Nginx reverse proxy ───────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/certbot/conf:/etc/letsencrypt:ro
-      - ./infra/certbot/www:/var/www/certbot:ro
-    # Remove default.conf that conflicts with our nginx.conf
-    entrypoint: ["/bin/sh", "-c", "rm -f /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    depends_on:
-      web:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "5"
-
-  # ── Certbot (auto SSL renewal) ────────────────────────────────────
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - ./infra/certbot/conf:/etc/letsencrypt
-      - ./infra/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
-    restart: unless-stopped
 
 volumes:
   postgres_data:
