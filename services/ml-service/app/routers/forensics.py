@@ -47,6 +47,7 @@ def get_pipeline() -> ForensicPipeline:
             siglip_ai_enabled=settings.forensics_siglip_ai_enabled,
             pixel_forensics_enabled=settings.forensics_pixel_forensics_enabled,
             organika_ai_enabled=settings.forensics_organika_ai_enabled,
+            ai_source_enabled=settings.forensics_ai_source_enabled,
             rine_ai_enabled=settings.forensics_rine_ai_enabled,
             spectral_enabled=settings.forensics_spectral_enabled,
             office_enabled=settings.forensics_office_enabled,

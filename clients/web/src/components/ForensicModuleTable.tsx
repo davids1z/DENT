@@ -401,7 +401,9 @@ export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls 
   const allModules = result.modules.filter(m => !m.error);
   const highModules = allModules.filter(m => m.riskScore >= 0.40);
   const lowModules = allModules.filter(m => m.riskScore < 0.20);
-  const totalTime = allModules.reduce((s, m) => s + m.processingTimeMs, 0);
+  // Use the backend's total processing time (actual ML analysis duration),
+  // not the sum of individual module times (which double-counts parallel execution).
+  const totalTime = result.totalProcessingTimeMs;
 
   return (
     <div>
@@ -432,7 +434,7 @@ export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls 
       <div className="mt-4 p-4 bg-card border border-border rounded-xl">
         <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Konsenzus modula</h3>
         <p className="text-sm text-foreground">
-          {allModules.length} modula analizirano u {(totalTime / 1000).toFixed(2)}s.
+          {allModules.length} modula analizirano u {(totalTime / 1000).toFixed(1)}s.
           {highModules.length > 0 && (
             <> <span className="font-medium">{highModules.length}</span> {highModules.length === 1 ? "modul je prijavio" : "modula su prijavila"} povišen rizik
             ({highModules.map(m => forensicModuleLabel(m.moduleName)).join(", ")}).</>

@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # Organika SDXL detector (Swin Transformer, 98.1% accuracy, Wikimedia)
     forensics_organika_ai_enabled: bool = True
 
+    # AI Source detector (ViT-Base Patch16, 91.6% accuracy, multi-class: SD/MJ/DALL-E/real/other)
+    forensics_ai_source_enabled: bool = True
+
     # RINE AI detection (ECCV 2024, OpenAI CLIP intermediate layers, 91.5% acc)
     forensics_rine_ai_enabled: bool = True
 

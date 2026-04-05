@@ -28,6 +28,7 @@ from .analyzers.spai_detection import SPAIDetectionAnalyzer
 from .analyzers.siglip_ai_detection import SigLIPAiDetectionAnalyzer
 from .analyzers.rine_detection import RINEDetectionAnalyzer
 from .analyzers.organika_detection import OrganikaDetectionAnalyzer
+from .analyzers.ai_source_detection import AiSourceDetectionAnalyzer
 from .analyzers.pixel_forensics import PixelForensicsAnalyzer
 from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
@@ -61,6 +62,7 @@ class ForensicPipeline:
         siglip_ai_enabled: bool = True,
         rine_ai_enabled: bool = True,
         organika_ai_enabled: bool = True,
+        ai_source_enabled: bool = True,
         pixel_forensics_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
@@ -150,6 +152,9 @@ class ForensicPipeline:
         )
         self._organika: OrganikaDetectionAnalyzer | None = (
             OrganikaDetectionAnalyzer() if organika_ai_enabled else None
+        )
+        self._ai_source: AiSourceDetectionAnalyzer | None = (
+            AiSourceDetectionAnalyzer() if ai_source_enabled else None
         )
         self._pixel_forensics: PixelForensicsAnalyzer | None = (
             PixelForensicsAnalyzer() if pixel_forensics_enabled else None
@@ -394,6 +399,8 @@ class ForensicPipeline:
             count += 1
         if self._organika and self._organika.MODULE_NAME not in skip:
             count += 1
+        if self._ai_source and self._ai_source.MODULE_NAME not in skip:
+            count += 1
         if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
             count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
@@ -439,6 +446,9 @@ class ForensicPipeline:
         if self._organika:
             self._organika._ensure_models()
             logger.info("Organika SDXL detector ready")
+        if self._ai_source:
+            self._ai_source._ensure_models()
+            logger.info("AI Source detector ready")
         if self._commfor:
             self._commfor._ensure_models()
             logger.info("Community Forensics model ready")
@@ -633,6 +643,8 @@ class ForensicPipeline:
                 all_analyzers.append((self._rine.MODULE_NAME, self._rine))
             if self._organika and self._organika.MODULE_NAME not in skip:
                 all_analyzers.append((self._organika.MODULE_NAME, self._organika))
+            if self._ai_source and self._ai_source.MODULE_NAME not in skip:
+                all_analyzers.append((self._ai_source.MODULE_NAME, self._ai_source))
             if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
                 all_analyzers.append((self._pixel_forensics.MODULE_NAME, self._pixel_forensics))
             if self._commfor and self._commfor.MODULE_NAME not in skip:

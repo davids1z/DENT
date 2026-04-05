@@ -66,14 +66,15 @@ _AI_DETECTOR_MODULES = frozenset({
 # Modules that don't detect modern AI (Flux/DALL-E) get low weight to avoid
 # diluting the working detectors.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.40,            # BEST: 74% on AI, 13% on authentic
-    "organika_ai_detection": 0.25,        # GOOD: 39% on AI, 0% on authentic
+    "clip_ai_detection": 0.30,            # BEST: 74% on AI, 13% on authentic
+    "organika_ai_detection": 0.20,        # GOOD: 39% on AI, 0% on authentic
+    "ai_source_detection": 0.20,          # NEW: ViT-Base 91.6% acc, multi-class SD/MJ/DALL-E
     "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
     "dinov2_ai_detection": 0.07,          # FP BIAS: dampened on car damage
     "ai_generation_detection": 0.05,      # Legacy Swin
-    "bfree_detection": 0.05,              # POOR on modern AI: 1% on Flux/DALL-E
-    "safe_ai_detection": 0.05,            # POOR on modern AI: 5% on Flux/DALL-E
-    "rine_detection": 0.03,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
+    "bfree_detection": 0.03,              # POOR on modern AI: 1% on Flux/DALL-E
+    "safe_ai_detection": 0.03,            # POOR on modern AI: 5% on Flux/DALL-E
+    "rine_detection": 0.02,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -89,6 +90,7 @@ _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # DWT wavelet pixel correlation (KDD 2025)
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "ai_source_detection",            # ViT-Base multi-class (91.6% acc)
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "bfree_detection",                # B-Free DINOv2 ViT-Base (5-crop)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
@@ -99,6 +101,7 @@ _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
     "bfree_detection",
     "organika_ai_detection",
+    "ai_source_detection",
     "safe_ai_detection",
     "rine_detection",
     "dinov2_ai_detection",
@@ -109,6 +112,7 @@ _RELIABLE_AI_DETECTORS = frozenset({
 _INDEPENDENT_DETECTORS = frozenset({
     "safe_ai_detection",              # DWT wavelet (KDD 2025)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
+    "ai_source_detection",            # ViT-Base multi-class (91.6% acc)
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
