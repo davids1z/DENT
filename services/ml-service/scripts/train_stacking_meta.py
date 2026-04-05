@@ -10,7 +10,7 @@ Dual-judge architecture:
   1. Binary (authentic vs manipulated) → overall risk_score
   2. 3-class (authentic/ai_generated/tampered) → verdict breakdown
 
-22 modules → 319 features (66 base + 231 pairwise + 22 squared).
+28 modules → 490 features (84 base + 378 pairwise + 28 squared).
 
 Usage:
     python -m scripts.train_stacking_meta \

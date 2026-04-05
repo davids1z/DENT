@@ -5,6 +5,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from .analyzers.ai_generation import AiGenerationAnalyzer
+from .analyzers.aide_detection import AIDEAnalyzer
 from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
 from .analyzers.dinov2_ai_detection import DINOv2AiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
@@ -30,6 +31,8 @@ from .analyzers.rine_detection import RINEDetectionAnalyzer
 from .analyzers.organika_detection import OrganikaDetectionAnalyzer
 from .analyzers.ai_source_detection import AiSourceDetectionAnalyzer
 from .analyzers.pixel_forensics import PixelForensicsAnalyzer
+from .analyzers.fatformer_detection import FatFormerAnalyzer
+from .analyzers.radet_detection import RADetAnalyzer
 from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
@@ -64,6 +67,9 @@ class ForensicPipeline:
         organika_ai_enabled: bool = True,
         ai_source_enabled: bool = True,
         pixel_forensics_enabled: bool = True,
+        radet_enabled: bool = True,
+        fatformer_enabled: bool = True,
+        aide_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
@@ -158,6 +164,15 @@ class ForensicPipeline:
         )
         self._pixel_forensics: PixelForensicsAnalyzer | None = (
             PixelForensicsAnalyzer() if pixel_forensics_enabled else None
+        )
+        self._radet: RADetAnalyzer | None = (
+            RADetAnalyzer() if radet_enabled else None
+        )
+        self._fatformer: FatFormerAnalyzer | None = (
+            FatFormerAnalyzer() if fatformer_enabled else None
+        )
+        self._aide: AIDEAnalyzer | None = (
+            AIDEAnalyzer() if aide_enabled else None
         )
         self._npr: NprDetectionAnalyzer | None = (
             NprDetectionAnalyzer() if npr_enabled else None
@@ -403,6 +418,12 @@ class ForensicPipeline:
             count += 1
         if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
             count += 1
+        if self._radet and self._radet.MODULE_NAME not in skip:
+            count += 1
+        if self._fatformer and self._fatformer.MODULE_NAME not in skip:
+            count += 1
+        if self._aide and self._aide.MODULE_NAME not in skip:
+            count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
             count += 1
         if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
@@ -647,6 +668,12 @@ class ForensicPipeline:
                 all_analyzers.append((self._ai_source.MODULE_NAME, self._ai_source))
             if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
                 all_analyzers.append((self._pixel_forensics.MODULE_NAME, self._pixel_forensics))
+            if self._radet and self._radet.MODULE_NAME not in skip:
+                all_analyzers.append((self._radet.MODULE_NAME, self._radet))
+            if self._fatformer and self._fatformer.MODULE_NAME not in skip:
+                all_analyzers.append((self._fatformer.MODULE_NAME, self._fatformer))
+            if self._aide and self._aide.MODULE_NAME not in skip:
+                all_analyzers.append((self._aide.MODULE_NAME, self._aide))
             if self._commfor and self._commfor.MODULE_NAME not in skip:
                 all_analyzers.append((self._commfor.MODULE_NAME, self._commfor))
             if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:

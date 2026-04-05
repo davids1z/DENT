@@ -24,7 +24,8 @@ from .thresholds import get_registry
 
 logger = logging.getLogger(__name__)
 
-# Legacy weights kept for stacking meta-learner feature extraction
+# Legacy weights — not used for fusion (see _CORE_AI_WEIGHTS below).
+# Kept only for backward compatibility with old training scripts.
 DEFAULT_WEIGHTS: dict[str, float] = {
     "ai_generation_detection": 0.14,
     "clip_ai_detection": 0.11,
@@ -46,6 +47,14 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "efficientnet_ai_detection": 0.10,
     "safe_ai_detection": 0.12,
     "dinov2_ai_detection": 0.12,
+    # Added 2026-04-05 — were missing from MODULE_ORDER, invisible to GBM
+    "organika_ai_detection": 0.25,
+    "rine_detection": 0.03,
+    "pixel_forensics": 0.10,
+    "siglip_ai_detection": 0.05,
+    "ai_source_detection": 0.05,
+    "bfree_detection": 0.05,
+    "spai_detection": 0.05,
 }
 
 # Module names that are dedicated AI / synthetic-content detectors
@@ -66,14 +75,17 @@ _AI_DETECTOR_MODULES = frozenset({
 # Modules that don't detect modern AI (Flux/DALL-E) get low weight to avoid
 # diluting the working detectors.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.40,            # BEST: 74% on AI, 13% on authentic
-    "organika_ai_detection": 0.25,        # GOOD: 39% on AI, 0% on authentic
-    "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
+    "clip_ai_detection": 0.35,            # BEST: 74% on AI, 13% on authentic
+    "organika_ai_detection": 0.20,        # GOOD: 39% on AI, 0% on authentic
+    "radet_detection": 0.12,              # NEW: perturbation robustness, generator-agnostic
+    "fatformer_detection": 0.08,          # NEW: CLIP + DWT frequency analysis (CVPR 2024)
+    "aide_detection": 0.08,               # NEW: DCT + SRM frequency (ICLR 2025)
+    "pixel_forensics": 0.05,              # WEAK: 33% AI, 22% auth — small edge
     "dinov2_ai_detection": 0.07,          # FP BIAS: dampened on car damage
     "ai_generation_detection": 0.05,      # Legacy Swin
-    "bfree_detection": 0.05,              # POOR on modern AI: 1% on Flux/DALL-E
-    "safe_ai_detection": 0.05,            # POOR on modern AI: 5% on Flux/DALL-E
-    "rine_detection": 0.03,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
+    "bfree_detection": 0.04,              # POOR on modern AI: 1% on Flux/DALL-E
+    "safe_ai_detection": 0.04,            # POOR on modern AI: 5% on Flux/DALL-E
+    "rine_detection": 0.02,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -93,6 +105,9 @@ _DAMPENING_INDEPENDENT = frozenset({
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "bfree_detection",                # B-Free DINOv2 ViT-Base (5-crop)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
+    "radet_detection",                # RA-Det perturbation robustness (reuses DINOv2 but measures behavior, not embedding)
+    "fatformer_detection",            # FatFormer DWT frequency (CVPR 2024)
+    "aide_detection",                 # AIDE DCT+SRM frequency (ICLR 2025)
 })
 
 # Reliable AI detectors for consensus checking — all WORKING modules
@@ -105,6 +120,9 @@ _RELIABLE_AI_DETECTORS = frozenset({
     "rine_detection",
     "dinov2_ai_detection",
     "pixel_forensics",
+    "radet_detection",
+    "fatformer_detection",
+    "aide_detection",
 })
 
 # Independent detectors for consensus boost — non-CNN methods
@@ -114,6 +132,9 @@ _INDEPENDENT_DETECTORS = frozenset({
     "ai_source_detection",            # ViT-Base multi-class (91.6% acc)
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
+    "radet_detection",                # RA-Det perturbation robustness
+    "fatformer_detection",            # FatFormer DWT frequency
+    "aide_detection",                 # AIDE DCT+SRM frequency
 })
 
 

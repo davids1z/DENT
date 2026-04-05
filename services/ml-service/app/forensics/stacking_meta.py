@@ -24,8 +24,13 @@ from .base import ModuleResult
 
 logger = logging.getLogger(__name__)
 
-# Canonical module ordering — must match DEFAULT_WEIGHTS keys in fusion.py.
+# Canonical module ordering — must include ALL pipeline modules (enabled or disabled).
 # The training script saves this list into .npz for validation.
+# Missing/disabled modules contribute zeros (= no signal) during feature extraction.
+#
+# IMPORTANT: Adding modules here changes N_MODULES/N_FEATURES, which invalidates
+# existing GBM/LogReg weights. After changing, retrain with:
+#   python -m scripts.train_meta_learner --model gbm
 MODULE_ORDER: list[str] = [
     # AI detection (core pixel classifiers)
     "ai_generation_detection",
@@ -38,6 +43,16 @@ MODULE_ORDER: list[str] = [
     "dinov2_ai_detection",
     "bfree_detection",
     "spai_detection",
+    # AI detection (added 2026-04-05 — were MISSING, caused GBM blind spots)
+    "organika_ai_detection",       # Swin-T, weight 0.25 in fusion — CRITICAL omission
+    "rine_detection",              # ECCV 2024 CLIP intermediate, weight 0.03
+    "pixel_forensics",             # 8 numpy signals, weight 0.10
+    "siglip_ai_detection",         # SigLIP fine-tuned (currently disabled)
+    "ai_source_detection",         # ViT-Base multi-class (currently disabled)
+    # New GPU-era detectors (added 2026-04-05)
+    "radet_detection",             # RA-Det perturbation robustness (arXiv 2603.01544)
+    "fatformer_detection",         # FatFormer CLIP+DWT frequency (CVPR 2024)
+    "aide_detection",              # AIDE DCT+SRM frequency (ICLR 2025)
     # Authenticity / sensor
     "prnu_detection",
     # Tampering detection
@@ -56,11 +71,11 @@ MODULE_ORDER: list[str] = [
     "content_validation",
 ]
 
-N_MODULES = len(MODULE_ORDER)  # 22
-N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module = 66
-N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # C(22,2) = 231
-N_SQUARED = N_MODULES  # 22
-N_FEATURES = N_BASE + N_INTERACTIONS + N_SQUARED  # 66 + 231 + 22 = 319
+N_MODULES = len(MODULE_ORDER)  # 29 (was 22 — added organika, rine, pixel, siglip, ai_source, radet, fatformer)
+N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module
+N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # pairwise interactions
+N_SQUARED = N_MODULES
+N_FEATURES = N_BASE + N_INTERACTIONS + N_SQUARED
 
 
 def feature_names() -> list[str]:
@@ -92,7 +107,7 @@ def extract_features(modules: list[ModuleResult]) -> np.ndarray:
         if not m.error:
             mod_lookup[m.module_name] = m
 
-    # Base features: (risk_score, avg_confidence, num_findings_norm) x 14
+    # Base features: (risk_score, avg_confidence, num_findings_norm) x N_MODULES
     risk_scores = np.zeros(N_MODULES, dtype=np.float64)
     base = np.zeros(N_BASE, dtype=np.float64)
 
