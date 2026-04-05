@@ -235,10 +235,18 @@ def fuse_scores(
         core_score *= ft.c2pa_factor  # Strong camera/provenance evidence
     if has_ai_tool:
         core_score = max(core_score, ft.ai_metadata_floor)  # XMP/C2PA = definitive AI signal
-    # Filename is trivially spoofable — use as soft boost, not definitive.
-    # "Gemini_Generated_Image.jpg" bumps score but doesn't override detectors.
+    # Filename is spoofable but still a useful signal. Use as strong boost
+    # when at least 1 AI detector also shows elevated score (>= 0.25).
+    # If no detector confirms, filename alone caps at 0.50 (not definitive).
     if has_ai_filename and not has_ai_tool:
-        core_score = max(core_score, min(core_score + 0.15, 0.50))
+        any_detector_elevated = any(
+            m.risk_score >= 0.25 for m in active
+            if m.module_name in _CORE_AI_WEIGHTS and m.module_name != "pixel_forensics"
+        )
+        if any_detector_elevated:
+            core_score = max(core_score, 0.75)  # Filename + detector confirm = strong
+        else:
+            core_score = max(core_score, min(core_score + 0.15, 0.50))  # Filename alone = moderate
 
     ai_combined = core_score
 
