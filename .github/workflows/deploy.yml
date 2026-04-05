@@ -47,7 +47,7 @@ jobs:
           script: |
             set -e
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH || '/opt/dent' }}"
-            NGINX_DIR="/opt/nginx"
+            NGINX_DIR="$DEPLOY_DIR/infra/nginx"
             COMPOSE="docker compose -f docker-compose.server.yml"
 
             # ── Git pull ──────────────────────────────────────────
@@ -83,12 +83,7 @@ jobs:
             # ── Shared proxy network ─────────────────────────────
             docker network create proxy 2>/dev/null || true
 
-            # ── Shared nginx setup ───────────────────────────────
-            mkdir -p "$NGINX_DIR/sites"
-            cp "$DEPLOY_DIR/infra/nginx/nginx.conf" "$NGINX_DIR/nginx.conf"
-            cp "$DEPLOY_DIR/infra/nginx/sites/dent.conf" "$NGINX_DIR/sites/dent.conf"
-            cp "$DEPLOY_DIR/infra/nginx/docker-compose.yml" "$NGINX_DIR/docker-compose.yml"
-
+            # ── Shared nginx (lives in $DEPLOY_DIR/infra/nginx) ──
             # Stop old per-project nginx if still running
             cd "$DEPLOY_DIR"
             $COMPOSE stop nginx 2>/dev/null || true
@@ -96,7 +91,7 @@ jobs:
             $COMPOSE stop certbot 2>/dev/null || true
             $COMPOSE rm -f certbot 2>/dev/null || true
 
-            # Start shared nginx if not running
+            # Start/update shared nginx
             cd "$NGINX_DIR"
             docker compose up -d
 
