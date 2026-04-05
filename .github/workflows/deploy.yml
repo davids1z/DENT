@@ -121,11 +121,10 @@ jobs:
             echo "Waiting for services..."
             sleep 30
 
-            # Start nginx only if not running
-            if ! docker ps --filter name=dent-nginx-1 --filter status=running -q | grep -q .; then
-              echo "Nginx not running, starting..."
-              $COMPOSE up -d nginx
-            fi
+            # Restart nginx to pick up new container IPs after recreate.
+            # Without this, nginx keeps stale DNS → 502 Bad Gateway.
+            echo "Restarting nginx to refresh upstream DNS..."
+            $COMPOSE restart nginx 2>/dev/null || $COMPOSE up -d nginx
 
             docker image prune -f
 
