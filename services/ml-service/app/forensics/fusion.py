@@ -79,11 +79,11 @@ _AI_DETECTOR_MODULES = frozenset({
 # B-Free is ENABLED in pipeline (runs, scores logged) but NOT in core weights
 # until checkpoint is verified to detect modern generators on production.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.45,            # BEST: 74% on AI, 13% on authentic
-    "organika_ai_detection": 0.30,        # GOOD: 39% on AI, 0% on authentic
+    "clip_ai_detection": 0.48,            # BEST: 74% on AI, 13% on authentic
+    "organika_ai_detection": 0.32,        # GOOD: 39% on AI, 0% on authentic
     "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
-    "dinov2_ai_detection": 0.08,          # FP BIAS: dampened on car damage
-    "ai_generation_detection": 0.07,      # Legacy Swin ensemble (Organika + umm-maybe)
+    "dinov2_ai_detection": 0.04,          # FP BIAS on car damage even after retrain — minimal weight
+    "ai_generation_detection": 0.06,      # Legacy Swin ensemble (Organika + umm-maybe)
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -340,14 +340,38 @@ def fuse_scores(
         boost_applied = f"swin→{ai_gen.risk_score:.4f}"
 
     # High-confidence CLIP boost: when CLIP is very confident (>70%) AND
-    # at least 1 independent confirms, use CLIP score directly as floor.
-    # CLIP at 74% with Organika+pixel confirming = strong AI signal.
+    # independent detectors confirm, boost aggressively.
+    # CLIP 74% + Organika 39% + Pixel 33% = 3 detectors agree = strong AI signal.
     clip_m = _get_module(active, "clip_ai_detection")
-    if clip_m and clip_m.risk_score >= 0.70 and independent_confirms >= 1:
-        clip_floor = clip_m.risk_score * 0.95  # 74% → 70% floor
-        if clip_floor > overall:
-            overall = clip_floor
-            boost_applied = f"clip_high→{clip_floor:.4f}"
+    organika_m = _get_module(active, "organika_ai_detection")
+    pixel_m = _get_module(active, "pixel_forensics")
+
+    if clip_m and clip_m.risk_score >= 0.70:
+        # Count strong confirmations (>= 0.30)
+        strong_confirms = 0
+        if organika_m and organika_m.risk_score >= 0.30:
+            strong_confirms += 1
+        if pixel_m and pixel_m.risk_score >= 0.30:
+            strong_confirms += 1
+
+        if strong_confirms >= 2:
+            # CLIP HIGH + 2 strong confirms → very confident AI (90%)
+            clip_floor = max(0.90, clip_m.risk_score)
+            if clip_floor > overall:
+                overall = clip_floor
+                boost_applied = f"clip_high_2confirm→{clip_floor:.4f}"
+        elif strong_confirms >= 1:
+            # CLIP HIGH + 1 confirm → confident AI (85%)
+            clip_floor = max(0.85, clip_m.risk_score)
+            if clip_floor > overall:
+                overall = clip_floor
+                boost_applied = f"clip_high_1confirm→{clip_floor:.4f}"
+        elif independent_confirms >= 1:
+            # CLIP HIGH + weak confirm → use CLIP score directly
+            clip_floor = clip_m.risk_score
+            if clip_floor > overall:
+                overall = clip_floor
+                boost_applied = f"clip_high→{clip_floor:.4f}"
 
     # CLIP isolation dampening: when CLIP is moderate (50-70%) but ALL other
     # LIVE detectors disagree (n_low >= 3 of 4 remaining), CLIP is likely FP.
