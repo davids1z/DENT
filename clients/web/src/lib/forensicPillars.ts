@@ -85,6 +85,30 @@ export interface PillarData {
   fftSpectrumUrl: string | null;
 }
 
+// Modules that are unreliable for the pillar aggregate. They are still shown
+// individually so the user can see them, but they cannot drive the pillar score.
+//
+// Two reasons for exclusion:
+//   1) DEAD ON MODERN AI: returns ~0 even on obvious AI generators (RINE, B-Free,
+//      SPAI, NPR, VAE, EfficientNet, CommFor, SigLIP, AI Source, SAFE).
+//      These would dilute a MAX/AVG aggregate.
+//   2) HIGH FALSE-POSITIVE BIAS: returns elevated scores on authentic car damage
+//      photos (DINOv2 — backend already dampens its fusion weight to 0.04 for
+//      this exact reason).
+const _DEAD_AI_MODULES = new Set<string>([
+  "rine_detection",
+  "bfree_detection",
+  "spai_detection",
+  "npr_ai_detection",
+  "vae_reconstruction",
+  "efficientnet_ai_detection",
+  "community_forensics_detection",
+  "siglip_ai_detection",
+  "ai_source_detection",
+  "safe_ai_detection",
+  "dinov2_ai_detection",
+]);
+
 export function groupModulesIntoPillars(
   modules: ForensicModuleResult[],
   result: ForensicResult,
@@ -95,10 +119,21 @@ export function groupModulesIntoPillars(
     );
     if (pillarModules.length === 0) return null;
 
-    // Average risk across all modules in this pillar
-    const avgRisk = pillarModules.reduce((sum, m) => sum + m.riskScore, 0) / pillarModules.length;
+    // Use MAX risk score, not average — averaging dilutes the signal because
+    // many modules are dead on modern AI generators (return ~0 even on AI).
+    // If any reliable module flags HIGH, the pillar should reflect that.
+    // For the AI detection pillar, also exclude known-dead modules from the
+    // aggregate so they cannot pull the score down.
+    const liveModules = pillar.id === "ai_detection"
+      ? pillarModules.filter((m) => !_DEAD_AI_MODULES.has(m.moduleName) && !m.error)
+      : pillarModules.filter((m) => !m.error);
+    const scoreSource = liveModules.length > 0 ? liveModules : pillarModules;
+    const maxRisk = scoreSource.reduce(
+      (max, m) => (m.riskScore > max ? m.riskScore : max),
+      0,
+    );
     const riskOrder: Record<string, number> = { Low: 0, Medium: 1, High: 2, Critical: 3 };
-    const worstLevel = pillarModules.reduce(
+    const worstLevel = scoreSource.reduce(
       (worst, m) => ((riskOrder[m.riskLevel] ?? 0) > (riskOrder[worst] ?? 0) ? m.riskLevel : worst),
       "Low",
     );
@@ -111,7 +146,7 @@ export function groupModulesIntoPillars(
     return {
       pillar,
       modules: pillarModules,
-      aggregateRiskScore: avgRisk,
+      aggregateRiskScore: maxRisk,
       aggregateRiskLevel: worstLevel,
       findings: allFindings,
       hasError,
