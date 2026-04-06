@@ -397,9 +397,11 @@ export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls 
   const assignedModules = new Set(pillars.flatMap(p => p.modules.map(m => m.moduleName)));
   const unassigned = result.modules.filter(m => !assignedModules.has(m.moduleName) && !m.error);
 
-  // Consensus: count high/low modules
+  // Consensus: count high/low modules.
+  // Use 0.30 as the "elevated" threshold (matches backend's "Medium" boundary)
+  // so that modules signaling >= 30% are surfaced as a flag, not just those at 40%+.
   const allModules = result.modules.filter(m => !m.error);
-  const highModules = allModules.filter(m => m.riskScore >= 0.40);
+  const highModules = allModules.filter(m => m.riskScore >= 0.30);
   const lowModules = allModules.filter(m => m.riskScore < 0.20);
   // Use the backend's total processing time (actual ML analysis duration),
   // not the sum of individual module times (which double-counts parallel execution).
