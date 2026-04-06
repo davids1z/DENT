@@ -59,9 +59,10 @@ class Settings(BaseSettings):
     forensics_pixel_forensics_enabled: bool = True
 
     # RA-Det robustness asymmetry (arXiv 2603.01544, simplified Gaussian version)
-    # Reuses DINOv2-large — no extra model download
-    # Conservative thresholds: L2 8-14 (real=4-5, AI=16-17)
-    forensics_radet_enabled: bool = True
+    # DISABLED: current implementation uses Gaussian noise heuristic, not learned UNet.
+    # Causes false positives (57% on real images). Enable after training learned UNet
+    # on GPU server per gpu-server-plan.md Phase 2.
+    forensics_radet_enabled: bool = False
 
     # FatFormer CLIP+DWT frequency analysis (CVPR 2024, arXiv 2312.16649)
     # Reuses CLIP ViT-L/14 — DWT frequency features provide orthogonal signal

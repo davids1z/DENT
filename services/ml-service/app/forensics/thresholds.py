@@ -93,13 +93,16 @@ class FusionThresholds:
     detector_high: float = 0.45
     detector_low: float = 0.15
     independent_confirm: float = 0.25
-    # Strong boost: 3+ reliable high AND 1+ independent (SAFE/CommFor/SPAI)
-    boost_strong_min_high: int = 3
+    # Strong boost: 2+ reliable high AND 1+ independent confirms
+    # (was 3+ but only 5 reliable detectors remain after removing dead modules)
+    boost_strong_min_high: int = 2
     boost_strong_floor: float = 0.75
-    # Moderate boost: 1+ high AND 2+ independent confirms
+    # Moderate boost: 1+ high AND 1+ independent confirms
+    # (was 2+ independent but only 3 independent detectors remain)
     boost_moderate_min_high: int = 1
-    boost_moderate_floor: float = 0.75
-    # Swin (ai_gen) boost: requires 2+ independent confirmation
+    boost_moderate_floor: float = 0.65
+    # Swin (ai_gen) boost: requires 1+ independent confirmation
+    # (was 2+ but independent set is smaller now)
     swin_min: float = 0.60
 
     # ── Context modifiers ──────────────────────────────────────────
