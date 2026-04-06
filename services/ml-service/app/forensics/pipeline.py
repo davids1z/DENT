@@ -434,58 +434,29 @@ class ForensicPipeline:
         """Pre-load all ML models into memory at startup.
         This avoids the cold-start penalty on the first real request."""
         logger.info("Warming up forensic models...")
-        if self._cnn:
-            self._cnn._ensure_models()
-            logger.info("CNN models ready")
-        if self._mesorch:
-            self._mesorch._ensure_models()
-            logger.info("Mesorch model ready")
-        if self._aigen:
-            self._aigen._ensure_models()
-            logger.info("AI generation models ready")
-        if self._efficientnet:
-            self._efficientnet._ensure_models()
-            logger.info("EfficientNet-B4 AI detector ready")
-        if self._safe:
-            self._safe._ensure_models()
-            logger.info("SAFE AI detector ready")
-        if self._dinov2:
-            self._dinov2._ensure_models()
-            logger.info("DINOv2 AI detector ready")
-        if self._bfree:
-            self._bfree._ensure_models()
-            logger.info("B-Free AI detector ready")
-        if self._spai:
-            self._spai._ensure_models()
-            logger.info("SPAI spectral AI detector ready")
-        if self._siglip:
-            self._siglip._ensure_models()
-            logger.info("SigLIP AI detector ready")
-        if self._rine:
-            self._rine._ensure_models()
-            logger.info("RINE AI detector ready")
-        if self._organika:
-            self._organika._ensure_models()
-            logger.info("Organika SDXL detector ready")
-        if self._ai_source:
-            self._ai_source._ensure_models()
-            logger.info("AI Source detector ready")
-        if self._commfor:
-            self._commfor._ensure_models()
-            logger.info("Community Forensics model ready")
-        if self._npr:
-            self._npr._ensure_models()
-            logger.info("NPR model ready")
-        if self._clip_ai:
-            self._clip_ai._ensure_models()
-            logger.info("CLIP AI detection model ready")
-        if self._vae_recon:
-            self._vae_recon._ensure_models()
-            logger.info("VAE reconstruction model ready")
-        if self._text_ai:
-            self._text_ai._ensure_models()
-            logger.info("Text AI detection models ready")
-        logger.info("Forensic model warmup complete")
+        analyzers = [
+            ("CNN", self._cnn), ("Mesorch", self._mesorch),
+            ("AI Generation", self._aigen), ("EfficientNet", self._efficientnet),
+            ("SAFE", self._safe), ("DINOv2", self._dinov2),
+            ("B-Free", self._bfree), ("SPAI", self._spai),
+            ("SigLIP", self._siglip), ("RINE", self._rine),
+            ("Organika", self._organika), ("AI Source", self._ai_source),
+            ("Community Forensics", self._commfor), ("NPR", self._npr),
+            ("CLIP AI", self._clip_ai), ("VAE Reconstruction", self._vae_recon),
+            ("Text AI", self._text_ai), ("RA-Det", self._radet),
+            ("FatFormer", self._fatformer), ("AIDE", self._aide),
+        ]
+        loaded = 0
+        for name, analyzer in analyzers:
+            if analyzer is None:
+                continue
+            try:
+                analyzer._ensure_models()
+                loaded += 1
+                logger.info("%s model ready", name)
+            except Exception as e:
+                logger.warning("%s warmup failed (non-fatal): %s", name, e)
+        logger.info("Forensic model warmup complete (%d/%d loaded)", loaded, sum(1 for _, a in analyzers if a))
 
     async def analyze(
         self,

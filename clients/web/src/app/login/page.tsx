@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
@@ -20,8 +20,13 @@ export default function LoginPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
 
   // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.replace("/inspections");
+    }
+  }, [user, router]);
+
   if (user) {
-    router.replace("/inspections");
     return null;
   }
 
