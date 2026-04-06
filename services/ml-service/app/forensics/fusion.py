@@ -24,7 +24,8 @@ from .thresholds import get_registry
 
 logger = logging.getLogger(__name__)
 
-# Legacy weights kept for stacking meta-learner feature extraction
+# Legacy weights — not used for fusion (see _CORE_AI_WEIGHTS below).
+# Kept only for backward compatibility with old training scripts.
 DEFAULT_WEIGHTS: dict[str, float] = {
     "ai_generation_detection": 0.14,
     "clip_ai_detection": 0.11,
@@ -46,6 +47,14 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "efficientnet_ai_detection": 0.10,
     "safe_ai_detection": 0.12,
     "dinov2_ai_detection": 0.12,
+    # Added 2026-04-05 — were missing from MODULE_ORDER, invisible to GBM
+    "organika_ai_detection": 0.25,
+    "rine_detection": 0.03,
+    "pixel_forensics": 0.10,
+    "siglip_ai_detection": 0.05,
+    "ai_source_detection": 0.05,
+    "bfree_detection": 0.05,
+    "spai_detection": 0.05,
 }
 
 # Module names that are dedicated AI / synthetic-content detectors
@@ -65,6 +74,9 @@ _AI_DETECTOR_MODULES = frozenset({
 # Weights reflect ACTUAL detection performance, not theoretical accuracy.
 # Modules that don't detect modern AI (Flux/DALL-E) get low weight to avoid
 # diluting the working detectors.
+# NOTE: radet/fatformer/aide run in pipeline and scores are logged/stored,
+# but are NOT in core weights until calibrated on production data.
+# After calibration: add them here with data-driven weights.
 _CORE_AI_WEIGHTS = {
     "clip_ai_detection": 0.40,            # BEST: 74% on AI, 13% on authentic
     "organika_ai_detection": 0.25,        # GOOD: 39% on AI, 0% on authentic
@@ -85,6 +97,8 @@ _CNN_FAMILY_DETECTORS = frozenset({
 
 # DAMPENING independent: methods used to check if DINOv2 FPs are real.
 # Only modules that actually WORK and are independent of DINOv2 embeddings.
+# NOTE: radet/fatformer/aide excluded from all detector sets until calibrated.
+# They still run and their scores appear in module results for data collection.
 _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # DWT wavelet pixel correlation (KDD 2025)
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
@@ -95,7 +109,7 @@ _DAMPENING_INDEPENDENT = frozenset({
     "pixel_forensics",                # 8 pixel-level signals (numpy)
 })
 
-# Reliable AI detectors for consensus checking — all WORKING modules
+# Reliable AI detectors for consensus checking — only CALIBRATED modules
 _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
     "bfree_detection",

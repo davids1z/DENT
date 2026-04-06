@@ -58,6 +58,21 @@ class Settings(BaseSettings):
     # Pixel Forensics (8 content-independent signals, numpy only)
     forensics_pixel_forensics_enabled: bool = True
 
+    # RA-Det robustness asymmetry (arXiv 2603.01544, simplified Gaussian version)
+    # Reuses DINOv2-large — no extra model download, ~120ms/image on GPU
+    # DISABLED until calibrated on production data (causes FP without calibration)
+    forensics_radet_enabled: bool = False
+
+    # FatFormer CLIP+DWT frequency analysis (CVPR 2024, arXiv 2312.16649)
+    # Reuses CLIP ViT-L/14 — DWT frequency features provide orthogonal signal
+    # DISABLED until calibrated on production data
+    forensics_fatformer_enabled: bool = False
+
+    # AIDE DCT+SRM frequency analysis (ICLR 2025, simplified without ConvNeXt-XXL)
+    # 30 SRM high-pass filters + DCT patch scoring — no model download needed
+    # DISABLED until calibrated on production data
+    forensics_aide_enabled: bool = False
+
     # Organika SDXL detector (Swin Transformer, 98.1% accuracy, Wikimedia)
     forensics_organika_ai_enabled: bool = True
 

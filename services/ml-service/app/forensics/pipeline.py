@@ -5,6 +5,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from .analyzers.ai_generation import AiGenerationAnalyzer
+from .analyzers.aide_detection import AIDEAnalyzer
 from .analyzers.clip_ai_detection import ClipAiDetectionAnalyzer
 from .analyzers.dinov2_ai_detection import DINOv2AiDetectionAnalyzer
 from .analyzers.cnn_forensics import CnnForensicsAnalyzer
@@ -30,6 +31,8 @@ from .analyzers.rine_detection import RINEDetectionAnalyzer
 from .analyzers.organika_detection import OrganikaDetectionAnalyzer
 from .analyzers.ai_source_detection import AiSourceDetectionAnalyzer
 from .analyzers.pixel_forensics import PixelForensicsAnalyzer
+from .analyzers.fatformer_detection import FatFormerAnalyzer
+from .analyzers.radet_detection import RADetAnalyzer
 from .analyzers.vae_reconstruction import VaeReconstructionAnalyzer
 from .base import ForensicReport, ModuleResult
 from .fusion import fuse_scores
@@ -64,6 +67,9 @@ class ForensicPipeline:
         organika_ai_enabled: bool = True,
         ai_source_enabled: bool = True,
         pixel_forensics_enabled: bool = True,
+        radet_enabled: bool = True,
+        fatformer_enabled: bool = True,
+        aide_enabled: bool = True,
         spectral_enabled: bool = True,
         office_enabled: bool = True,
         community_forensics_enabled: bool = True,
@@ -158,6 +164,15 @@ class ForensicPipeline:
         )
         self._pixel_forensics: PixelForensicsAnalyzer | None = (
             PixelForensicsAnalyzer() if pixel_forensics_enabled else None
+        )
+        self._radet: RADetAnalyzer | None = (
+            RADetAnalyzer() if radet_enabled else None
+        )
+        self._fatformer: FatFormerAnalyzer | None = (
+            FatFormerAnalyzer() if fatformer_enabled else None
+        )
+        self._aide: AIDEAnalyzer | None = (
+            AIDEAnalyzer() if aide_enabled else None
         )
         self._npr: NprDetectionAnalyzer | None = (
             NprDetectionAnalyzer() if npr_enabled else None
@@ -403,6 +418,12 @@ class ForensicPipeline:
             count += 1
         if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
             count += 1
+        if self._radet and self._radet.MODULE_NAME not in skip:
+            count += 1
+        if self._fatformer and self._fatformer.MODULE_NAME not in skip:
+            count += 1
+        if self._aide and self._aide.MODULE_NAME not in skip:
+            count += 1
         if self._aigen and self._aigen.MODULE_NAME not in skip:
             count += 1
         if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
@@ -413,58 +434,29 @@ class ForensicPipeline:
         """Pre-load all ML models into memory at startup.
         This avoids the cold-start penalty on the first real request."""
         logger.info("Warming up forensic models...")
-        if self._cnn:
-            self._cnn._ensure_models()
-            logger.info("CNN models ready")
-        if self._mesorch:
-            self._mesorch._ensure_models()
-            logger.info("Mesorch model ready")
-        if self._aigen:
-            self._aigen._ensure_models()
-            logger.info("AI generation models ready")
-        if self._efficientnet:
-            self._efficientnet._ensure_models()
-            logger.info("EfficientNet-B4 AI detector ready")
-        if self._safe:
-            self._safe._ensure_models()
-            logger.info("SAFE AI detector ready")
-        if self._dinov2:
-            self._dinov2._ensure_models()
-            logger.info("DINOv2 AI detector ready")
-        if self._bfree:
-            self._bfree._ensure_models()
-            logger.info("B-Free AI detector ready")
-        if self._spai:
-            self._spai._ensure_models()
-            logger.info("SPAI spectral AI detector ready")
-        if self._siglip:
-            self._siglip._ensure_models()
-            logger.info("SigLIP AI detector ready")
-        if self._rine:
-            self._rine._ensure_models()
-            logger.info("RINE AI detector ready")
-        if self._organika:
-            self._organika._ensure_models()
-            logger.info("Organika SDXL detector ready")
-        if self._ai_source:
-            self._ai_source._ensure_models()
-            logger.info("AI Source detector ready")
-        if self._commfor:
-            self._commfor._ensure_models()
-            logger.info("Community Forensics model ready")
-        if self._npr:
-            self._npr._ensure_models()
-            logger.info("NPR model ready")
-        if self._clip_ai:
-            self._clip_ai._ensure_models()
-            logger.info("CLIP AI detection model ready")
-        if self._vae_recon:
-            self._vae_recon._ensure_models()
-            logger.info("VAE reconstruction model ready")
-        if self._text_ai:
-            self._text_ai._ensure_models()
-            logger.info("Text AI detection models ready")
-        logger.info("Forensic model warmup complete")
+        analyzers = [
+            ("CNN", self._cnn), ("Mesorch", self._mesorch),
+            ("AI Generation", self._aigen), ("EfficientNet", self._efficientnet),
+            ("SAFE", self._safe), ("DINOv2", self._dinov2),
+            ("B-Free", self._bfree), ("SPAI", self._spai),
+            ("SigLIP", self._siglip), ("RINE", self._rine),
+            ("Organika", self._organika), ("AI Source", self._ai_source),
+            ("Community Forensics", self._commfor), ("NPR", self._npr),
+            ("CLIP AI", self._clip_ai), ("VAE Reconstruction", self._vae_recon),
+            ("Text AI", self._text_ai), ("RA-Det", self._radet),
+            ("FatFormer", self._fatformer), ("AIDE", self._aide),
+        ]
+        loaded = 0
+        for name, analyzer in analyzers:
+            if analyzer is None:
+                continue
+            try:
+                analyzer._ensure_models()
+                loaded += 1
+                logger.info("%s model ready", name)
+            except Exception as e:
+                logger.warning("%s warmup failed (non-fatal): %s", name, e)
+        logger.info("Forensic model warmup complete (%d/%d loaded)", loaded, sum(1 for _, a in analyzers if a))
 
     async def analyze(
         self,
@@ -647,6 +639,12 @@ class ForensicPipeline:
                 all_analyzers.append((self._ai_source.MODULE_NAME, self._ai_source))
             if self._pixel_forensics and self._pixel_forensics.MODULE_NAME not in skip:
                 all_analyzers.append((self._pixel_forensics.MODULE_NAME, self._pixel_forensics))
+            if self._radet and self._radet.MODULE_NAME not in skip:
+                all_analyzers.append((self._radet.MODULE_NAME, self._radet))
+            if self._fatformer and self._fatformer.MODULE_NAME not in skip:
+                all_analyzers.append((self._fatformer.MODULE_NAME, self._fatformer))
+            if self._aide and self._aide.MODULE_NAME not in skip:
+                all_analyzers.append((self._aide.MODULE_NAME, self._aide))
             if self._commfor and self._commfor.MODULE_NAME not in skip:
                 all_analyzers.append((self._commfor.MODULE_NAME, self._commfor))
             if self._vae_recon and self._vae_recon.MODULE_NAME not in skip:
