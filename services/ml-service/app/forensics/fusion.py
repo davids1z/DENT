@@ -1,19 +1,20 @@
 """
 Score fusion — combines forensic module results into a single risk score.
 
-Architecture (v3): Core-only fusion with configurable thresholds.
+Architecture (v4): Lean core with only WORKING detectors.
 
-Only 7 CORE AI detectors determine the AI generation score.
-Tampering is scored separately from AI generation.
-Context signals (metadata, PRNU) modify confidence but never decide alone.
-Support modules (spectral, optical, semantic) are informational only.
+Only 5 CORE AI detectors with proven detection on modern generators:
+  CLIP (0.45), Organika (0.30), Pixel (0.10), DINOv2 (0.08), Swin (0.07)
 
-Changes from v2:
-  - Removed SAFE isolation dampening (SAFE is pixel-correlation, independent)
-  - Softened CNN dampening floor (0.30 → 0.50)
-  - Removed CLIP from independent detectors (shares CNN embedding bias)
-  - Two consensus boost tiers: strong (3+, 0.75) and moderate (2+, 0.65)
-  - All thresholds loaded from FusionThresholds registry (configurable)
+Dead modules removed from all sets: RINE (0%), B-Free (1%), SAFE (5%).
+Heuristic modules disabled: RA-Det, FatFormer, AIDE (no trained weights).
+
+Changes from v3:
+  - Removed dead modules (RINE/SAFE/B-Free) that diluted score by 14%
+  - Removed RA-Det/FatFormer/AIDE heuristics from fusion (cause FP)
+  - Consensus strong: 2+ high (was 3+), moderate: 1+ high with 1 independent
+  - CLIP isolation only counts LIVE modules (was counting dead ones as "low")
+  - SAFE JPEG dampening 0.60 → 0.85 (was destroying signal on all JPEG images)
 """
 
 import logging
@@ -69,24 +70,20 @@ _AI_DETECTOR_MODULES = frozenset({
 })
 
 # Core AI detection modules — only these determine AI generation score.
-# Disabled modules (SAFE, SPAI, RINE, CommFor, EfficientNet) removed.
+# Dead modules removed: RINE (0%), B-Free (1%), SAFE (5%) on modern AI.
+# Their 9% weight is redistributed to CLIP (+5%) and Organika (+3%) and pixel (+1%).
 # Weights auto-normalize via core_total_w division.
-# Weights reflect ACTUAL detection performance, not theoretical accuracy.
-# Modules that don't detect modern AI (Flux/DALL-E) get low weight to avoid
-# diluting the working detectors.
-# RA-Det enabled with conservative thresholds (L2 8-14).
-# From testing: real photos L2=4-5 → score~0%, AI faces L2=16-17 → score~100%.
-# fatformer/aide still disabled until calibrated.
+# Only WORKING, CALIBRATED detectors participate in score.
+# radet/fatformer/aide DISABLED: heuristic implementations without trained weights.
+# bfree/safe/rine removed: 0-5% on modern AI, dilute score.
+# B-Free is ENABLED in pipeline (runs, scores logged) but NOT in core weights
+# until checkpoint is verified to detect modern generators on production.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.38,            # BEST: 74% on AI, 13% on authentic
-    "organika_ai_detection": 0.23,        # GOOD: 39% on AI, 0% on authentic
-    "radet_detection": 0.10,              # NEW: perturbation robustness, conservative thresholds
-    "pixel_forensics": 0.08,              # WEAK: 33% AI, 22% auth — small edge
-    "dinov2_ai_detection": 0.07,          # FP BIAS: dampened on car damage
-    "ai_generation_detection": 0.05,      # Legacy Swin
-    "bfree_detection": 0.04,              # POOR on modern AI: 1% on Flux/DALL-E
-    "safe_ai_detection": 0.03,            # POOR on modern AI: 5% on Flux/DALL-E
-    "rine_detection": 0.02,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
+    "clip_ai_detection": 0.45,            # BEST: 74% on AI, 13% on authentic
+    "organika_ai_detection": 0.30,        # GOOD: 39% on AI, 0% on authentic
+    "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
+    "dinov2_ai_detection": 0.08,          # FP BIAS: dampened on car damage
+    "ai_generation_detection": 0.07,      # Legacy Swin ensemble (Organika + umm-maybe)
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -97,41 +94,28 @@ _CNN_FAMILY_DETECTORS = frozenset({
 })
 
 # DAMPENING independent: methods used to check if DINOv2 FPs are real.
-# Only modules that actually WORK and are independent of DINOv2 embeddings.
-# RA-Det included (conservative thresholds prevent FP).
-# fatformer/aide still excluded until calibrated.
+# Only modules that actually WORK on modern AI and are independent of DINOv2.
+# Removed dead/disabled: rine (0%), bfree (1%), safe (5%), ai_source (disabled).
+# Only WORKING modules that can check DINOv2 FPs.
 _DAMPENING_INDEPENDENT = frozenset({
-    "safe_ai_detection",              # DWT wavelet pixel correlation (KDD 2025)
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
-    "ai_source_detection",            # ViT-Base multi-class (91.6% acc)
-    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
-    "bfree_detection",                # B-Free DINOv2 ViT-Base (5-crop)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
-    "radet_detection",                # RA-Det perturbation robustness
 })
 
-# Reliable AI detectors for consensus checking
+# Reliable AI detectors for consensus checking.
+# Only modules that CAN detect modern AI (Flux/DALL-E 3) belong here.
 _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
-    "bfree_detection",
     "organika_ai_detection",
-    "ai_source_detection",
-    "safe_ai_detection",
-    "rine_detection",
     "dinov2_ai_detection",
     "pixel_forensics",
-    "radet_detection",
 })
 
-# Independent detectors for consensus boost — non-CNN methods
+# Independent detectors for consensus boost — non-CNN, non-embedding methods.
 _INDEPENDENT_DETECTORS = frozenset({
-    "safe_ai_detection",              # DWT wavelet (KDD 2025)
-    "organika_ai_detection",          # Organika Swin (98.1% acc)
-    "ai_source_detection",            # ViT-Base multi-class (91.6% acc)
-    "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
-    "pixel_forensics",                # 8 pixel-level signals (numpy)
-    "radet_detection",                # RA-Det perturbation robustness
+    "organika_ai_detection",          # Organika Swin (98.1% acc, different from CLIP/DINOv2)
+    "pixel_forensics",                # 8 pixel-level signals (numpy, no neural network)
 })
 
 
@@ -346,12 +330,12 @@ def fuse_scores(
     if n_high >= ft.boost_strong_min_high and n_low <= 1 and independent_confirms >= 1:
         overall = max(overall, ft.boost_strong_floor)
         boost_applied = f"strong→{ft.boost_strong_floor}"
-    elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 2:
+    elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 1:
         overall = max(overall, ft.boost_moderate_floor)
         boost_applied = f"moderate→{ft.boost_moderate_floor}"
 
     # Swin (ai_generation_detection) boost ONLY if independent detectors confirm
-    if ai_gen and ai_gen.risk_score >= ft.swin_min and independent_confirms >= 2:
+    if ai_gen and ai_gen.risk_score >= ft.swin_min and independent_confirms >= 1:
         overall = max(overall, ai_gen.risk_score)
         boost_applied = f"swin→{ai_gen.risk_score:.4f}"
 
@@ -366,10 +350,13 @@ def fuse_scores(
             boost_applied = f"clip_high→{clip_floor:.4f}"
 
     # CLIP isolation dampening: when CLIP is moderate (50-70%) but ALL other
-    # detectors disagree (n_low >= 4), CLIP is likely a false positive.
+    # LIVE detectors disagree (n_low >= 3 of 4 remaining), CLIP is likely FP.
     # Car damage photos trigger CLIP FP because the domain is OOD for the
     # generic probe. Cap the score to prevent false "Potreban pregled".
-    if clip_m and 0.50 <= clip_m.risk_score < 0.70 and n_low >= 4:
+    # With dead modules removed from _RELIABLE_AI_DETECTORS, n_low now only
+    # counts modules that CAN detect modern AI (organika, dinov2, pixel, radet).
+    # Threshold: n_low >= 3 means 3 of 4 non-CLIP live detectors say "no".
+    if clip_m and 0.50 <= clip_m.risk_score < 0.70 and n_low >= 3:
         clip_isolated_cap = 0.20
         if overall > clip_isolated_cap:
             overall = clip_isolated_cap

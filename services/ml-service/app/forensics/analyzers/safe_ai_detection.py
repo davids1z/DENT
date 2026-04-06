@@ -310,12 +310,12 @@ class SAFEAiDetectionAnalyzer(BaseAnalyzer):
                 synthetic_prob = float(probs[0, 1])
 
             # JPEG compression creates pixel correlation patterns similar to
-            # AI generator artifacts. Dampen score for JPEG inputs to reduce
-            # false positives on authentic camera photos.
-            # 0.60 dampening: a SAFE raw score of 0.60 becomes 0.36 (below Medium).
+            # AI generator artifacts. Light dampening for JPEG inputs.
+            # 0.85 dampening: a SAFE raw score of 0.60 becomes 0.51 (still detectable).
+            # Was 0.60 which destroyed the signal entirely on all insurance photos.
             is_jpeg = image_bytes[:2] == b'\xff\xd8'
             if is_jpeg:
-                synthetic_prob *= 0.60
+                synthetic_prob *= 0.85
 
             if synthetic_prob > 0.75:
                 findings.append(AnalyzerFinding(
