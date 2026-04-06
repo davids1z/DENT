@@ -211,16 +211,17 @@ def test_single_detector_moderate():
 
 
 def test_organika_only_moderate():
-    """Only Organika=0.90 → triggers via core weight, moderate score."""
+    """Only Organika=0.90 → moderate boost fires (Organika is both high AND independent)."""
     modules = [
         _make_module("clip_ai_detection", 0.0),
-        _make_module("bfree_detection", 0.0),
         _make_module("organika_ai_detection", 0.90),
         _make_module("dinov2_ai_detection", 0.0),
         _make_module("pixel_forensics", 0.0),
     ]
     overall, _, _, _ = fuse_scores(modules)
-    assert 0.10 < overall < 0.50, f"Single Organika high expected 0.10-0.50, got {overall}"
+    # With fusion v4: Organika 0.90 counts as both n_high=1 and independent_confirm=1
+    # → moderate boost fires → floor 0.65
+    assert 0.50 < overall < 0.80, f"Organika high expected moderate boost 0.50-0.80, got {overall}"
 
 
 # ---------------------------------------------------------------------------
