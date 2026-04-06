@@ -18,8 +18,10 @@ from app.forensics.stacking_meta import (
 # MODULE_ORDER integrity
 # ---------------------------------------------------------------------------
 
-def test_module_order_has_22_modules():
-    assert N_MODULES == 22, f"Expected 22 modules, got {N_MODULES}"
+def test_module_order_has_expected_modules():
+    # 30 modules: original 22 + organika, rine, pixel_forensics, siglip,
+    # ai_source, radet, fatformer, aide
+    assert N_MODULES == 30, f"Expected 30 modules, got {N_MODULES}"
 
 
 def test_module_order_contains_dinov2():
