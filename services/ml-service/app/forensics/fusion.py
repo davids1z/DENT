@@ -74,18 +74,19 @@ _AI_DETECTOR_MODULES = frozenset({
 # Weights reflect ACTUAL detection performance, not theoretical accuracy.
 # Modules that don't detect modern AI (Flux/DALL-E) get low weight to avoid
 # diluting the working detectors.
-# NOTE: radet/fatformer/aide run in pipeline and scores are logged/stored,
-# but are NOT in core weights until calibrated on production data.
-# After calibration: add them here with data-driven weights.
+# RA-Det enabled with conservative thresholds (L2 8-14).
+# From testing: real photos L2=4-5 → score~0%, AI faces L2=16-17 → score~100%.
+# fatformer/aide still disabled until calibrated.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.40,            # BEST: 74% on AI, 13% on authentic
-    "organika_ai_detection": 0.25,        # GOOD: 39% on AI, 0% on authentic
-    "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
+    "clip_ai_detection": 0.38,            # BEST: 74% on AI, 13% on authentic
+    "organika_ai_detection": 0.23,        # GOOD: 39% on AI, 0% on authentic
+    "radet_detection": 0.10,              # NEW: perturbation robustness, conservative thresholds
+    "pixel_forensics": 0.08,              # WEAK: 33% AI, 22% auth — small edge
     "dinov2_ai_detection": 0.07,          # FP BIAS: dampened on car damage
     "ai_generation_detection": 0.05,      # Legacy Swin
-    "bfree_detection": 0.05,              # POOR on modern AI: 1% on Flux/DALL-E
-    "safe_ai_detection": 0.05,            # POOR on modern AI: 5% on Flux/DALL-E
-    "rine_detection": 0.03,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
+    "bfree_detection": 0.04,              # POOR on modern AI: 1% on Flux/DALL-E
+    "safe_ai_detection": 0.03,            # POOR on modern AI: 5% on Flux/DALL-E
+    "rine_detection": 0.02,               # DEAD: 0% (trained on ProGAN/StyleGAN only)
 }
 
 # CNN-family: detectors dampened when independents don't confirm.
@@ -97,8 +98,8 @@ _CNN_FAMILY_DETECTORS = frozenset({
 
 # DAMPENING independent: methods used to check if DINOv2 FPs are real.
 # Only modules that actually WORK and are independent of DINOv2 embeddings.
-# NOTE: radet/fatformer/aide excluded from all detector sets until calibrated.
-# They still run and their scores appear in module results for data collection.
+# RA-Det included (conservative thresholds prevent FP).
+# fatformer/aide still excluded until calibrated.
 _DAMPENING_INDEPENDENT = frozenset({
     "safe_ai_detection",              # DWT wavelet pixel correlation (KDD 2025)
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
@@ -107,9 +108,10 @@ _DAMPENING_INDEPENDENT = frozenset({
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "bfree_detection",                # B-Free DINOv2 ViT-Base (5-crop)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
+    "radet_detection",                # RA-Det perturbation robustness
 })
 
-# Reliable AI detectors for consensus checking — only CALIBRATED modules
+# Reliable AI detectors for consensus checking
 _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
     "bfree_detection",
@@ -119,6 +121,7 @@ _RELIABLE_AI_DETECTORS = frozenset({
     "rine_detection",
     "dinov2_ai_detection",
     "pixel_forensics",
+    "radet_detection",
 })
 
 # Independent detectors for consensus boost — non-CNN methods
@@ -128,6 +131,7 @@ _INDEPENDENT_DETECTORS = frozenset({
     "ai_source_detection",            # ViT-Base multi-class (91.6% acc)
     "rine_detection",                 # RINE intermediate CLIP (ECCV 2024)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
+    "radet_detection",                # RA-Det perturbation robustness
 })
 
 

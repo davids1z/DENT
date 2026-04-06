@@ -59,9 +59,9 @@ class Settings(BaseSettings):
     forensics_pixel_forensics_enabled: bool = True
 
     # RA-Det robustness asymmetry (arXiv 2603.01544, simplified Gaussian version)
-    # Reuses DINOv2-large — no extra model download, ~120ms/image on GPU
-    # DISABLED until calibrated on production data (causes FP without calibration)
-    forensics_radet_enabled: bool = False
+    # Reuses DINOv2-large — no extra model download
+    # Conservative thresholds: L2 8-14 (real=4-5, AI=16-17)
+    forensics_radet_enabled: bool = True
 
     # FatFormer CLIP+DWT frequency analysis (CVPR 2024, arXiv 2312.16649)
     # Reuses CLIP ViT-L/14 — DWT frequency features provide orthogonal signal
