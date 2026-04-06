@@ -55,10 +55,13 @@ if _TORCH_AVAILABLE:
 # Perturbation parameters (from RA-Det paper, Section 3.2)
 _DEFAULT_EPSILON = 16 / 255  # ~0.063, standard adversarial perturbation bound
 _DEFAULT_N_TRIALS = 5  # Number of perturbation trials for averaging
-# Thresholds calibrated empirically — will be refined with production data
-_DEFAULT_L2_THRESHOLD_HIGH = 3.5  # Above this = likely AI
-_DEFAULT_L2_THRESHOLD_LOW = 1.5  # Below this = likely authentic
-_DEFAULT_COSINE_THRESHOLD = 0.975  # Below this = likely AI
+# Thresholds calibrated from local testing:
+# Real car photos: L2 = 4-5, cosine = 0.995
+# AI faces (StyleGAN): L2 = 16-17, cosine = 0.91
+# Threshold set conservatively to minimize FP on authentic images.
+_DEFAULT_L2_THRESHOLD_LOW = 8.0   # Below this = likely authentic
+_DEFAULT_L2_THRESHOLD_HIGH = 14.0  # Above this = likely AI
+_DEFAULT_COSINE_THRESHOLD = 0.960  # Below this = likely AI
 
 
 class RADetAnalyzer(BaseAnalyzer):
