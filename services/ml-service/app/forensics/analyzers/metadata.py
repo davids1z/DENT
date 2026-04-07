@@ -1004,7 +1004,28 @@ class MetadataAnalyzer(BaseAnalyzer):
 
         has_other_exif = len(metadata) > 3  # More than just SourceFile + a couple tags
 
-        # Device info completely stripped but other EXIF present
+        # Device info completely stripped but other EXIF present.
+        #
+        # Production audit (2026-04-07): this is the finding that actually
+        # fires on car4.webp / car5.jpg / Gemini outputs. The earlier
+        # META_NO_EXIF bump (0.10 → 0.40) targeted the WRONG path —
+        # META_NO_EXIF only fires when ExifTool returns absolutely nothing,
+        # which is rare. Real AI generators leave JFIF/RIFF/file-system
+        # tags in place but strip device info.
+        #
+        # In real-world production, phone uploads carry full EXIF
+        # (Make/Model/DateTimeOriginal) so this finding doesn't fire.
+        # When it DOES fire, it almost always means either:
+        #   (a) the image is AI-generated and the generator left a format
+        #       header but no device info (Gemini, FLUX, DALL-E 3, Sora,
+        #       Midjourney v6/v7), or
+        #   (b) the image was deliberately laundered through a metadata
+        #       stripper, which is itself a strong tampering signal.
+        # Both cases warrant a stronger score than the legacy 0.10.
+        #
+        # 0.30 chosen so the finding contributes meaningfully to the
+        # metadata pillar while staying below the META_NO_EXIF 0.40
+        # ceiling (the "completely wiped" case is still stronger).
         if not make and not model and has_other_exif:
             findings.append(
                 AnalyzerFinding(
@@ -1013,10 +1034,11 @@ class MetadataAnalyzer(BaseAnalyzer):
                     description=(
                         "Slika sadrzi EXIF metapodatke ali nema informacija o "
                         "uredaju (Make/Model). Podaci o uredaju su moguce "
-                        "namjerno uklonjeni."
+                        "namjerno uklonjeni ili je slika generirana AI alatima "
+                        "koji ne pisu device fingerprint."
                     ),
-                    risk_score=0.10,
-                    confidence=0.45,
+                    risk_score=0.30,
+                    confidence=0.55,
                     evidence={"tags_count": len(metadata)},
                 )
             )
