@@ -41,6 +41,11 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
 
         try:
             img = Image.open(io.BytesIO(image_bytes))
+            # EXIF camera signal — read BEFORE converting to RGB so we still have
+            # the original metadata. This is a CPU-only prior that complements
+            # the pixel-level wavelet analysis.
+            exif_signal, exif_evidence = self._exif_camera_signal(img)
+
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
@@ -116,6 +121,12 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
             elif hf_structure > 0.40:
                 score -= 0.05  # Structured — sensor
 
+            # EXIF camera Make/Model prior — added 2026-04-07.
+            # Strong negative if metadata identifies a known AI generator,
+            # mild positive if no camera metadata at all (uploads from AI tools
+            # almost always strip EXIF), mild negative if a known camera brand.
+            score += exif_signal
+
             score = max(0.0, min(1.0, score))
 
             evidence = {
@@ -129,6 +140,7 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
                 "cross_corr_gb": round(corr_gb, 4),
                 "spatial_variance": round(spatial_var, 4),
                 "hf_structure": round(hf_structure, 4),
+                **exif_evidence,
             }
 
             if score >= 0.55:
@@ -188,6 +200,105 @@ class PrnuDetectionAnalyzer(BaseAnalyzer):
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
+
+    # ------------------------------------------------------------------
+    # EXIF camera prior
+    # ------------------------------------------------------------------
+
+    # Known camera Make values (lowercased substring match). When the EXIF
+    # Make tag matches one of these, the image is more likely from a real
+    # device and PRNU absence is less suspicious.
+    _CAMERA_MAKE_PATTERNS = (
+        "apple", "samsung", "google", "huawei", "xiaomi", "oneplus", "oppo",
+        "vivo", "motorola", "nokia", "sony", "lg ",
+        "canon", "nikon", "fujifilm", "fuji", "panasonic", "olympus",
+        "leica", "pentax", "ricoh", "hasselblad", "sigma", "kodak",
+        "gopro", "dji", "phase one", "blackmagic",
+    )
+
+    # Software / Make / Model markers that indicate AI generation. When
+    # any of these is found in metadata the image is almost certainly synthetic.
+    _AI_GENERATOR_PATTERNS = (
+        "stable diffusion", "stable-diffusion", "stablediffusion",
+        "midjourney", "dall-e", "dalle", "dall e",
+        "firefly", "adobe firefly",
+        "imagen", "google imagen",
+        "comfyui", "comfy ui", "automatic1111", "a1111",
+        "diffusers", "huggingface diffusers",
+        "flux.1", "flux1", "flux dev",
+        "playground", "playgroundai",
+        "leonardo.ai", "leonardo ai",
+        "ideogram",
+        "novelai",
+        "krea.ai",
+        "runway",
+        "kandinsky",
+        "ernie-vilg",
+    )
+
+    @classmethod
+    def _exif_camera_signal(cls, img: Image.Image) -> tuple[float, dict]:
+        """Score EXIF metadata for camera authenticity vs AI generation.
+
+        Returns a tuple of:
+            (additive_score_delta, evidence_dict)
+
+        The PRNU `score` variable encodes AI suspicion: HIGHER means more
+        likely to be AI-generated, LOWER means more likely a real camera.
+        So this helper returns:
+            +0.30  Strong AI marker found in EXIF (Stable Diffusion, etc.)
+            -0.10  Known camera brand found (Apple, Canon, etc.) → less suspicious
+             0.0   Empty / unknown EXIF (neutral; many social images strip EXIF)
+        """
+        evidence: dict = {
+            "exif_make": None,
+            "exif_model": None,
+            "exif_software": None,
+            "exif_camera_match": False,
+            "exif_ai_marker": False,
+        }
+        try:
+            exif = img.getexif()
+        except Exception:
+            return 0.0, evidence
+        if not exif:
+            return 0.0, evidence
+
+        # Tag 271=Make, 272=Model, 305=Software (per EXIF spec).
+        make = str(exif.get(271, "") or "").strip()
+        model = str(exif.get(272, "") or "").strip()
+        software = str(exif.get(305, "") or "").strip()
+
+        # Truncate any control characters / nulls
+        make = make.replace("\x00", "").strip()
+        model = model.replace("\x00", "").strip()
+        software = software.replace("\x00", "").strip()
+
+        evidence["exif_make"] = make or None
+        evidence["exif_model"] = model or None
+        evidence["exif_software"] = software or None
+
+        combined = f"{make} {model} {software}".lower()
+
+        # 1) Strong AI marker → +0.30 (HIGHEST priority — explicit synthesis tag)
+        for pat in cls._AI_GENERATOR_PATTERNS:
+            if pat in combined:
+                evidence["exif_ai_marker"] = pat
+                return +0.30, evidence
+
+        # 2) Known camera brand → -0.10 (modest authenticity prior)
+        for pat in cls._CAMERA_MAKE_PATTERNS:
+            if pat in (make + " " + model).lower():
+                evidence["exif_camera_match"] = pat.strip()
+                return -0.10, evidence
+
+        # 3) Has SOMETHING but doesn't match either list → 0.0 (neutral)
+        if make or model or software:
+            return 0.0, evidence
+
+        # 4) Completely empty EXIF → 0.0 (neutral; many real social media
+        #    uploads strip EXIF, so we should not penalise this case).
+        return 0.0, evidence
 
     # ------------------------------------------------------------------
     # Noise extraction
