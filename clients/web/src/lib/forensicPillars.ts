@@ -169,8 +169,20 @@ export function groupModulesIntoPillars(
         }
       }
       aggregateRisk = totalWeight > 0 ? weightedSum / totalWeight : 0;
+    } else if (pillar.id === "modification") {
+      // Tampering pillar uses MAX, but only of modules that crossed the
+      // backend's "actually elevated" threshold (0.40). This stops a
+      // single ELA false-positive at 0.36 from pushing the entire pillar
+      // into the amber band on AI-but-not-tampered images. Modules below
+      // 0.40 contribute 0 to the pillar (they're still shown individually
+      // in the module list).
+      const SIGNIFICANT = 0.4;
+      aggregateRisk = scoreSource.reduce((max, m) => {
+        const s = m.riskScore >= SIGNIFICANT ? m.riskScore : 0;
+        return s > max ? s : max;
+      }, 0);
     } else {
-      // Non-AI pillars use MAX (tampering, metadata)
+      // Non-AI pillars use MAX (metadata, documents)
       aggregateRisk = scoreSource.reduce(
         (max, m) => (m.riskScore > max ? m.riskScore : max),
         0,
@@ -196,7 +208,10 @@ export function groupModulesIntoPillars(
       findings: allFindings,
       hasError,
       heatmapUrl,
-      fftSpectrumUrl: pillar.id === "spectral" ? result.fftSpectrumUrl : null,
+      // FFT spectrum lives on the metadata/crypto pillar (where
+      // spectral_forensics is grouped). The previous "spectral" id never
+      // matched any pillar so the FFT viewer was dead code in production.
+      fftSpectrumUrl: pillar.id === "crypto_meta" ? result.fftSpectrumUrl : null,
     };
   }).filter(Boolean) as PillarData[];
 }

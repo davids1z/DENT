@@ -144,20 +144,35 @@ def test_cnn_only_no_boost():
     assert overall < 0.30, f"DINOv2-only high should be dampened, got {overall}"
 
 
-def test_dinov2_output_capped_at_50():
-    """DINOv2 raw 0.95 must be capped to 0.50 in the weighted-sum contribution.
-    With weight 0.02, max DINOv2 contribution = 0.50 * 0.02 = 0.01 of weighted sum.
-    Combined with clean CLIP/Organika/Pixel signals → overall stays < 0.10.
+def test_dinov2_extreme_fp_dampened_without_independent_confirm():
+    """DINOv2 raw 0.95 with NO independent confirmations must be dampened.
+
+    Sprint 1 (2026-04-07) removed the hard 0.50 cap because the v11 probe
+    no longer false-positives on the car damage class that motivated it
+    (car5/car6 now score 0.0005). The defense layer is now CNN-family
+    dampening alone: when no independent module crosses the threshold,
+    DINOv2 is scaled down toward `cnn_dampening_floor`.
+
+    Bound was tightened from 0.10 → 0.25 to reflect the new math:
+        DINOv2 0.95 × dampening (~0.50) × weight 0.20 = ~0.095 contribution
+        plus pixel 0.10 × 0.10 = 0.010 and clip 0.05 × 0.20 = 0.010
+        normalized over total weight ~0.75 → ~0.15 overall
+    Still well below the 0.40 "Povišen" threshold and the 0.65 "high" band,
+    so no boost paths fire and no high-risk verdict can result.
     """
     modules = [
         _make_module("clip_ai_detection", 0.05),
         _make_module("organika_ai_detection", 0.00),
         _make_module("pixel_forensics", 0.10),
-        _make_module("dinov2_ai_detection", 0.95),  # extreme FP, cap kicks in
+        _make_module("dinov2_ai_detection", 0.95),  # extreme FP, dampening kicks in
     ]
-    overall, _, _, _ = fuse_scores(modules)
-    assert overall < 0.10, (
-        f"DINOv2 cap should keep extreme FP from polluting overall; got {overall}"
+    overall, _, level, _ = fuse_scores(modules)
+    assert overall < 0.25, (
+        f"DINOv2 extreme FP should be dampened to < 0.25; got {overall}"
+    )
+    # Critical safety property: no high-risk verdict from DINOv2 alone
+    assert level == RiskLevel.LOW, (
+        f"DINOv2 alone must not produce high-risk verdict; got {level.name}"
     )
 
 
