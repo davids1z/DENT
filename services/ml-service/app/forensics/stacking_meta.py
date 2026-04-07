@@ -31,47 +31,38 @@ logger = logging.getLogger(__name__)
 # IMPORTANT: Adding modules here changes N_MODULES/N_FEATURES, which invalidates
 # existing GBM/LogReg weights. After changing, retrain with:
 #   python -m scripts.train_meta_learner --model gbm
+# 2026-04-07: SLIMMED from 30 → 15 modules. Removed all permanently disabled
+# modules (radet/fatformer/aide/spai/npr/siglip/ai_source/efficientnet/community
+# forensics — heuristic stubs or no checkpoints; vae_reconstruction/
+# deep_modification — need GPU; semantic/optical/spectral_forensics — heuristic
+# FP generators; ai_generation_detection — old Swin ensemble).
+#
+# Production reality: 11 image modules + 4 document modules = 15 modules.
+# Feature space dropped from 522 → 165 features (~3x smaller), making the
+# meta-learner trainable on the available calibration data.
 MODULE_ORDER: list[str] = [
-    # AI detection (core pixel classifiers)
-    "ai_generation_detection",
-    "clip_ai_detection",
-    "vae_reconstruction",
-    "community_forensics_detection",
-    "npr_ai_detection",
-    "efficientnet_ai_detection",
-    "safe_ai_detection",
-    "dinov2_ai_detection",
-    "bfree_detection",
-    "spai_detection",
-    # AI detection (added 2026-04-05 — were MISSING, caused GBM blind spots)
-    "organika_ai_detection",       # Swin-T, weight 0.25 in fusion — CRITICAL omission
-    "rine_detection",              # ECCV 2024 CLIP intermediate, weight 0.03
-    "pixel_forensics",             # 8 numpy signals, weight 0.10
-    "siglip_ai_detection",         # SigLIP fine-tuned (currently disabled)
-    "ai_source_detection",         # ViT-Base multi-class (currently disabled)
-    # New GPU-era detectors (added 2026-04-05)
-    "radet_detection",             # RA-Det perturbation robustness (arXiv 2603.01544)
-    "fatformer_detection",         # FatFormer CLIP+DWT frequency (CVPR 2024)
-    "aide_detection",              # AIDE DCT+SRM frequency (ICLR 2025)
-    # Authenticity / sensor
-    "prnu_detection",
-    # Tampering detection
-    "deep_modification_detection",
-    "mesorch_detection",
-    # Heuristic / support
-    "spectral_forensics",
-    "metadata_analysis",
-    "modification_detection",
-    "semantic_forensics",
-    "optical_forensics",
-    # Document modules
+    # AI detection (active, ML-backed)
+    "clip_ai_detection",            # CLIP ViT-L/14 + MLP probe v9 (F1=0.85)
+    "dinov2_ai_detection",          # DINOv2-large + MLP probe v9 (F1=0.71, FP-biased)
+    "organika_ai_detection",        # Organika Swin-T (98% reported accuracy)
+    "pixel_forensics",              # 8 numpy pixel-level signals
+    "safe_ai_detection",            # SAFE (KDD 2025), heavily JPEG-dampened
+    "bfree_detection",              # B-Free (CVPR 2025), old checkpoint
+    "rine_detection",               # RINE (ECCV 2024) CLIP intermediate
+    # Tampering / sensor
+    "modification_detection",       # ELA + heuristics
+    "mesorch_detection",            # Mesorch (AAAI 2025)
+    "prnu_detection",               # PRNU sensor fingerprint (+ EXIF baseline)
+    # Always-on heuristic
+    "metadata_analysis",            # EXIF/metadata anomalies
+    # Document modules (only fire on PDFs/Office docs)
     "document_forensics",
     "office_forensics",
     "text_ai_detection",
     "content_validation",
 ]
 
-N_MODULES = len(MODULE_ORDER)  # 29 (was 22 — added organika, rine, pixel, siglip, ai_source, radet, fatformer)
+N_MODULES = len(MODULE_ORDER)  # 15 (down from 30 — pruned dead/disabled modules)
 N_BASE = N_MODULES * 3  # risk, confidence, num_findings per module
 N_INTERACTIONS = N_MODULES * (N_MODULES - 1) // 2  # pairwise interactions
 N_SQUARED = N_MODULES

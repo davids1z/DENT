@@ -19,9 +19,10 @@ from app.forensics.stacking_meta import (
 # ---------------------------------------------------------------------------
 
 def test_module_order_has_expected_modules():
-    # 30 modules: original 22 + organika, rine, pixel_forensics, siglip,
-    # ai_source, radet, fatformer, aide
-    assert N_MODULES == 30, f"Expected 30 modules, got {N_MODULES}"
+    # 2026-04-07: Slimmed from 30 → 15 modules. Removed all permanently disabled
+    # modules to make the meta-learner feature space tractable.
+    # See stacking_meta.py MODULE_ORDER comment for full rationale.
+    assert N_MODULES == 15, f"Expected 15 modules, got {N_MODULES}"
 
 
 def test_module_order_contains_dinov2():
