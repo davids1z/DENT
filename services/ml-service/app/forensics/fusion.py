@@ -78,12 +78,28 @@ _AI_DETECTOR_MODULES = frozenset({
 # bfree/safe/rine removed: 0-5% on modern AI, dilute score.
 # B-Free is ENABLED in pipeline (runs, scores logged) but NOT in core weights
 # until checkpoint is verified to detect modern generators on production.
+# 2026-04-07 — Day 4 of path-to-95 roadmap. REBALANCED based on production
+# data analysis. The previous weights were derived from synthetic CV F1
+# numbers; production stats showed CLIP discriminates only +11.5pp while
+# Organika gives +39.3pp and community_forensics gives +25.8pp. Re-enabled
+# community_forensics (was disabled despite being one of the strongest
+# discriminators in production data) and gave it real weight in core.
+#
+# Production gap (auth_mean → AI_mean) from data/production_stats_v1.json:
+#   organika_ai_detection            +39.3pp  ★ best
+#   community_forensics_detection    +25.8pp  ★ second best (re-enabled)
+#   clip_ai_detection                +11.5pp  weaker than CV F1 suggested
+#   pixel_forensics                  +10.9pp
+#   dinov2_ai_detection               +6.4pp  noise-level (kept at 0.02)
+#
+# Sum = 1.00 (auto-normalized in fusion).
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.50,            # BEST: 74% on AI, 13% on authentic (now weight bumped from 0.48)
-    "organika_ai_detection": 0.32,        # GOOD: 39% on AI, 0% on authentic
-    "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
-    "dinov2_ai_detection": 0.02,          # FP BIAS on car damage; v11 retrain didn't fix it. Minimal tie-breaker only.
-    "ai_generation_detection": 0.06,      # Legacy Swin ensemble (Organika + umm-maybe)
+    "clip_ai_detection":            0.30,  # was 0.50 — gap is smaller than CV F1 suggested
+    "organika_ai_detection":        0.35,  # was 0.32 — strongest discriminator
+    "community_forensics_detection": 0.15, # NEW — second strongest, re-enabled
+    "pixel_forensics":              0.10,  # unchanged — orthogonal physics signal
+    "dinov2_ai_detection":          0.02,  # unchanged — capped at 0.50 + dampened
+    "ai_generation_detection":      0.08,  # legacy Swin ensemble (small role)
 }
 
 # DINOv2 output cap — applied BEFORE the weighted-sum contribution. Even if the
@@ -101,12 +117,13 @@ _CNN_FAMILY_DETECTORS = frozenset({
 
 # DAMPENING independent: methods used to check if DINOv2 FPs are real.
 # Only modules that actually WORK on modern AI and are independent of DINOv2.
-# Removed dead/disabled: rine (0%), bfree (1%), safe (5%), ai_source (disabled).
-# Only WORKING modules that can check DINOv2 FPs.
+# Added community_forensics 2026-04-07 (Day 4) — production data shows it's
+# the second-strongest discriminator at +25.8pp gap.
 _DAMPENING_INDEPENDENT = frozenset({
     "clip_ai_detection",              # CLIP MLP probe (different backbone)
     "organika_ai_detection",          # Organika Swin (98.1% acc)
     "pixel_forensics",                # 8 pixel-level signals (numpy)
+    "community_forensics_detection",  # ViT-Small trained on 4803 generators
 })
 
 # Reliable AI detectors for consensus checking.
@@ -114,6 +131,7 @@ _DAMPENING_INDEPENDENT = frozenset({
 _RELIABLE_AI_DETECTORS = frozenset({
     "clip_ai_detection",
     "organika_ai_detection",
+    "community_forensics_detection",  # added 2026-04-07 Day 4
     "dinov2_ai_detection",
     "pixel_forensics",
 })
@@ -121,6 +139,7 @@ _RELIABLE_AI_DETECTORS = frozenset({
 # Independent detectors for consensus boost — non-CNN, non-embedding methods.
 _INDEPENDENT_DETECTORS = frozenset({
     "organika_ai_detection",          # Organika Swin (98.1% acc, different from CLIP/DINOv2)
+    "community_forensics_detection",  # ViT-Small (different training, 4803 gens)
     "pixel_forensics",                # 8 pixel-level signals (numpy, no neural network)
 })
 
