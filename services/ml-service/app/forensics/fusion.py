@@ -311,7 +311,16 @@ def fuse_scores(
     n_high = min(n_high_cnn, 1) + n_high_non_cnn
     n_low = sum(1 for s in reliable_scores.values() if s < ft.detector_low)
 
-    # Count independent detectors (SAFE/CommFor/SPAI/etc) that confirm AI signal
+    # Count independent detectors (organika, pixel) that STRONGLY confirm.
+    # CRITICAL: this threshold gates the moderate boost, so it must be high
+    # enough to prevent a single FP detector + a barely-elevated independent
+    # from triggering an undeserved 65% boost. Use a stricter cutoff than the
+    # general independent_confirm threshold.
+    strong_independent_confirms = sum(
+        1 for name in _INDEPENDENT_DETECTORS
+        if reliable_scores.get(name, 0) >= 0.40
+    )
+    # Legacy weak threshold (0.25) — used by other boost paths only.
     independent_confirms = sum(
         1 for name in _INDEPENDENT_DETECTORS
         if reliable_scores.get(name, 0) >= ft.independent_confirm
@@ -319,18 +328,29 @@ def fuse_scores(
 
     logger.info(
         "FUSION consensus: n_high=%d (cnn=%d→capped=1, non_cnn=%d) n_low=%d "
-        "independent_confirms=%d (threshold=%.2f) reliable=%s",
+        "independent_confirms=%d strong_ind=%d (threshold=%.2f) reliable=%s",
         n_high, n_high_cnn, n_high_non_cnn, n_low, independent_confirms,
-        ft.independent_confirm,
+        strong_independent_confirms, ft.independent_confirm,
         {k: f"{v:.4f}" for k, v in reliable_scores.items()},
     )
 
-    # Apply consensus boost (strongest matching tier wins)
+    # Apply consensus boost (strongest matching tier wins).
+    #
+    # 2026-04-07 FIX: the moderate boost was firing on car damage authentic
+    # photos because DINOv2 (CNN, FP-prone) alone produced n_high=1 and
+    # pixel_forensics at 0.29 alone produced an independent confirmation —
+    # giving authentic images a spurious 65%. Two stricter conditions now:
+    #   1) require at least one NON-CNN high detector (organika/pixel/CLIP)
+    #   2) require at least one STRONG (>=0.40) independent confirmation
     boost_applied = "none"
     if n_high >= ft.boost_strong_min_high and n_low <= 1 and independent_confirms >= 1:
         overall = max(overall, ft.boost_strong_floor)
         boost_applied = f"strong→{ft.boost_strong_floor}"
-    elif n_high >= ft.boost_moderate_min_high and independent_confirms >= 1:
+    elif (
+        n_high >= ft.boost_moderate_min_high
+        and n_high_non_cnn >= 1                # at least 1 non-CNN must agree
+        and strong_independent_confirms >= 1   # at least 1 strong (>=0.40) confirm
+    ):
         overall = max(overall, ft.boost_moderate_floor)
         boost_applied = f"moderate→{ft.boost_moderate_floor}"
 
