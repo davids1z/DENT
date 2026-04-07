@@ -144,6 +144,49 @@ def test_cnn_only_no_boost():
     assert overall < 0.30, f"DINOv2-only high should be dampened, got {overall}"
 
 
+def test_car5_authentic_dinov2_fp_with_pixel_borderline():
+    """REGRESSION (2026-04-07): car5.jpg authentic produced 65% because:
+        DINOv2 = 0.67 (FP, only "high" detector, CNN-family)
+        Pixel  = 0.29 (just above independent_confirm threshold of 0.25)
+        → moderate boost fired and pushed overall to 0.65.
+
+    Fix: moderate boost now requires (a) at least one NON-CNN high detector
+    and (b) at least one strong (>=0.40) independent confirmation. Neither
+    holds here, so the boost must NOT fire.
+    """
+    modules = [
+        _make_module("clip_ai_detection", 0.08),
+        _make_module("organika_ai_detection", 0.00),
+        _make_module("pixel_forensics", 0.29),
+        _make_module("dinov2_ai_detection", 0.67),
+        _make_module("modification_detection", 0.15),
+        _make_module("metadata_analysis", 0.10),
+        _make_module("safe_ai_detection", 0.03),
+        _make_module("bfree_detection", 0.00),
+    ]
+    overall, score100, level, _ = fuse_scores(modules)
+    assert overall < 0.30, (
+        f"car5.jpg authentic should NOT trigger moderate boost; got {overall} (was 0.65)"
+    )
+    assert level in (RiskLevel.LOW, RiskLevel.MEDIUM)
+
+
+def test_moderate_boost_still_fires_when_legitimate():
+    """Moderate boost MUST still fire when there is genuine consensus:
+    e.g. CLIP high + Organika strong + Pixel strong = real AI signal.
+    """
+    modules = [
+        _make_module("clip_ai_detection", 0.55),       # non-CNN high
+        _make_module("organika_ai_detection", 0.50),   # strong independent
+        _make_module("pixel_forensics", 0.45),         # strong independent
+        _make_module("dinov2_ai_detection", 0.30),
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall >= 0.60, (
+        f"Genuine multi-detector AI signal should trigger boost; got {overall}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Metadata AI tool → definitive signal
 # ---------------------------------------------------------------------------
