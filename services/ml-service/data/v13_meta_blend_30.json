@@ -1,0 +1,13 @@
+{
+  "n_rows": 26,
+  "tp": 10,
+  "fp": 2,
+  "tn": 14,
+  "fn": 0,
+  "authentic_recall": 0.875,
+  "ai_recall": 1.0,
+  "overall_accuracy": 0.9230769230769231,
+  "auth_mean_score": 0.24829662910030137,
+  "ai_mean_score": 0.7247606421825682,
+  "margin": 0.4764640130822668
+}

@@ -47,3 +47,4 @@ services/ml-service/scripts/ablation_study.py
 
 # Claude internal
 .claude/plans/
+services/ml-service/data/production_*.jsonl
