@@ -89,14 +89,16 @@ class OrganikaDetectionAnalyzer(BaseAnalyzer):
                 )
 
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            # 5-crop test-time augmentation. The Swin transformer was
-            # trained on 224x224 centre-cropped Wikimedia images, which
-            # means the centre crop loses ~25% of horizontal content on
-            # 16:9 photos. Averaging the AI probability over 4 corners
-            # plus the centre recovers artefacts that would otherwise be
-            # discarded. Same rationale as the CommFor TTA in
-            # community_forensics.py.
-            score = self._compute_score_tta(img)
+            # NOTE: 5-crop TTA was attempted but BACKFIRED on car4.webp
+            # (Tesla crash photo). The model dropped from 39% to 4% because
+            # the 4 corner crops captured background (sky, palm trees, road)
+            # which all look authentic to the SDXL detector, and the mean
+            # diluted the centre crop's AI signal. For Organika specifically
+            # the centre crop is the "right" crop because Wikimedia training
+            # subjects are typically centred. Reverted to single forward pass
+            # on 2026-04-07. The _compute_score_tta() helper is kept below
+            # for future experimentation and unit tests.
+            score = self._compute_score(img)
             self._emit_findings(score, findings)
 
         except Exception as e:
