@@ -79,12 +79,18 @@ _AI_DETECTOR_MODULES = frozenset({
 # B-Free is ENABLED in pipeline (runs, scores logged) but NOT in core weights
 # until checkpoint is verified to detect modern generators on production.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection": 0.48,            # BEST: 74% on AI, 13% on authentic
+    "clip_ai_detection": 0.50,            # BEST: 74% on AI, 13% on authentic (now weight bumped from 0.48)
     "organika_ai_detection": 0.32,        # GOOD: 39% on AI, 0% on authentic
     "pixel_forensics": 0.10,              # WEAK: 33% AI, 22% auth — small edge
-    "dinov2_ai_detection": 0.04,          # FP BIAS on car damage even after retrain — minimal weight
+    "dinov2_ai_detection": 0.02,          # FP BIAS on car damage; v11 retrain didn't fix it. Minimal tie-breaker only.
     "ai_generation_detection": 0.06,      # Legacy Swin ensemble (Organika + umm-maybe)
 }
+
+# DINOv2 output cap — applied BEFORE the weighted-sum contribution. Even if the
+# probe outputs 0.95 on a car damage photo (which it still does post-v11), it
+# can never push the weighted score by more than this cap times its weight.
+# At weight 0.02 + cap 0.50, max DINOv2 contribution = 0.01 = 1% of overall.
+_DINOV2_OUTPUT_CAP = 0.50
 
 # CNN-family: detectors dampened when independents don't confirm.
 # Only DINOv2 remains — has severe FP bias on car damage photos.
@@ -206,11 +212,24 @@ def fuse_scores(
         if m.module_name in _CORE_AI_WEIGHTS:
             w = _CORE_AI_WEIGHTS[m.module_name]
             score = m.risk_score
-            if m.module_name in _CNN_FAMILY_DETECTORS:
+            # DINOv2 hard cap: even if probe outputs 0.95 on car damage, the
+            # contribution to fusion is bounded. v11 retrain reduced FP but
+            # didn't eliminate it; this cap is the safety net.
+            if m.module_name == "dinov2_ai_detection":
+                raw = score
+                score = min(score, _DINOV2_OUTPUT_CAP)
+                if score < raw:
+                    _core_details[m.module_name] = f"{raw:.4f}→cap{score:.4f} w={w}"
+                else:
+                    _core_details[m.module_name] = f"{score:.4f} w={w}"
+            elif m.module_name in _CNN_FAMILY_DETECTORS:
                 score *= cnn_dampening
                 _core_details[m.module_name] = f"{m.risk_score:.4f}*{cnn_dampening:.2f}={score:.4f} w={w}"
             else:
                 _core_details[m.module_name] = f"{score:.4f} w={w}"
+            # CNN dampening still applies to the (capped) DINOv2 score
+            if m.module_name == "dinov2_ai_detection" and m.module_name in _CNN_FAMILY_DETECTORS:
+                score *= cnn_dampening
             core_weighted += score * w
             core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0

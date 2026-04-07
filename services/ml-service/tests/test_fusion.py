@@ -144,6 +144,23 @@ def test_cnn_only_no_boost():
     assert overall < 0.30, f"DINOv2-only high should be dampened, got {overall}"
 
 
+def test_dinov2_output_capped_at_50():
+    """DINOv2 raw 0.95 must be capped to 0.50 in the weighted-sum contribution.
+    With weight 0.02, max DINOv2 contribution = 0.50 * 0.02 = 0.01 of weighted sum.
+    Combined with clean CLIP/Organika/Pixel signals → overall stays < 0.10.
+    """
+    modules = [
+        _make_module("clip_ai_detection", 0.05),
+        _make_module("organika_ai_detection", 0.00),
+        _make_module("pixel_forensics", 0.10),
+        _make_module("dinov2_ai_detection", 0.95),  # extreme FP, cap kicks in
+    ]
+    overall, _, _, _ = fuse_scores(modules)
+    assert overall < 0.10, (
+        f"DINOv2 cap should keep extreme FP from polluting overall; got {overall}"
+    )
+
+
 def test_car5_authentic_dinov2_fp_with_pixel_borderline():
     """REGRESSION (2026-04-07): car5.jpg authentic produced 65% because:
         DINOv2 = 0.67 (FP, only "high" detector, CNN-family)
