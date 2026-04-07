@@ -34,7 +34,11 @@ class Settings(BaseSettings):
     forensics_aigen_methods: str = "sdxl,vit"
 
     # Community Forensics — DISABLED: only covers open-source SD variants, 4% on modern AI
-    forensics_community_forensics_enabled: bool = False
+    # Enabled 2026-04-07 after Day 4 of path-to-95 roadmap. Production data
+    # showed +25.8pp gap (auth 0.57% mean, AI 15.59% mean) with 42% of AI
+    # images firing strongly (30-95%) and only 4% of authentic with any
+    # signal at all. Near-zero false positives, MIT license, ViT-Small 87MB.
+    forensics_community_forensics_enabled: bool = True
 
     # EfficientNet-B4 AI detection — DISABLED: gated repo (401), 98% FP on authentic
     forensics_efficientnet_ai_enabled: bool = False
