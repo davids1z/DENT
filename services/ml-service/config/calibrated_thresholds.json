@@ -1,0 +1,35 @@
+{
+  "fusion": {
+    "cnn_dampening_threshold": 0.22,
+    "cnn_dampening_floor": 0.3,
+    "independent_confirm": 0.22,
+    "detector_high": 0.5,
+    "detector_low": 0.15,
+    "risk_medium": 0.15,
+    "risk_high": 0.34,
+    "risk_critical": 0.85,
+    "boost_strong_floor": 0.75,
+    "boost_strong_min_high": 2,
+    "boost_moderate_floor": 0.55,
+    "boost_moderate_min_high": 1
+  },
+  "_metadata": {
+    "source": "scripts/derive_calibrated_thresholds.py",
+    "stats_file": "data/production_stats_v1.json",
+    "train_jsonl": "data/production_train_v1.jsonl",
+    "n_train_rows": 102,
+    "best_threshold_sweep": {
+      "threshold": 0.34,
+      "balanced_acc": 0.6287006578947368,
+      "sensitivity": 0.7105263157894737,
+      "specificity": 0.546875,
+      "tp": 27,
+      "fp": 29,
+      "tn": 35,
+      "fn": 11
+    },
+    "production_p75_max_indep": 0.22,
+    "production_p95_pixel": 0.22,
+    "note": "These thresholds are derived from production statistics in production_stats_v1.json. Re-derive whenever the production data distribution shifts (e.g., new generators in production)."
+  }
+}

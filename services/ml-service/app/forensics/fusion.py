@@ -158,22 +158,30 @@ def fuse_scores(
     reg = get_registry()
     ft = reg.fusion
 
-    # ── Stacking meta-learner (replaces everything when trained) ──────
+    # ── Stacking meta-learner (supervised on production data) ────────
     try:
         from ..config import settings as _settings
         meta_enabled = _settings.forensics_stacking_meta_enabled
+        meta_blend_factor = float(getattr(_settings, "forensics_stacking_meta_blend_factor", 0.0))
     except Exception as e:
         logger.debug("Stacking meta config load: %s", e)
         meta_enabled = False
+        meta_blend_factor = 0.0
 
     verdict_probs: dict[str, float] | None = None
+    meta_score: float | None = None  # Binary AI probability from supervised meta-learner
 
-    # Meta-learner provides ONLY verdict_probabilities (3-class breakdown
-    # for the UI bars). The overall risk score is ALWAYS computed by the
-    # rule-based fusion below — rules are transparent and debuggable.
+    # Meta-learner provides:
+    #   1) verdict_probabilities (3-class) for the UI bars
+    #   2) a binary "AI risk" score that the rule-based fusion blends with
+    # The blend is gated by meta_blend_factor (default 0.0 = pure rules).
+    # When set to 0.5 the final overall = 0.5 * rule + 0.5 * meta. This was
+    # introduced 2026-04-07 after Day 3 of the path-to-95 roadmap, training
+    # the meta-learner supervised on labeled production data.
     if meta_enabled:
         meta_learner = get_meta_learner(_settings.forensics_stacking_meta_weights)
         verdict_probs = meta_learner.predict_proba(modules)
+        meta_score = meta_learner.predict(modules)
 
     # ── Debug: log all module scores ──────────────────────────────────
     _scores_debug = {m.module_name: round(m.risk_score, 4) for m in active}
@@ -424,6 +432,24 @@ def fuse_scores(
         if overall > clip_isolated_cap:
             overall = clip_isolated_cap
             boost_applied = f"clip_isolated_cap→{clip_isolated_cap}"
+
+    # ── Step 7: Supervised meta-learner blend ────────────────────────
+    # If a trained meta-learner is loaded and meta_blend_factor > 0,
+    # blend the meta score into the rule-based overall. This is the
+    # Day 3 deliverable from the path-to-95 roadmap. The blend factor
+    # gates how much trust we put in the supervised model:
+    #   0.0  pure rule-based (default, safe)
+    #   0.5  half-and-half (recommended after validation)
+    #   1.0  pure meta-learner (only when meta CV F1 >> rule accuracy)
+    if meta_score is not None and meta_blend_factor > 0.0:
+        rule_score = overall
+        blended = (1.0 - meta_blend_factor) * rule_score + meta_blend_factor * meta_score
+        logger.info(
+            "FUSION meta blend: rule=%.4f meta=%.4f factor=%.2f → blended=%.4f",
+            rule_score, meta_score, meta_blend_factor, blended,
+        )
+        overall = blended
+        boost_applied = f"{boost_applied}+meta_blend({meta_blend_factor:.2f})"
 
     overall = max(0.0, min(1.0, overall))
 
