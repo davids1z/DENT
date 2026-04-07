@@ -45,7 +45,11 @@ class Settings(BaseSettings):
     forensics_efficientnet_ai_model: str = "Dafilab/ai-image-detector"
 
     # SAFE AI detection (KDD 2025, DWT wavelet + pixel correlation, 1.44M params)
-    forensics_safe_ai_enabled: bool = True
+    # DISABLED 2026-04-07: production audit shows -6pp gap (anti-correlated).
+    # Returns ~0 even on obvious AI generators while occasionally firing on
+    # authentic photos. Kept in MODULE_ORDER so meta-learner weights still
+    # validate, but no longer executed in the pipeline.
+    forensics_safe_ai_enabled: bool = False
 
     # DINOv2 AI detection (linear probe on frozen DINOv2-large, 1024-dim)
     forensics_dinov2_ai_enabled: bool = True
@@ -56,7 +60,12 @@ class Settings(BaseSettings):
     forensics_spai_model_dir: str = "/app/models/spai"
 
     # B-Free AI detection (CVPR 2025, bias-free DINOv2 ViT-Base, 27 generators, 5-crop)
-    forensics_bfree_enabled: bool = True
+    # DISABLED 2026-04-07: production audit shows -17.5pp gap (severely
+    # anti-correlated — confidently labels AI as authentic). The previous
+    # checkpoint never recovered after the early-2026 transformers update.
+    # See B-Free disaster post-mortem in path-to-95.md for the rationale
+    # behind the holdout_gate inversion check.
+    forensics_bfree_enabled: bool = False
     forensics_bfree_model_dir: str = "/app/models/bfree"
 
     # Pixel Forensics (8 content-independent signals, numpy only)
@@ -85,7 +94,11 @@ class Settings(BaseSettings):
     forensics_ai_source_enabled: bool = False
 
     # RINE AI detection (ECCV 2024, OpenAI CLIP intermediate layers, 91.5% acc)
-    forensics_rine_ai_enabled: bool = True
+    # DISABLED 2026-04-07: production audit shows the probe is saturated —
+    # outputs ~0 on every image regardless of source. The architecture is
+    # sound but the public checkpoint does not generalise to the post-2024
+    # generators we see in production.
+    forensics_rine_ai_enabled: bool = False
 
     # SigLIP AI detection (fine-tuned SigLIP, 92.9M params, 99.23% accuracy)
     forensics_siglip_ai_enabled: bool = False
@@ -117,7 +130,12 @@ class Settings(BaseSettings):
     forensics_office_enabled: bool = True
 
     # PRNU sensor noise analysis (camera fingerprinting)
-    forensics_prnu_enabled: bool = True
+    # DISABLED 2026-04-07: WebP/JPEG re-encoding (which every uploaded
+    # photo goes through) destroys the PRNU signal. Cohen's d on production
+    # data is 0.011 — no separation between authentic and AI. Module is
+    # kept in MODULE_ORDER for meta-learner schema compatibility but is
+    # no longer executed in the pipeline.
+    forensics_prnu_enabled: bool = False
 
     # Content validation (OCR + OIB/IBAN check for Croatian documents)
     forensics_content_validation_enabled: bool = True
