@@ -7,18 +7,68 @@ const POLL_MAX_MS = 600_000;
 
 // ---------------------------------------------------------------------------
 // Client-side image compression — reduces upload from 5-10MB to ~150-300KB
+//
+// IMPORTANT (Sprint 2, 2026-04-07): the previous implementation drew every
+// uploaded image into a canvas and re-encoded it as JPEG. That destroys
+// every piece of metadata the backend uses for forensic analysis:
+//
+//   - EXIF (Make/Model/DateTimeOriginal/GPS) — primary device fingerprint
+//   - XMP and IPTC blocks (editing history, creator tags)
+//   - ICC profiles (colour space anomalies)
+//   - PNG iTXt/tEXt chunks (Stable Diffusion / ComfyUI / Auto1111 prompts!)
+//   - C2PA provenance manifests (DALL-E 3, Adobe Firefly, GPT-Image-1)
+//   - WebP-specific chunks
+//
+// Every authentic photo from a phone arrived at the backend looking like
+// it had been laundered through a metadata stripper. The metadata module
+// has been blind in production since the day this was written.
+//
+// New policy: NEVER compress unless we have to.
+//   1. Non-image files (PDF, DOCX) → pass through unchanged
+//   2. PNG / WebP / HEIC / AVIF → ALWAYS pass through unchanged
+//      (these formats carry the most-discriminative metadata: SD prompts,
+//      C2PA manifests, modern AI generator signatures)
+//   3. JPEG ≤ 4MB → pass through unchanged (preserves EXIF/XMP)
+//   4. JPEG > 4MB → compress as a last resort, ONLY when the file is too
+//      big for the upload path. This is the only branch that strips EXIF
+//      and we accept the trade-off because the alternative is failed
+//      uploads on huge photos.
 // ---------------------------------------------------------------------------
 const COMPRESS_MAX_DIM = 1536; // px — enough for all ML models (max input 518px)
-const COMPRESS_QUALITY = 0.80; // JPEG quality
+const COMPRESS_QUALITY = 0.85; // JPEG quality (was 0.80; bumped now that we
+                                // only ever recompress huge files)
+const COMPRESS_THRESHOLD_BYTES = 4 * 1024 * 1024; // 4 MB
+
+/** Image MIME types whose metadata we MUST preserve at all costs. */
+const METADATA_CRITICAL_TYPES = new Set([
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/avif",
+  "image/tiff",
+  "image/gif",
+]);
 
 /**
- * Compress an image File on the client using canvas.
- * Returns a smaller JPEG Blob. Skips non-image files (PDFs, DOCX).
+ * Compress an image File on the client only when strictly necessary.
+ * Preserves the original bytes (and therefore EXIF / PNG chunks / C2PA)
+ * whenever possible.
  */
 async function compressImage(file: File): Promise<File> {
-  // Skip non-image files
+  // Pass through non-image files (PDF, DOCX, etc.)
   if (!file.type.startsWith("image/")) return file;
 
+  // Pass through metadata-critical formats unchanged. Re-encoding any of
+  // these as JPEG would destroy forensic signal we cannot recover.
+  if (METADATA_CRITICAL_TYPES.has(file.type)) return file;
+
+  // JPEG below the threshold → pass through unchanged. This preserves
+  // EXIF/XMP/IPTC/ICC for the metadata module without an upload penalty.
+  if (file.size <= COMPRESS_THRESHOLD_BYTES) return file;
+
+  // JPEG above 4MB → fall back to canvas re-encode. This DOES strip EXIF
+  // — accepted trade-off because the alternative is upload failure.
   return new Promise<File>((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -40,11 +90,13 @@ async function compressImage(file: File): Promise<File> {
       canvas.toBlob(
         (blob) => {
           if (blob && blob.size < file.size) {
-            // Use compressed version (rename to .jpg)
-            const name = file.name.replace(/\.[^.]+$/, ".jpg");
+            // Use compressed version. Keep the original filename so the
+            // backend filename heuristics (`gemini_generated_image_…`)
+            // still fire. Only the extension changes.
+            const name = file.name.replace(/\.[^.]+$/i, ".jpg");
             resolve(new File([blob], name, { type: "image/jpeg" }));
           } else {
-            // Compressed is larger (tiny image) — use original
+            // Compressed is larger (rare for >4MB inputs) — use original
             resolve(file);
           }
           URL.revokeObjectURL(img.src);

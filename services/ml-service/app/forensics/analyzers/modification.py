@@ -67,6 +67,14 @@ class ModificationAnalyzer(BaseAnalyzer):
     async def analyze_image(self, image_bytes: bytes, filename: str) -> ModuleResult:
         start = time.monotonic()
         findings: list[AnalyzerFinding] = []
+        # Per-request heatmap. Lives in a local var (not on self) so two
+        # concurrent analyses cannot cross-contaminate. The bytes are
+        # attached to the ModuleResult below and read out in pipeline.py
+        # via result.heatmaps["ela"] instead of self._ela_heatmap_b64.
+        ela_heatmap_b64: str | None = None
+        # Backwards-compat: keep the instance attribute populated for any
+        # caller that still reads `self.ela_heatmap_b64`. This will be
+        # removed once pipeline.py is migrated to use result.heatmaps.
         self._ela_heatmap_b64 = None
 
         try:
@@ -91,7 +99,8 @@ class ModificationAnalyzer(BaseAnalyzer):
                 ela_result = self._perform_ela(img)
                 if ela_result:
                     anomaly_ratio, heatmap_b64 = ela_result
-                    self._ela_heatmap_b64 = heatmap_b64
+                    ela_heatmap_b64 = heatmap_b64
+                    self._ela_heatmap_b64 = heatmap_b64  # legacy
                     self._evaluate_ela(anomaly_ratio, findings)
 
             # 2. JPEG 8x8 block grid detection
@@ -138,7 +147,10 @@ class ModificationAnalyzer(BaseAnalyzer):
             return self._make_result([], elapsed, error=str(e))
 
         elapsed = int((time.monotonic() - start) * 1000)
-        return self._make_result(findings, elapsed)
+        result = self._make_result(findings, elapsed)
+        if ela_heatmap_b64:
+            result.heatmaps["ela"] = ela_heatmap_b64
+        return result
 
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)

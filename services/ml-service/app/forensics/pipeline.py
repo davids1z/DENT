@@ -487,7 +487,24 @@ class ForensicPipeline:
 
         # ── Universal file triage (magic bytes) ──────────────────
         file_category, detected_mime = triage_file(file_bytes, filename)
-        logger.info("[%s] File triage: %s → category=%s mime=%s", rid, filename, file_category, detected_mime)
+
+        # Sprint 2 observability: log the input shape so we can correlate
+        # 18s vs 37s analysis times back to image dimensions / file size.
+        # Cheap PIL header read (no full decode) — only for image inputs.
+        img_dims = ""
+        if file_category not in ("pdf", "docx", "xlsx"):
+            try:
+                from PIL import Image as _PIL
+                with _PIL.open(io.BytesIO(file_bytes)) as _hdr:
+                    img_dims = f" dims={_hdr.width}x{_hdr.height} mode={_hdr.mode}"
+            except Exception:
+                pass
+
+        logger.info(
+            "[%s] File triage: %s → category=%s mime=%s size=%dKB%s",
+            rid, filename, file_category, detected_mime,
+            len(file_bytes) // 1024, img_dims,
+        )
 
         # Count total modules to run (for progress tracking)
         total_steps = self._count_active_modules(skip, file_category)
@@ -689,9 +706,18 @@ class ForensicPipeline:
                         modules.append(result)
                     _report_progress(mod_name)
 
+                # Sprint 2 observability: per-module timing breakdown sorted
+                # slowest-first. The bare "All N modules complete" log was
+                # opaque — we couldn't tell whether DINOv2 or Mesorch was
+                # eating the wall-clock budget on slow analyses.
+                _ok = [m for m in modules if isinstance(m, ModuleResult) and not m.error]
+                _ranked = sorted(_ok, key=lambda m: m.processing_time_ms, reverse=True)
+                _timing = " ".join(
+                    f"{m.module_name}={m.processing_time_ms}ms" for m in _ranked
+                )
                 logger.info(
-                    "All %d modules complete (parallel thread pool)",
-                    len(all_analyzers),
+                    "[%s] All %d modules complete | timings (slowest-first): %s",
+                    rid, len(all_analyzers), _timing,
                 )
 
         overall_score, overall_score_100, overall_level, verdict_probs = fuse_scores(modules)
@@ -702,8 +728,23 @@ class ForensicPipeline:
         else:
             total_time = sum(m.processing_time_ms for m in modules)
 
-        # Extract ELA heatmap if available, fall back to CNN heatmap
-        ela_heatmap = self._modification.ela_heatmap_b64
+        # ── Heatmap extraction (Sprint 2 race-condition fix) ──────
+        # Heatmaps now travel WITH the ModuleResult via result.heatmaps
+        # instead of being read off the analyzer instance after the fact.
+        # This eliminates the cross-request heatmap-leak that was latent
+        # whenever MAX_CONCURRENT_ANALYSES > 1. The legacy `self.<x>_b64`
+        # paths are still tried as a fall-back for analyzers that haven't
+        # been migrated yet (cnn, optical, spectral).
+        def _heatmap_for(module_name: str, key: str) -> str | None:
+            for m in modules:
+                if m.module_name == module_name and m.heatmaps.get(key):
+                    return m.heatmaps[key]
+            return None
+
+        ela_heatmap = _heatmap_for("modification_detection", "ela")
+        # Legacy paths for analyzers that still use instance state
+        if ela_heatmap is None:
+            ela_heatmap = self._modification.ela_heatmap_b64
         if ela_heatmap is None and self._cnn is not None:
             ela_heatmap = self._cnn.cnn_heatmap_b64
 
