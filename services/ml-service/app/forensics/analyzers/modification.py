@@ -1,12 +1,25 @@
 import base64
 import io
 import logging
+import os
+import tempfile
 import time
 
 import numpy as np
 from PIL import Image, ImageFilter
 
 from ..base import AnalyzerFinding, BaseAnalyzer, ModuleResult
+
+# Optional jpegio import — needed for DCT double-compression detection.
+# Module remains usable without it; the double-compression check just
+# silently returns. Imported at module top to avoid NameError on the
+# first JPEG that hits _check_double_compression.
+try:
+    import jpegio  # type: ignore  # noqa: F401
+    _HAS_JPEGIO = True
+except Exception:  # pragma: no cover - optional dep
+    jpegio = None  # type: ignore
+    _HAS_JPEGIO = False
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +74,25 @@ class ModificationAnalyzer(BaseAnalyzer):
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            # 1. Enhanced ELA with CLAHE
-            ela_result = self._perform_ela(img)
-            if ela_result:
-                anomaly_ratio, heatmap_b64 = ela_result
-                self._ela_heatmap_b64 = heatmap_b64
-                self._evaluate_ela(anomaly_ratio, findings)
+            # ELA presupposes a JPEG-original baseline. For non-JPEG inputs
+            # (webp, png, tiff, bmp, gif) the "diff vs re-saved JPEG" is
+            # measuring webp→JPEG conversion noise, not tampering. CLAHE
+            # then amplifies that noise into a high-contrast map and the
+            # mean+2σ threshold counts ~5% of pixels as "anomalous" by
+            # construction. This was the origin of the 36% false positive
+            # on car4.webp documented in the audit.
+            is_jpeg = (
+                len(image_bytes) >= 2
+                and image_bytes[:2] == b"\xff\xd8"
+            )
+
+            # 1. Enhanced ELA with CLAHE — JPEG only
+            if is_jpeg:
+                ela_result = self._perform_ela(img)
+                if ela_result:
+                    anomaly_ratio, heatmap_b64 = ela_result
+                    self._ela_heatmap_b64 = heatmap_b64
+                    self._evaluate_ela(anomaly_ratio, findings)
 
             # 2. JPEG 8x8 block grid detection
             self._check_jpeg_block_grid(img, filename, findings)
@@ -537,9 +563,14 @@ class ModificationAnalyzer(BaseAnalyzer):
         if image_bytes[:2] != b'\xff\xd8':
             return
 
-        try:
-            import jpegio
+        # jpegio is an optional dependency. Without it the module can still
+        # run all other sub-checks; we just skip double-compression detection.
+        # Imported at module top (see _HAS_JPEGIO) to avoid the silent
+        # NameError that affected every JPEG before Sprint 1.
+        if not _HAS_JPEGIO:
+            return
 
+        try:
             with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                 tmp.write(image_bytes)
                 tmp_path = tmp.name

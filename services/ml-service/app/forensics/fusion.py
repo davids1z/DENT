@@ -86,27 +86,56 @@ _AI_DETECTOR_MODULES = frozenset({
 # discriminators in production data) and gave it real weight in core.
 #
 # Production gap (auth_mean → AI_mean) from data/production_stats_v1.json:
-#   organika_ai_detection            +39.3pp  ★ best
+#   organika_ai_detection            +39.3pp  ★ best (legacy stat, SDXL-era)
 #   community_forensics_detection    +25.8pp  ★ second best (re-enabled)
 #   clip_ai_detection                +11.5pp  weaker than CV F1 suggested
 #   pixel_forensics                  +10.9pp
-#   dinov2_ai_detection               +6.4pp  noise-level (kept at 0.02)
+#   dinov2_ai_detection               +6.4pp  ⚠ STALE — see note below
 #
 # Sum = 1.00 (auto-normalized in fusion).
+#
+# 2026-04-07 Sprint 1 — REBALANCE BASED ON CURRENT PROBE VERSIONS:
+#
+# The legacy +6.4pp gap for DINOv2 was computed across THREE different probe
+# versions in the same training file (v9 broken / v10 incremental / v11 fixed).
+# Post-v11 production observation on the same images:
+#     car4 (AI) → 1.00,  car5 (auth) → 0.0005,  car6 (auth) → 0.0006
+# That is a +99.9pp gap on the only test points we trust. DINOv2 v11 is the
+# strongest single discriminator in the system; the 0.02 weight + 0.50 cap
+# was inherited from the v9 disaster era and is now actively suppressing the
+# best signal we have.
+#
+# Similarly, CLIP's +11.5pp aggregate is dominated by the bimodal probe
+# distribution (p75≈0.74, p90≈0.85 — see audit) which means it earns its
+# weight via the HIGH boost cascade, not via the weighted core. We can drop
+# the core weight without losing the boost-driven contribution.
+#
+# CommFor was production-promoted in PR #32 but kept at 0.15; it deserves
+# the second-largest weight after Organika.
+#
+# ai_generation_detection (legacy Swin ensemble) duplicates Organika at 4x
+# the per-image cost; its 0.08 contribution is dropped to 0.0.
 _CORE_AI_WEIGHTS = {
-    "clip_ai_detection":            0.30,  # was 0.50 — gap is smaller than CV F1 suggested
-    "organika_ai_detection":        0.35,  # was 0.32 — strongest discriminator
-    "community_forensics_detection": 0.15, # NEW — second strongest, re-enabled
-    "pixel_forensics":              0.10,  # unchanged — orthogonal physics signal
-    "dinov2_ai_detection":          0.02,  # unchanged — capped at 0.50 + dampened
-    "ai_generation_detection":      0.08,  # legacy Swin ensemble (small role)
+    "dinov2_ai_detection":           0.20,  # was 0.02 — v11 probe is the strongest signal
+    "organika_ai_detection":         0.25,  # was 0.35 — still strong, license/domain caveats
+    "community_forensics_detection": 0.25,  # was 0.15 — production gap +25.8pp justifies parity
+    "clip_ai_detection":             0.20,  # was 0.30 — earns its weight via boost cascade
+    "pixel_forensics":               0.10,  # unchanged — orthogonal physics signal
+    "ai_generation_detection":       0.00,  # was 0.08 — DROPPED, duplicates Organika
 }
 
-# DINOv2 output cap — applied BEFORE the weighted-sum contribution. Even if the
-# probe outputs 0.95 on a car damage photo (which it still does post-v11), it
-# can never push the weighted score by more than this cap times its weight.
-# At weight 0.02 + cap 0.50, max DINOv2 contribution = 0.01 = 1% of overall.
-_DINOV2_OUTPUT_CAP = 0.50
+# DINOv2 output cap — REMOVED 2026-04-07 Sprint 1.
+# The v11 probe (3-layer MLP + LayerNorm) no longer false-positives on the
+# car damage class that motivated the cap. Production observation on Apr 7:
+#     car4 (AI)  → 1.00     ← needed full magnitude
+#     car5 (authentic) → 0.0005    ← no false positive
+#     car6 (authentic) → 0.0006    ← no false positive
+# CNN-family dampening still applies as a safety net when no independent
+# detector confirms (see fusion loop below). Set to 1.01 to make the
+# `score > _DINOV2_OUTPUT_CAP` check at line ~250 always evaluate False —
+# the cap is effectively disabled while the constant is preserved for
+# rollback if a new false-positive class emerges.
+_DINOV2_OUTPUT_CAP = 1.01
 
 # CNN-family: detectors dampened when independents don't confirm.
 # Only DINOv2 remains — has severe FP bias on car damage photos.
@@ -416,22 +445,35 @@ def fuse_scores(
 
     # High-confidence CLIP boost: when CLIP is very confident (>70%) AND
     # independent detectors confirm, boost aggressively.
-    # CLIP 74% + Organika 39% + Pixel 33% = 3 detectors agree = strong AI signal.
+    # CLIP 74% + Organika 39% + Pixel 33% + CommFor 0.04 = 3-of-4 agree = strong AI signal.
+    #
+    # Sprint 1 (2026-04-07) tweaks:
+    #  • Confirm threshold lowered from 0.30 → 0.25 so that borderline-but-
+    #    aligned detectors (Organika at 0.27, Pixel at 0.26) still count.
+    #    Justification: Organika hedges around 0.27-0.39 on modern generators
+    #    where it has weaker discriminative power; the previous 0.30 cutoff
+    #    sat right on top of that hedging band and caused car4 to flip from
+    #    90% → 85% when one detector dipped a few pp.
+    #  • CommFor added as a confirm with its own threshold 0.20 — it has
+    #    the second-largest aggregate gap but was ignored by the boost path.
     clip_m = _get_module(active, "clip_ai_detection")
     organika_m = _get_module(active, "organika_ai_detection")
     pixel_m = _get_module(active, "pixel_forensics")
+    commfor_m = _get_module(active, "community_forensics_detection")
 
     if clip_m and clip_m.risk_score >= 0.70:
-        # Count strong confirmations (>= 0.30)
+        # Count strong confirmations
         strong_confirms = 0
-        if organika_m and organika_m.risk_score >= 0.30:
+        if organika_m and organika_m.risk_score >= 0.25:
             strong_confirms += 1
-        if pixel_m and pixel_m.risk_score >= 0.30:
+        if pixel_m and pixel_m.risk_score >= 0.25:
+            strong_confirms += 1
+        if commfor_m and commfor_m.risk_score >= 0.20:
             strong_confirms += 1
 
         if strong_confirms >= 2:
-            # CLIP HIGH + 2 strong confirms → very confident AI (90%)
-            clip_floor = max(0.90, clip_m.risk_score)
+            # CLIP HIGH + 2 strong confirms → very confident AI (92%)
+            clip_floor = max(0.92, clip_m.risk_score)
             if clip_floor > overall:
                 overall = clip_floor
                 boost_applied = f"clip_high_2confirm→{clip_floor:.4f}"

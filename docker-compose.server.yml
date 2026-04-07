@@ -116,7 +116,9 @@ services:
       MKL_NUM_THREADS: "2"
       MALLOC_TRIM_THRESHOLD_: "131072"
       DENT_UVICORN_WORKERS: "1"
-      DENT_THREAD_POOL_SIZE: "6"
+      # Sprint 1 (2026-04-07): bumped 6 → 10 so the pool always has slack
+      # for the ~8 active modules (was queueing 2 tasks per request).
+      DENT_THREAD_POOL_SIZE: "10"
       DENT_MAX_CONCURRENT_ANALYSES: "1"
       # ── S3 (for calibration data access) ─────────────────────────
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
