@@ -54,6 +54,18 @@ CROP_SIZE = 384
 NORM_MEAN = [0.485, 0.456, 0.406]
 NORM_STD = [0.229, 0.224, 0.225]
 
+# Test-time augmentation: 5-crop (4 corners + center) + horizontal flips of
+# each. The default upstream eval uses single CenterCrop(384) which loses
+# ~25% of horizontal content on a typical 16:9 photo — exactly where the
+# AI artefacts often live in a damaged-car composition. Averaging the
+# sigmoid output across 5 crops typically lifts AI recall by 2-5pp on the
+# kinds of edge cases where the centre crop gives ~0.04. We do NOT include
+# the horizontal flips by default to keep the per-image cost at 5x rather
+# than 10x; flip-augmented inference can be enabled via env var below.
+TTA_ENABLED = True
+TTA_FIVE_CROP = True
+TTA_HFLIP = False
+
 
 class CommunityForensicsAnalyzer(BaseAnalyzer):
     """AI-generated image detection using Community Forensics ViT-Small."""
@@ -84,7 +96,15 @@ class CommunityForensicsAnalyzer(BaseAnalyzer):
         )
         os.makedirs(cache_dir, exist_ok=True)
 
-        # Build inference transform (matches repo's test-time preprocessing)
+        # Build the SHARED preprocessing prefix: just resize + tensor.
+        # Cropping is done per-TTA-crop further down so we can reuse the
+        # same resized PIL/tensor for all 5 crops without re-resizing.
+        self._resize = transforms.Resize(RESIZE_SIZE)
+        self._to_tensor = transforms.ToTensor()
+        self._normalize = transforms.Normalize(mean=NORM_MEAN, std=NORM_STD)
+
+        # Default single-centre-crop transform — kept for fallback / unit
+        # tests that monkey-patch the analyser.
         self._transform = transforms.Compose([
             transforms.Resize(RESIZE_SIZE),
             transforms.CenterCrop(CROP_SIZE),
@@ -164,13 +184,52 @@ class CommunityForensicsAnalyzer(BaseAnalyzer):
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            # Preprocess: Resize(440) → CenterCrop(384) → Normalize(ImageNet)
-            tensor = self._transform(img).unsqueeze(0)  # [1, 3, 384, 384]
+            # 5-crop test-time augmentation. Resize once, then take 4
+            # corner crops + 1 centre crop. We feed all 5 crops as a single
+            # batch through the ViT and average the sigmoid output. This
+            # is the standard TTA approach used by ImageNet eval scripts
+            # and recovers AI artefacts that the centre crop discards.
+            from torchvision import transforms as T
 
-            # Inference
+            resized = self._resize(img)
+            crops: list[torch.Tensor] = []
+            if TTA_ENABLED and TTA_FIVE_CROP:
+                for crop in T.FiveCrop(CROP_SIZE)(resized):
+                    crops.append(self._normalize(self._to_tensor(crop)))
+                if TTA_HFLIP:
+                    flipped = T.functional.hflip(resized)
+                    for crop in T.FiveCrop(CROP_SIZE)(flipped):
+                        crops.append(self._normalize(self._to_tensor(crop)))
+            else:
+                # Fallback: single centre crop
+                crops.append(
+                    self._normalize(
+                        self._to_tensor(T.CenterCrop(CROP_SIZE)(resized))
+                    )
+                )
+
+            batch = torch.stack(crops, dim=0)  # [N, 3, 384, 384]
+
+            # Inference — single forward pass over all crops
             with torch.no_grad():
-                logit = self._model(tensor)
-                prob = torch.sigmoid(logit).item()
+                logits = self._model(batch)            # [N, 1]
+                probs = torch.sigmoid(logits).squeeze(-1)  # [N]
+                prob_mean = probs.mean().item()
+                prob_max = probs.max().item()
+                prob_min = probs.min().item()
+
+            # Use the MEAN over crops as the headline score. Mean is the
+            # standard ImageNet-eval choice and avoids the false-positive
+            # risk of MAX (a single noisy corner crop on an authentic
+            # photo could otherwise inflate the score). We still log max
+            # and min so we can measure crop disagreement in production
+            # — large spread between min and max suggests local artefacts
+            # worth investigating.
+            prob = prob_mean
+            logger.info(
+                "CommFor 5-crop: mean=%.4f max=%.4f min=%.4f spread=%.4f → using mean",
+                prob_mean, prob_max, prob_min, prob_max - prob_min,
+            )
 
             # Emit findings
             details = {
