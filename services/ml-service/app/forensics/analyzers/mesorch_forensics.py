@@ -55,6 +55,14 @@ if _TORCH_AVAILABLE:
 
 IMAGE_SIZE = 512
 
+# ImageNet normalization (Mesorch's two backbones — ConvNeXt-Tiny and SegFormer
+# MiT-B3 — were both pretrained on ImageNet and expect inputs normalized with
+# these statistics. Without this, raw [0,1] inputs are 2-5x smaller than the
+# distribution the backbones were trained on, causing near-zero outputs across
+# the entire mask. This was a 1-line bug that disabled the entire module.)
+_IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 3)
+_IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3)
+
 # Jet colormap LUT (shared with cnn_forensics)
 _COLORMAP_LUT = np.zeros((256, 3), dtype=np.uint8)
 for _i in range(256):
@@ -542,9 +550,12 @@ class MesorchForensicsAnalyzer(BaseAnalyzer):
                 img = img.convert("RGB")
             img = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.BILINEAR)
 
-            # Normalize to [0, 1]
+            # Normalize to [0, 1] then apply ImageNet mean/std (REQUIRED — both
+            # backbones were pretrained with this convention; raw [0,1] inputs
+            # produce near-zero masks across the board).
             arr = np.array(img, dtype=np.float32) / 255.0
-            tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0)
+            arr = (arr - _IMAGENET_MEAN) / _IMAGENET_STD
+            tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).contiguous()
 
             with torch.no_grad():
                 mask = self._model.predict(tensor)  # [1, 1, 512, 512]
