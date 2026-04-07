@@ -237,6 +237,15 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
 
         self._models_loaded = True
 
+    # Logit threshold for treating the RINE output as "saturated / no signal".
+    # The shipped 4-class checkpoint was trained on ProGAN/StyleGAN/BigGAN and
+    # outputs logits in the range -30 to -55 on every modern car-damage image
+    # regardless of whether it's real or AI-generated. Both saturate to ~0
+    # via sigmoid and the score has zero discriminative value. Treat any
+    # |logit| > this threshold as "model has no opinion" → return error so
+    # fusion does not consume the bogus 0%.
+    _LOGIT_SATURATION_THRESHOLD = 20.0
+
     async def analyze_image(self, image_bytes: bytes, filename: str) -> ModuleResult:
         start = time.monotonic()
         findings: list[AnalyzerFinding] = []
@@ -251,7 +260,23 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
                 )
 
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            score = self._compute_score(img)
+            score, raw_logit = self._compute_score(img)
+
+            # Saturation guard: 4-class checkpoint fails to generalize to
+            # modern AI distributions and produces logits like -51 on AI and
+            # -33 on authentic — both round to sigmoid 0.000 and the result
+            # is meaningless. Treat as model error rather than emitting a
+            # misleading "0% AI" verdict that the meta-learner would consume.
+            if abs(raw_logit) > self._LOGIT_SATURATION_THRESHOLD:
+                logger.debug(
+                    "RINE saturated logit %.2f on %s — treating as no signal",
+                    raw_logit, filename,
+                )
+                return self._make_result(
+                    [], int((time.monotonic() - start) * 1000),
+                    error=f"RINE checkpoint saturated (logit={raw_logit:.1f}, model not calibrated for modern AI)",
+                )
+
             self._emit_findings(score, findings)
 
         except Exception as e:
@@ -269,32 +294,32 @@ class RINEDetectionAnalyzer(BaseAnalyzer):
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
 
-    def _compute_score(self, img: Image.Image) -> float:
+    def _compute_score(self, img: Image.Image) -> tuple[float, float]:
         """Run RINE: OpenAI CLIP intermediate features -> trainable head -> sigmoid.
 
-        The preprocessing uses the transform from clip.load() which does:
-            Resize(224, BICUBIC) -> CenterCrop(224) -> ToTensor() -> Normalize()
-        with CLIP-standard normalization values.
+        Returns (score, raw_logit). Raw logit is used by the caller to detect
+        saturated outputs (the existing 4-class checkpoint produces extreme
+        negative logits like -50 on every modern car-damage image regardless
+        of whether the image is real or AI — meaning the model has failed to
+        generalize from its ProGAN/StyleGAN/BigGAN training distribution and
+        the score is meaningless).
         """
         # Preprocess using OpenAI CLIP's transform (Resize+CenterCrop+Normalize)
         pixel_values = self._clip_preprocess(img).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
             # Forward through CLIP vision encoder -- hooks capture ln_2 outputs.
-            # encode_image() calls self.visual() internally, which runs through
-            # all ResidualAttentionBlocks and triggers our hooks.
             self._clip_model.encode_image(pixel_values)
 
             # Collect hook outputs.
-            # Each hook.output has shape [seq_len, batch, dim] (LND format)
-            # because OpenAI CLIP's transformer operates in LND internally.
             hook_outputs = [h.output for h in self._hooks]
 
             # RINE head: stack, extract CLS, project, weight, classify
-            logit = self._rine_head(hook_outputs)
-            score = float(torch.sigmoid(logit.squeeze()).cpu().item())
+            logit_t = self._rine_head(hook_outputs)
+            raw_logit = float(logit_t.squeeze().cpu().item())
+            score = float(torch.sigmoid(logit_t.squeeze()).cpu().item())
 
-        return float(np.clip(score, 0.0, 1.0))
+        return float(np.clip(score, 0.0, 1.0)), raw_logit
 
     @staticmethod
     def _emit_findings(score: float, findings: list[AnalyzerFinding]) -> None:
