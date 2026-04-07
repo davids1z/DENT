@@ -91,11 +91,12 @@ export interface PillarData {
 //
 // Two reasons for exclusion:
 //   1) DEAD ON MODERN AI: returns ~0 even on obvious AI generators (RINE, B-Free,
-//      SPAI, NPR, VAE, EfficientNet, CommFor, SigLIP, AI Source, SAFE).
-//      These would dilute a MAX/AVG aggregate.
-//   2) HIGH FALSE-POSITIVE BIAS: returns elevated scores on authentic car damage
-//      photos (DINOv2 — backend already dampens its fusion weight to 0.04 for
-//      this exact reason).
+//      SPAI, NPR, VAE, EfficientNet, SigLIP, AI Source, SAFE).
+//   2) HIGH FALSE-POSITIVE BIAS on car damage photos (DINOv2).
+//
+// Note: community_forensics is NO LONGER in this set as of PR #32 because
+// production stats showed +25.8pp gap (it's actually one of the strongest
+// discriminators). It now contributes to both pillar score AND fusion weight.
 const _DEAD_AI_MODULES = new Set<string>([
   "rine_detection",
   "bfree_detection",
@@ -103,12 +104,35 @@ const _DEAD_AI_MODULES = new Set<string>([
   "npr_ai_detection",
   "vae_reconstruction",
   "efficientnet_ai_detection",
-  "community_forensics_detection",
   "siglip_ai_detection",
   "ai_source_detection",
   "safe_ai_detection",
   "dinov2_ai_detection",
 ]);
+
+// AI detection pillar weighted aggregation — MUST stay in sync with the
+// backend _CORE_AI_WEIGHTS in services/ml-service/app/forensics/fusion.py.
+// These weights reflect production-discriminative power (Day 4 of path-to-95):
+//   organika_ai_detection         +39.3pp gap (best)
+//   community_forensics_detection +25.8pp gap
+//   clip_ai_detection             +11.5pp gap
+//   pixel_forensics               +10.9pp gap
+//   dinov2_ai_detection           +6.4pp gap (capped, dead in pillar)
+//   ai_generation_detection       legacy
+//
+// Sum is 1.00. The pillar uses these exact weights so the displayed pillar
+// score matches what fusion.py would compute as core_score for the same
+// modules. This fixes the UX issue where pixel_forensics at 0.29 alone
+// would push the pillar to amber even though it contributes only 2.9% to
+// the actual fused result.
+const _CORE_AI_WEIGHTS_FRONTEND: Record<string, number> = {
+  clip_ai_detection: 0.30,
+  organika_ai_detection: 0.35,
+  community_forensics_detection: 0.15,
+  pixel_forensics: 0.10,
+  dinov2_ai_detection: 0.02,
+  ai_generation_detection: 0.08,
+};
 
 export function groupModulesIntoPillars(
   modules: ForensicModuleResult[],
@@ -120,19 +144,39 @@ export function groupModulesIntoPillars(
     );
     if (pillarModules.length === 0) return null;
 
-    // Use MAX risk score, not average — averaging dilutes the signal because
-    // many modules are dead on modern AI generators (return ~0 even on AI).
-    // If any reliable module flags HIGH, the pillar should reflect that.
-    // For the AI detection pillar, also exclude known-dead modules from the
-    // aggregate so they cannot pull the score down.
+    // For the AI detection pillar, compute the WEIGHTED contribution that
+    // matches the backend fusion's core_score formula. This way a single
+    // weak signal (e.g. pixel_forensics at 0.29 with weight 0.10 → 2.9%
+    // contribution) doesn't push the entire pillar into the warning band.
+    //
+    // For other pillars (tampering, metadata) we keep the MAX behavior
+    // because they don't have the weighted-fusion structure.
     const liveModules = pillar.id === "ai_detection"
       ? pillarModules.filter((m) => !_DEAD_AI_MODULES.has(m.moduleName) && !m.error)
       : pillarModules.filter((m) => !m.error);
     const scoreSource = liveModules.length > 0 ? liveModules : pillarModules;
-    const maxRisk = scoreSource.reduce(
-      (max, m) => (m.riskScore > max ? m.riskScore : max),
-      0,
-    );
+
+    let aggregateRisk: number;
+    if (pillar.id === "ai_detection") {
+      // Weighted aggregation matching backend _CORE_AI_WEIGHTS
+      let weightedSum = 0;
+      let totalWeight = 0;
+      for (const m of scoreSource) {
+        const w = _CORE_AI_WEIGHTS_FRONTEND[m.moduleName] ?? 0;
+        if (w > 0) {
+          weightedSum += m.riskScore * w;
+          totalWeight += w;
+        }
+      }
+      aggregateRisk = totalWeight > 0 ? weightedSum / totalWeight : 0;
+    } else {
+      // Non-AI pillars use MAX (tampering, metadata)
+      aggregateRisk = scoreSource.reduce(
+        (max, m) => (m.riskScore > max ? m.riskScore : max),
+        0,
+      );
+    }
+
     const riskOrder: Record<string, number> = { Low: 0, Medium: 1, High: 2, Critical: 3 };
     const worstLevel = scoreSource.reduce(
       (worst, m) => ((riskOrder[m.riskLevel] ?? 0) > (riskOrder[worst] ?? 0) ? m.riskLevel : worst),
@@ -147,7 +191,7 @@ export function groupModulesIntoPillars(
     return {
       pillar,
       modules: pillarModules,
-      aggregateRiskScore: maxRisk,
+      aggregateRiskScore: aggregateRisk,
       aggregateRiskLevel: worstLevel,
       findings: allFindings,
       hasError,

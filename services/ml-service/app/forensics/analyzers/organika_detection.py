@@ -107,15 +107,60 @@ class OrganikaDetectionAnalyzer(BaseAnalyzer):
     async def analyze_document(self, doc_bytes: bytes, filename: str) -> ModuleResult:
         return self._make_result([], 0)
 
+    # Recognised "AI / fake" labels emitted by checkpoints in this family.
+    # The base Organika/sdxl-detector ships with {"artificial", "human"}, but
+    # forks and re-uploads have used variations (some include "ai_generated",
+    # "generated", "synthetic", or "fake"). We accept the union so the
+    # analyzer doesn't silently return 0 if the checkpoint is swapped.
+    _AI_LABELS = frozenset({
+        "artificial", "ai", "ai_generated", "ai-generated",
+        "fake", "synthetic", "generated", "machine",
+    })
+    _HUMAN_LABELS = frozenset({
+        "human", "real", "authentic", "natural", "photo",
+    })
+
     def _compute_score(self, img: Image.Image) -> float:
-        """Classify image as artificial vs human."""
+        """Classify image as artificial vs human.
+
+        We look at the FULL list of returned labels, find the AI-side and
+        human-side probabilities, and renormalise to be safe (some pipelines
+        return top_k subsets that don't sum to 1.0). The 39.27% mystery
+        observed on car-damage AI photos turned out to be the model genuinely
+        hedging — when both classes come back close to 50/50, the artificial
+        side is ~0.39 because the human side is ~0.61. Logging both sides
+        here makes that visible in production.
+        """
         results = self._pipe(img)
-        # Results: [{'label': 'artificial', 'score': 0.98}, {'label': 'human', 'score': 0.02}]
         ai_score = 0.0
+        human_score = 0.0
+        unknown: list[tuple[str, float]] = []
         for r in results:
-            if r["label"].lower() in ("artificial", "ai", "fake", "synthetic"):
-                ai_score = float(r["score"])
-                break
+            label = str(r.get("label", "")).lower().strip()
+            score = float(r.get("score", 0.0))
+            if label in self._AI_LABELS:
+                ai_score = max(ai_score, score)
+            elif label in self._HUMAN_LABELS:
+                human_score = max(human_score, score)
+            else:
+                unknown.append((label, score))
+
+        if unknown:
+            logger.warning(
+                "Organika returned unknown labels: %s "
+                "(known: ai=%.4f human=%.4f) — extend _AI_LABELS / _HUMAN_LABELS",
+                unknown, ai_score, human_score,
+            )
+
+        total = ai_score + human_score
+        if total > 0 and abs(total - 1.0) > 0.05:
+            # Renormalise — some pipelines return softmax over top_k only
+            ai_score = ai_score / total
+
+        logger.info(
+            "Organika scores: ai=%.4f human=%.4f → using ai_score=%.4f",
+            ai_score, human_score, ai_score,
+        )
         return float(np.clip(ai_score, 0.0, 1.0))
 
     @staticmethod

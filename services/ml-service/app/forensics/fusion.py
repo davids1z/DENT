@@ -236,29 +236,38 @@ def fuse_scores(
     core_total_w = 0.0
     _core_details = {}
     for m in active:
-        if m.module_name in _CORE_AI_WEIGHTS:
-            w = _CORE_AI_WEIGHTS[m.module_name]
-            score = m.risk_score
-            # DINOv2 hard cap: even if probe outputs 0.95 on car damage, the
-            # contribution to fusion is bounded. v11 retrain reduced FP but
-            # didn't eliminate it; this cap is the safety net.
-            if m.module_name == "dinov2_ai_detection":
-                raw = score
-                score = min(score, _DINOV2_OUTPUT_CAP)
-                if score < raw:
-                    _core_details[m.module_name] = f"{raw:.4f}→cap{score:.4f} w={w}"
-                else:
-                    _core_details[m.module_name] = f"{score:.4f} w={w}"
-            elif m.module_name in _CNN_FAMILY_DETECTORS:
-                score *= cnn_dampening
-                _core_details[m.module_name] = f"{m.risk_score:.4f}*{cnn_dampening:.2f}={score:.4f} w={w}"
-            else:
-                _core_details[m.module_name] = f"{score:.4f} w={w}"
-            # CNN dampening still applies to the (capped) DINOv2 score
-            if m.module_name == "dinov2_ai_detection" and m.module_name in _CNN_FAMILY_DETECTORS:
-                score *= cnn_dampening
-            core_weighted += score * w
-            core_total_w += w
+        if m.module_name not in _CORE_AI_WEIGHTS:
+            continue
+        w = _CORE_AI_WEIGHTS[m.module_name]
+        raw = m.risk_score
+        score = raw
+        steps: list[str] = []
+
+        # Step 1 — DINOv2 hard cap. Even if the probe outputs 0.95 on a car
+        # damage photo (which it still does post-v11), the score that enters
+        # the weighted sum is bounded by _DINOV2_OUTPUT_CAP. With weight 0.02
+        # and cap 0.50, max DINOv2 contribution to overall fusion is 1%.
+        if m.module_name == "dinov2_ai_detection" and score > _DINOV2_OUTPUT_CAP:
+            score = _DINOV2_OUTPUT_CAP
+            steps.append(f"cap{_DINOV2_OUTPUT_CAP:.2f}")
+
+        # Step 2 — CNN-family dampening. When no independent module confirms,
+        # CNN-family detectors (currently only DINOv2) are scaled down toward
+        # cnn_dampening_floor. This applies AFTER the cap so the cap acts as a
+        # ceiling and dampening can only reduce further, never re-inflate.
+        if m.module_name in _CNN_FAMILY_DETECTORS and cnn_dampening < 1.0:
+            score *= cnn_dampening
+            steps.append(f"x{cnn_dampening:.2f}")
+
+        if steps:
+            _core_details[m.module_name] = (
+                f"{raw:.4f}→{'→'.join(steps)}={score:.4f} w={w}"
+            )
+        else:
+            _core_details[m.module_name] = f"{score:.4f} w={w}"
+
+        core_weighted += score * w
+        core_total_w += w
     core_score = core_weighted / core_total_w if core_total_w > 0 else 0.0
 
     logger.info("FUSION core breakdown: %s → core_score=%.4f", _core_details, core_score)
