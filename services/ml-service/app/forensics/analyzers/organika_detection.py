@@ -89,7 +89,14 @@ class OrganikaDetectionAnalyzer(BaseAnalyzer):
                 )
 
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            score = self._compute_score(img)
+            # 5-crop test-time augmentation. The Swin transformer was
+            # trained on 224x224 centre-cropped Wikimedia images, which
+            # means the centre crop loses ~25% of horizontal content on
+            # 16:9 photos. Averaging the AI probability over 4 corners
+            # plus the centre recovers artefacts that would otherwise be
+            # discarded. Same rationale as the CommFor TTA in
+            # community_forensics.py.
+            score = self._compute_score_tta(img)
             self._emit_findings(score, findings)
 
         except Exception as e:
@@ -119,6 +126,53 @@ class OrganikaDetectionAnalyzer(BaseAnalyzer):
     _HUMAN_LABELS = frozenset({
         "human", "real", "authentic", "natural", "photo",
     })
+
+    # 5-crop TTA configuration. Swin-T was trained on 224x224 — we resize
+    # the shortest side to 256 then take 4 corners + centre at 224. The
+    # cost is 5x model forwards (~250-400 ms total on CPU), well within
+    # the 120 s per-module budget.
+    _TTA_RESIZE = 256
+    _TTA_CROP = 224
+
+    def _compute_score_tta(self, img: Image.Image) -> float:
+        """Five-crop TTA wrapper around the single-crop _compute_score().
+
+        Falls back to the single-image path if the image is smaller than
+        the crop size, which can happen for thumbnail uploads.
+        """
+        w, h = img.size
+        if min(w, h) < self._TTA_CROP:
+            # Image too small for TTA — fall back to single forward pass
+            return self._compute_score(img)
+
+        # Resize shortest side to 256 (preserve aspect ratio)
+        scale = self._TTA_RESIZE / min(w, h)
+        new_w = int(round(w * scale))
+        new_h = int(round(h * scale))
+        resized = img.resize((new_w, new_h), Image.BILINEAR)
+
+        # Build 5 crops: 4 corners + centre
+        c = self._TTA_CROP
+        crops = [
+            resized.crop((0, 0, c, c)),                           # top-left
+            resized.crop((new_w - c, 0, new_w, c)),               # top-right
+            resized.crop((0, new_h - c, c, new_h)),               # bottom-left
+            resized.crop((new_w - c, new_h - c, new_w, new_h)),   # bottom-right
+            resized.crop((                                         # centre
+                (new_w - c) // 2, (new_h - c) // 2,
+                (new_w - c) // 2 + c, (new_h - c) // 2 + c,
+            )),
+        ]
+
+        scores = [self._compute_score(crop) for crop in crops]
+        mean = float(np.mean(scores))
+        max_s = float(np.max(scores))
+        min_s = float(np.min(scores))
+        logger.info(
+            "Organika 5-crop: scores=%s mean=%.4f max=%.4f spread=%.4f → using mean",
+            [round(s, 3) for s in scores], mean, max_s, max_s - min_s,
+        )
+        return mean
 
     def _compute_score(self, img: Image.Image) -> float:
         """Classify image as artificial vs human.
