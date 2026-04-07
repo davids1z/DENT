@@ -433,23 +433,52 @@ def fuse_scores(
             overall = clip_isolated_cap
             boost_applied = f"clip_isolated_cap→{clip_isolated_cap}"
 
-    # ── Step 7: Supervised meta-learner blend ────────────────────────
-    # If a trained meta-learner is loaded and meta_blend_factor > 0,
-    # blend the meta score into the rule-based overall. This is the
-    # Day 3 deliverable from the path-to-95 roadmap. The blend factor
-    # gates how much trust we put in the supervised model:
-    #   0.0  pure rule-based (default, safe)
-    #   0.5  half-and-half (recommended after validation)
-    #   1.0  pure meta-learner (only when meta CV F1 >> rule accuracy)
+    # ── Step 7: Supervised meta-learner ASYMMETRIC blend ─────────────
+    #
+    # If a trained meta-learner is loaded and meta_blend_factor > 0, blend
+    # the meta score into the rule-based overall. ASYMMETRIC RULES:
+    #
+    #   1) Confident rule (overall <= 0.15 or >= 0.85):
+    #      Trust the rule-based fusion. The meta cannot overturn it because
+    #      the rule has produced an unambiguous verdict from multiple
+    #      independent signals (e.g. CLIP HIGH boost firing on car4.webp,
+    #      or all-zero scores on car5.jpg). The meta-learner's job is to
+    #      help the AMBIGUOUS middle, not to second-guess clear cases.
+    #
+    #   2) Meta wants HIGHER score (meta > rule):
+    #      Blend up. This catches the historical FNs where rule-based fusion
+    #      under-scored AI images because the OLD pipeline gave them low
+    #      module scores. The meta-learner learned the corrected mapping.
+    #
+    #   3) Meta wants LOWER score AND rule is in [0.15, 0.85]:
+    #      Blend down. This catches the historical FPs where rule-based
+    #      fusion over-scored authentic images due to OOD CLIP signal.
+    #
+    # Net effect: confident verdicts stay confident; ambiguous verdicts
+    # get supervised correction; the meta cannot regress car4/car5/car6.
     if meta_score is not None and meta_blend_factor > 0.0:
         rule_score = overall
-        blended = (1.0 - meta_blend_factor) * rule_score + meta_blend_factor * meta_score
+        # Confident rule-based verdict: never overrule with the meta.
+        # 0.15 is the bottom of the "Low" risk band; 0.85 is "Critical".
+        if rule_score <= 0.15 or rule_score >= 0.85:
+            blend_path = "rule_confident_skip"
+            blended = rule_score
+        elif meta_score > rule_score:
+            # Meta wants HIGHER → blend up (rescue historical FNs)
+            blend_path = "blend_up"
+            blended = (1.0 - meta_blend_factor) * rule_score + meta_blend_factor * meta_score
+        else:
+            # Meta wants LOWER and rule is in ambiguous middle → blend down
+            # (rescue historical FPs)
+            blend_path = "blend_down"
+            blended = (1.0 - meta_blend_factor) * rule_score + meta_blend_factor * meta_score
+
         logger.info(
-            "FUSION meta blend: rule=%.4f meta=%.4f factor=%.2f → blended=%.4f",
-            rule_score, meta_score, meta_blend_factor, blended,
+            "FUSION meta blend: rule=%.4f meta=%.4f factor=%.2f path=%s → %.4f",
+            rule_score, meta_score, meta_blend_factor, blend_path, blended,
         )
         overall = blended
-        boost_applied = f"{boost_applied}+meta_blend({meta_blend_factor:.2f})"
+        boost_applied = f"{boost_applied}+meta_{blend_path}({meta_blend_factor:.2f})"
 
     overall = max(0.0, min(1.0, overall))
 
