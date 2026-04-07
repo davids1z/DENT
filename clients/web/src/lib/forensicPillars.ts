@@ -84,7 +84,23 @@ export interface PillarData {
   hasError: boolean;
   heatmapUrl: string | null;
   fftSpectrumUrl: string | null;
+  // 2026-04-07 — "Verdict-driven UI" redesign. A pillar is *significant*
+  // if it actually has something to say about the image: either its
+  // aggregate score crossed the 0.20 (Umjeren) band, or it surfaced a
+  // finding the user should care about. Insignificant pillars are
+  // hidden from the grid by ForensicPillarGrid (collapsed to a single
+  // "Sve čisto" summary card) so the user is not distracted by three
+  // amber/green chips on every analysis. Audit feedback: showing
+  // "Detekcija manipulacija ✓ 0% Čisto" on every AI image is visual
+  // noise — the user only wants to see what's lit up.
+  isSignificant: boolean;
 }
+
+// A pillar is "significant" (worth showing as a full card) when its
+// aggregate risk crosses the warning band, OR it surfaced an explicit
+// finding (even a low-risk one — those are useful context). Below this
+// threshold the pillar is collapsed into the "Sve čisto" summary.
+const PILLAR_SIGNIFICANT_THRESHOLD = 0.2;
 
 // Modules that are unreliable for the pillar aggregate. They are still shown
 // individually so the user can see them, but they cannot drive the pillar score.
@@ -200,6 +216,17 @@ export function groupModulesIntoPillars(
       ? (result[pillar.heatmapField] as string | null)
       : null;
 
+    // Significance gate: a pillar earns its full card when it has
+    // something to actually report. Three sources of significance:
+    //   1. Aggregate risk crossed the 0.20 (Umjeren) band
+    //   2. Pillar surfaced at least one meaningful finding
+    //   3. The pillar errored out (we want the user to see the error)
+    const hasMeaningfulFinding = allFindings.some((f) => f.riskScore >= 0.05);
+    const isSignificant =
+      aggregateRisk >= PILLAR_SIGNIFICANT_THRESHOLD ||
+      hasMeaningfulFinding ||
+      hasError;
+
     return {
       pillar,
       modules: pillarModules,
@@ -212,6 +239,7 @@ export function groupModulesIntoPillars(
       // spectral_forensics is grouped). The previous "spectral" id never
       // matched any pillar so the FFT viewer was dead code in production.
       fftSpectrumUrl: pillar.id === "crypto_meta" ? result.fftSpectrumUrl : null,
+      isSignificant,
     };
   }).filter(Boolean) as PillarData[];
 }
