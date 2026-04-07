@@ -29,6 +29,20 @@ class ModuleResult(BaseModel):
     findings: list[AnalyzerFinding] = []
     processing_time_ms: int = 0
     error: str | None = None
+    # Per-result heatmaps and visual artefacts. The 2026-04-07 audit
+    # discovered that several analyzers (modification.py, cnn_forensics.py,
+    # spectral_forensics.py, optical.py) were storing heatmaps as instance
+    # state on `self`, then re-reading them after the per-request task had
+    # already finished. With MAX_CONCURRENT_ANALYSES > 1, request B could
+    # overwrite request A's heatmap during the brief window between
+    # "store on self" and "read from self in pipeline.py", silently
+    # serving the wrong heatmap to the wrong user. Production runs at
+    # MAX_CONCURRENT_ANALYSES=1 so the bug never bit, but the dev compose
+    # uses 2 and the latent risk is unacceptable for a forensic tool.
+    # Now every analyzer puts its heatmap directly on the ModuleResult,
+    # so the bytes travel with the request through the future-pool and
+    # cannot be cross-contaminated.
+    heatmaps: dict[str, str] = {}
 
 
 class ForensicReport(BaseModel):

@@ -85,36 +85,58 @@ _AI_DETECTOR_MODULES = frozenset({
 # community_forensics (was disabled despite being one of the strongest
 # discriminators in production data) and gave it real weight in core.
 #
-# Production gap (auth_mean → AI_mean) from data/production_stats_v1.json:
-#   organika_ai_detection            +39.3pp  ★ best (legacy stat, SDXL-era)
-#   community_forensics_detection    +25.8pp  ★ second best (re-enabled)
-#   clip_ai_detection                +11.5pp  weaker than CV F1 suggested
-#   pixel_forensics                  +10.9pp
-#   dinov2_ai_detection               +6.4pp  ⚠ STALE — see note below
-#
 # Sum = 1.00 (auto-normalized in fusion).
 #
-# 2026-04-07 Sprint 1 — REBALANCE BASED ON CURRENT PROBE VERSIONS:
+# 2026-04-07 Sprint 2 — RE-COMPUTED GAPS FROM POST-DINOV2-v11 DATA ONLY.
 #
-# The legacy +6.4pp gap for DINOv2 was computed across THREE different probe
-# versions in the same training file (v9 broken / v10 incremental / v11 fixed).
-# Post-v11 production observation on the same images:
-#     car4 (AI) → 1.00,  car5 (auth) → 0.0005,  car6 (auth) → 0.0006
-# That is a +99.9pp gap on the only test points we trust. DINOv2 v11 is the
-# strongest single discriminator in the system; the 0.02 weight + 0.50 cap
-# was inherited from the v9 disaster era and is now actively suppressing the
-# best signal we have.
+# The legacy gap numbers in this comment block were computed across the
+# entire production_train_v1.jsonl, which contains rows from THREE different
+# DINOv2 probe versions (v9 broken / v10 incremental / v11 fixed) all
+# pretending to be one model. Filtering to only rows after v11 landed
+# (created_at >= '2026-04-07 08:16') gives the actual current discriminative
+# power per module:
 #
-# Similarly, CLIP's +11.5pp aggregate is dominated by the bimodal probe
-# distribution (p75≈0.74, p90≈0.85 — see audit) which means it earns its
-# weight via the HIGH boost cascade, not via the weighted core. We can drop
-# the core weight without losing the boost-driven contribution.
+#   Module                              auth_mean   AI_mean    gap_pp   marker
+#   dinov2_ai_detection                 0.0102      0.8173     +80.7    ★ STRONGEST
+#   clip_ai_detection                   0.1642      0.7510     +58.7    ★
+#   organika_ai_detection               0.0000      0.3927     +39.3    ✓
+#   modification_detection              0.1375      0.3573     +22.0    ✓ (FP-prone)
+#   pixel_forensics                     0.2717      0.3290      +5.7      (noise)
+#   mesorch_detection                   0.0000      0.0000      +0.0      (untested)
+#   metadata_analysis                   0.1000      0.1000      +0.0      (blinded)
+#   community_forensics_detection       —           —           —        (n=0 post-v11)
 #
-# CommFor was production-promoted in PR #32 but kept at 0.15; it deserves
-# the second-largest weight after Organika.
+# Filter: 4 AI / 4 authentic distinct rows. Small sample, but every row
+# is a unique image — no re-upload duplication.
 #
-# ai_generation_detection (legacy Swin ensemble) duplicates Organika at 4x
-# the per-image cost; its 0.08 contribution is dropped to 0.0.
+# Key takeaways:
+#  • DINOv2 is now the strongest single signal (+80.7pp), not the weakest.
+#    The previous 0.02 weight was paying down a debt the v11 retrain already
+#    cleared. Sprint 1 raised it to 0.20, which is still conservative —
+#    on a +80pp signal we could justify going to 0.30+.
+#  • CLIP at +58.7pp is genuinely strong. Its core weight (0.20) plus its
+#    HIGH-boost cascade contribution is well calibrated.
+#  • Organika at +39.3pp is consistent with its older aggregate. Hedges on
+#    modern generators (~0.39 on car4 — the famous 39.27% mystery), but
+#    when it commits, it's reliable.
+#  • Pixel forensics +5.7pp is weaker than the legacy aggregate (+10.9pp)
+#    suggested. Mostly noise on the post-v11 set; 0.10 weight remains
+#    defensible as an orthogonal physics signal but should not grow.
+#  • Mesorch +0.0pp on AI rows means the module is finding nothing on
+#    images that aren't actually tampered. That's correct behaviour for
+#    a tampering detector vs an AI detector — but it also means we have
+#    zero evidence the module works on REAL splices because we have zero
+#    splice samples.
+#  • Metadata at +0.0pp confirms the audit's "module is blinded by upload
+#    canvas re-encode" finding. The S2.1 EXIF restore in this same Sprint
+#    is the fix; this gap should rebound in the next data window.
+#  • CommFor has zero post-v11 rows in production_v1_corrected.jsonl. The
+#    +25.8pp aggregate from PR #32 is still our only data point.
+#
+# The current weights below were set in Sprint 1 from the v11-only car4/5/6
+# observation pre-stats. Sprint 2 confirmed they are reasonable: DINOv2
+# could go higher, but we're staying conservative until the meta-learner
+# is retrained on the new feature distribution (deferred to Sprint 3).
 _CORE_AI_WEIGHTS = {
     "dinov2_ai_detection":           0.20,  # was 0.02 — v11 probe is the strongest signal
     "organika_ai_detection":         0.25,  # was 0.35 — still strong, license/domain caveats
