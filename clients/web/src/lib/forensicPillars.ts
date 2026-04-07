@@ -1,5 +1,6 @@
 import type { ForensicResult, ForensicModuleResult, ForensicFinding, DamageDetection } from "./api";
 import { findingCategoryLabel, forensicModuleLabel } from "./api";
+import { getRiskStatus } from "./riskThresholds";
 
 // ── Pillar definitions ─────────────────────────────────────────
 
@@ -157,9 +158,11 @@ export function groupModulesIntoPillars(
 }
 
 export function getPillarStatus(riskScore: number): PillarStatus {
-  if (riskScore >= 0.50) return "fail";
-  if (riskScore >= 0.25) return "warning";
-  return "pass";
+  // Delegates to the canonical risk-band system in riskThresholds.ts so
+  // pillar status, badge color, gauge color, and consensus thresholds all
+  // come from a single source of truth. Score >= 0.40 (Povišen) → fail,
+  // score >= 0.20 (Umjeren) → warning, otherwise pass.
+  return getRiskStatus(riskScore);
 }
 
 // ── Text helpers ───────────────────────────────────────────────

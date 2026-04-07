@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/cn";
 import { hasBboxData, extractBboxes } from "@/lib/findingBbox";
 import { FindingBboxOverlay } from "./FindingBboxOverlay";
+import { ELEVATED_MODULE_THRESHOLD, LOW_MODULE_THRESHOLD } from "@/lib/riskThresholds";
 
 // ── Icons ────────────────────────────────────────────────────────
 
@@ -93,13 +94,30 @@ function statusLabel(status: "pass" | "warning" | "fail"): { text: string; cls: 
 
 // ── Module Row ───────────────────────────────────────────────────
 
+// Modules that are known to produce no signal on modern AI / not yet calibrated
+// on production data. Shown to the user but visually marked so a "0% — no
+// findings" output isn't mistaken for a real authenticity verdict.
+const _UNCALIBRATED_MODULES = new Set<string>([
+  "rine_detection",
+  "bfree_detection",
+  "spai_detection",
+  "npr_ai_detection",
+  "vae_reconstruction",
+  "efficientnet_ai_detection",
+  "community_forensics_detection",
+  "siglip_ai_detection",
+  "ai_source_detection",
+  "safe_ai_detection",
+]);
+
 function ModuleRow({ module: mod, pagePreviewUrls }: { module: ForensicModuleResult; pagePreviewUrls?: string[] | null }) {
   const [open, setOpen] = useState(false);
   const [bboxOverlay, setBboxOverlay] = useState<{ finding: ForensicFinding; pageIdx: number } | null>(null);
   const riskPct = mod.riskScore100;
+  const isUncalibrated = _UNCALIBRATED_MODULES.has(mod.moduleName);
 
   return (
-    <div className="rounded-lg border border-border bg-background">
+    <div className={cn("rounded-lg border bg-background", isUncalibrated ? "border-border/50 opacity-70" : "border-border")}>
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-card transition-colors"
@@ -107,6 +125,14 @@ function ModuleRow({ module: mod, pagePreviewUrls }: { module: ForensicModuleRes
         <span className="text-xs font-medium flex-1 truncate text-foreground">
           {forensicModuleLabel(mod.moduleName)}
         </span>
+        {isUncalibrated && (
+          <span
+            className="text-[9px] px-1.5 py-0.5 bg-muted/20 text-muted rounded border border-border"
+            title="Modul nije kalibriran na trenutnim AI generatorima — rezultat ne ulazi u završnu ocjenu."
+          >
+            NEKALIBRIRAN
+          </span>
+        )}
         {mod.error && (
           <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-500 rounded border border-red-500/20">Greška</span>
         )}
@@ -398,11 +424,11 @@ export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls 
   const unassigned = result.modules.filter(m => !assignedModules.has(m.moduleName) && !m.error);
 
   // Consensus: count high/low modules.
-  // Use 0.30 as the "elevated" threshold (matches backend's "Medium" boundary)
-  // so that modules signaling >= 30% are surfaced as a flag, not just those at 40%+.
+  // Thresholds come from the canonical risk-band system in riskThresholds.ts
+  // so they stay in sync with badge / pillar / gauge boundaries.
   const allModules = result.modules.filter(m => !m.error);
-  const highModules = allModules.filter(m => m.riskScore >= 0.30);
-  const lowModules = allModules.filter(m => m.riskScore < 0.20);
+  const highModules = allModules.filter(m => m.riskScore >= ELEVATED_MODULE_THRESHOLD);
+  const lowModules = allModules.filter(m => m.riskScore < LOW_MODULE_THRESHOLD);
   // Use the backend's total processing time (actual ML analysis duration),
   // not the sum of individual module times (which double-counts parallel execution).
   const totalTime = result.totalProcessingTimeMs;

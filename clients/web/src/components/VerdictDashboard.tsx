@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { sanitizeLlmText } from "@/lib/forensicPillars";
 import { decisionOutcomeLabel } from "@/lib/api";
+import { getRiskBandPct } from "@/lib/riskThresholds";
 import { ExportButton } from "./ExportButton";
 
 interface VerdictDashboardProps {
@@ -74,52 +75,59 @@ function getVerdict(riskScore: number, riskLevel: string): {
 }
 
 // ── Verdict Badge ────────────────────────────────────────────────
+//
+// All thresholds, colors, and labels here come from the canonical
+// risk-band system in `lib/riskThresholds.ts` so that gauge color,
+// pillar status, and badge color stay in lockstep.
 
 function getVerdictBadge(riskPercent: number) {
-  if (riskPercent >= 75) {
+  const band = getRiskBandPct(riskPercent);
+  // 6 bands collapse onto 3 badge variants by status:
+  //   pass    → green "AUTHENTIC" badge
+  //   warning → amber "MODERATE RISK" badge
+  //   fail    → red "CRITICAL" badge for critical, orange for raised/high
+  if (band.status === "fail") {
+    const isCritical = band.id === "critical";
     return {
-      label: "KRITIČAN RIZIK: DETEKTIRANA MANIPULACIJA",
-      bgClass: "bg-red-500/10",
-      textClass: "text-red-600 dark:text-red-400",
-      borderClass: "border-red-500/20",
+      label: isCritical
+        ? "KRITIČAN RIZIK: DETEKTIRANA MANIPULACIJA"
+        : "VISOK RIZIK: VRLO VJEROJATNA MANIPULACIJA",
+      bgClass: isCritical ? "bg-red-500/10" : "bg-orange-500/10",
+      textClass: isCritical
+        ? "text-red-600 dark:text-red-400"
+        : "text-orange-600 dark:text-orange-400",
+      borderClass: isCritical ? "border-red-500/20" : "border-orange-500/20",
       icon: "warning" as const,
     };
   }
-  if (riskPercent <= 20) {
+  if (band.status === "warning") {
     return {
-      label: "SIGURNO: AUTENTIČNI MEDIJ",
-      bgClass: "bg-green-500/10",
-      textClass: "text-green-600 dark:text-green-400",
-      borderClass: "border-green-500/20",
-      icon: "check" as const,
+      label: "UMJEREN RIZIK: POTREBNA PROVJERA",
+      bgClass: "bg-amber-500/10",
+      textClass: "text-amber-600 dark:text-amber-400",
+      borderClass: "border-amber-500/20",
+      icon: "alert" as const,
     };
   }
+  // pass — Vrlo nizak / Nizak
   return {
-    label: "UMJEREN RIZIK: POTREBNA PROVJERA",
-    bgClass: "bg-amber-500/10",
-    textClass: "text-amber-600 dark:text-amber-400",
-    borderClass: "border-amber-500/20",
-    icon: "alert" as const,
+    label: "SIGURNO: AUTENTIČNI MEDIJ",
+    bgClass: "bg-green-500/10",
+    textClass: "text-green-600 dark:text-green-400",
+    borderClass: "border-green-500/20",
+    icon: "check" as const,
   };
 }
 
 // ── Risk Gauge ──────────────────────────────────────────────────
 
 function getRiskColor(value: number): { main: string; glow: string } {
-  // Balanced palette — visible on both light/dark, not neon
-  if (value <= 15) return { main: "#34D399", glow: "#34D39925" }; // emerald
-  if (value <= 35) return { main: "#2DD4BF", glow: "#2DD4BF25" }; // teal
-  if (value <= 55) return { main: "#FBBF24", glow: "#FBBF2425" }; // amber
-  if (value <= 75) return { main: "#F97316", glow: "#F9731625" }; // orange
-  return { main: "#EF4444", glow: "#EF444430" };                  // red
+  const band = getRiskBandPct(value);
+  return { main: band.hex, glow: `${band.hex}25` };
 }
 
 function getRiskLabel(value: number): string {
-  if (value <= 15) return "Nizak";
-  if (value <= 35) return "Umjeren";
-  if (value <= 55) return "Povišen";
-  if (value <= 75) return "Visok";
-  return "Kritičan";
+  return getRiskBandPct(value).label;
 }
 
 function useCountUp(target: number, enabled: boolean, duration = 800) {
