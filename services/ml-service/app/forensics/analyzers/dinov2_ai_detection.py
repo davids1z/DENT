@@ -137,13 +137,32 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
             self._onnx_session = None
 
     def _load_probe(self, cache_dir: str) -> None:
-        """Load pre-trained probe (MLP or linear) from disk."""
+        """Load pre-trained probe (MLP_v10 / MLP / linear) from disk."""
         probe_path = os.path.join(cache_dir, "dinov2_probe_weights.npz")
         if os.path.exists(probe_path):
             try:
                 data = np.load(probe_path, allow_pickle=True)
                 probe_type = str(data.get("probe_type", "linear"))
-                if probe_type == "mlp" and "w1" in data:
+                # v10 — 3-layer MLP with LayerNorm: 1024 -> 384 (LN+ReLU+Drop)
+                #       -> 192 (ReLU+Drop) -> 1
+                if probe_type == "mlp_v10" and "w1" in data and "ln_w" in data:
+                    self._probe = {
+                        "type": "mlp_v10",
+                        "w1": data["w1"], "b1": data["b1"],
+                        "ln_w": data["ln_w"], "ln_b": data["ln_b"],
+                        "w2": data["w2"], "b2": data["b2"],
+                        "w3": data["w3"], "b3": data["b3"],
+                        "threshold": float(data["threshold"]) if "threshold" in data else 0.5,
+                    }
+                    logger.info(
+                        "DINOv2 MLP v10 probe loaded from %s (hidden=%d, thresh=%.2f, cv_f1=%.4f)",
+                        probe_path,
+                        data["w1"].shape[0],
+                        self._probe["threshold"],
+                        float(data.get("cv_f1", 0.0)),
+                    )
+                # v9 — 2-layer MLP: 1024 -> 256 (ReLU) -> 1
+                elif probe_type == "mlp" and "w1" in data:
                     self._probe = {
                         "type": "mlp",
                         "w1": data["w1"],
@@ -230,7 +249,23 @@ class DINOv2AiDetectionAnalyzer(BaseAnalyzer):
         else:
             embedding_normed = embedding
 
-        if self._probe is not None and self._probe.get("type") == "mlp":
+        if self._probe is not None and self._probe.get("type") == "mlp_v10":
+            # 1024 -> 384 Linear
+            h1 = self._probe["w1"] @ embedding_normed + self._probe["b1"]
+            # LayerNorm
+            mean = h1.mean()
+            var = h1.var()
+            h1_ln = (h1 - mean) / np.sqrt(var + 1e-5)
+            h1_ln = h1_ln * self._probe["ln_w"] + self._probe["ln_b"]
+            # ReLU (Dropout is no-op at inference)
+            h1_act = np.maximum(0, h1_ln)
+            # 384 -> 192 Linear + ReLU
+            h2 = self._probe["w2"] @ h1_act + self._probe["b2"]
+            h2_act = np.maximum(0, h2)
+            # 192 -> 1 Linear
+            logit = float((self._probe["w3"] @ h2_act + self._probe["b3"]).item())
+            score = 1.0 / (1.0 + np.exp(-np.clip(logit, -500, 500)))
+        elif self._probe is not None and self._probe.get("type") == "mlp":
             h = np.maximum(0, self._probe["w1"] @ embedding_normed + self._probe["b1"])
             logit = float((self._probe["w2"] @ h + self._probe["b2"]).item())
             score = 1.0 / (1.0 + np.exp(-np.clip(logit, -500, 500)))
