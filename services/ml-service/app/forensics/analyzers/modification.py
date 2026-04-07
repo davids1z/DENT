@@ -104,7 +104,33 @@ class ModificationAnalyzer(BaseAnalyzer):
             self._check_copy_move(img, findings)
 
             # 5. DCT double-compression detection (JPEG-native, no re-compression)
-            self._check_double_compression(image_bytes, findings)
+            #
+            # DISABLED 2026-04-07 (Sprint 1 hotfix). Sprint 1 fixed a NameError
+            # that had silently killed this function on every JPEG since the
+            # analyzer was written. With the function actually running, it
+            # turned out to false-positive aggressively on legitimately
+            # re-saved JPEGs (every authentic photo that goes through the
+            # browser canvas re-encode in `clients/web/src/lib/api/inspections.ts`
+            # looks "double compressed" to the DCT autocorrelation detector,
+            # which is technically correct — it WAS compressed twice — but
+            # not in the way that indicates manipulation).
+            #
+            # Empirical regression: car5.jpg authentic jumped from 15% → 70%
+            # on the modification module the first time this function actually
+            # ran in production. car4.webp AI was unaffected because the
+            # function early-returns on non-JPEG.
+            #
+            # Keep the call commented out (rather than deleting) so the
+            # function is still importable/testable. Re-enable only after:
+            #   1) Calibrating the periodicity threshold against a labeled
+            #      set of (single-compression / double-compression) JPEGs
+            #   2) Adding a "compression history is benign" gate that
+            #      distinguishes "saved twice in Photoshop" from "saved
+            #      twice through routine resize/upload"
+            #   3) Lowering the MOD_DOUBLE_JPEG risk_score from 0.85 to
+            #      something defensible (~0.30) if it's going to fire on
+            #      benign re-encodes.
+            # self._check_double_compression(image_bytes, findings)
 
         except Exception as e:
             logger.warning("Modification analysis error: %s", e)
