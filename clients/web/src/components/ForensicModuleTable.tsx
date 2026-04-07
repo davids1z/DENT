@@ -415,6 +415,59 @@ interface ForensicModuleTableProps {
   pagePreviewUrls?: string[] | null;
 }
 
+// 2026-04-07 — Verdict-driven UI: a single emerald-tinted summary row
+// for the pillars that have nothing to report. Click the header to
+// expand and see the individual PillarSection cards (preserves the
+// audit/debug path for users who want the detail).
+function CleanPillarsSummary({
+  pillars,
+  originalImageUrl,
+  pagePreviewUrls,
+  allClean,
+}: {
+  pillars: PillarData[];
+  originalImageUrl: string;
+  pagePreviewUrls?: string[] | null;
+  allClean: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const headerText = allClean
+    ? "Svi forenzički stupovi su čisti"
+    : `${pillars.length} dodatn${pillars.length === 1 ? "i stup" : "a stupa"} bez nalaza`;
+  return (
+    <div className={`${allClean ? "" : "mt-3"} rounded-2xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden`}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full px-3 sm:px-5 py-3 sm:py-3.5 text-left hover:bg-emerald-500/10 transition-colors flex items-center justify-between gap-3"
+      >
+        <span className="flex items-center gap-2 text-sm text-emerald-300">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{headerText}</span>
+        </span>
+        <span className="flex items-center gap-2 text-xs text-muted">
+          <span className="hidden sm:inline">{pillars.map((p) => p.pillar.label).join(" · ")}</span>
+          <span>{expanded ? "▴" : "▾"}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div className="border-t border-emerald-500/20 divide-y divide-border">
+          {pillars.map((p) => (
+            <PillarSection
+              key={p.pillar.id}
+              data={p}
+              originalImageUrl={originalImageUrl}
+              pagePreviewUrls={pagePreviewUrls}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls }: ForensicModuleTableProps) {
   const pillars = groupModulesIntoPillars(result.modules, result);
   if (pillars.length === 0) return null;
@@ -433,16 +486,34 @@ export function ForensicModuleTable({ result, originalImageUrl, pagePreviewUrls 
   // not the sum of individual module times (which double-counts parallel execution).
   const totalTime = result.totalProcessingTimeMs;
 
+  // 2026-04-07 — Verdict-driven UI: split pillars into "significant"
+  // (full PillarSection) and "clean" (collapsed under a single emerald
+  // summary row). The split is owned by groupModulesIntoPillars() via
+  // the `isSignificant` flag so the rule lives in one place. See
+  // ForensicPillarGrid.tsx for the smaller mobile-card variant.
+  const significantPillars = pillars.filter((p) => p.isSignificant);
+  const cleanPillars = pillars.filter((p) => !p.isSignificant);
+
   return (
     <div>
       <h2 className="font-heading text-lg font-semibold mb-4">
-        Forenzički moduli ({pillars.length})
+        Forenzički moduli ({pillars.length}{cleanPillars.length > 0 ? ` · ${cleanPillars.length} čisto` : ""})
       </h2>
-      <div className="bg-background rounded-2xl border border-border shadow-sm overflow-hidden divide-y divide-border">
-        {pillars.map((p) => (
-          <PillarSection key={p.pillar.id} data={p} originalImageUrl={originalImageUrl} pagePreviewUrls={pagePreviewUrls} />
-        ))}
-      </div>
+      {significantPillars.length > 0 && (
+        <div className="bg-background rounded-2xl border border-border shadow-sm overflow-hidden divide-y divide-border">
+          {significantPillars.map((p) => (
+            <PillarSection key={p.pillar.id} data={p} originalImageUrl={originalImageUrl} pagePreviewUrls={pagePreviewUrls} />
+          ))}
+        </div>
+      )}
+      {cleanPillars.length > 0 && (
+        <CleanPillarsSummary
+          pillars={cleanPillars}
+          originalImageUrl={originalImageUrl}
+          pagePreviewUrls={pagePreviewUrls}
+          allClean={significantPillars.length === 0}
+        />
+      )}
 
       {/* Unassigned modules (if any exist outside pillar groups) */}
       {unassigned.length > 0 && (
