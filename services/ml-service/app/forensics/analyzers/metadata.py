@@ -48,6 +48,7 @@ except ImportError:
 # (keyword_lower, risk_score, display_name)
 # ---------------------------------------------------------------------------
 EDITING_SOFTWARE: list[tuple[str, float, str]] = [
+    # ── Generic editing tools (low risk — most camera images go through one) ──
     ("photoshop", 0.30, "Adobe Photoshop"),
     ("gimp", 0.25, "GIMP"),
     ("faceapp", 0.35, "FaceApp"),
@@ -59,16 +60,50 @@ EDITING_SOFTWARE: list[tuple[str, float, str]] = [
     ("paint.net", 0.20, "Paint.NET"),
     ("canva", 0.20, "Canva"),
     ("remove.bg", 0.30, "Remove.bg"),
-    ("dall-e", 0.50, "DALL-E"),
-    ("dall·e", 0.50, "DALL-E"),
-    ("midjourney", 0.50, "Midjourney"),
-    ("stable diffusion", 0.50, "Stable Diffusion"),
-    ("comfyui", 0.50, "ComfyUI"),
-    ("automatic1111", 0.50, "Automatic1111"),
-    ("invoke ai", 0.50, "InvokeAI"),
-    ("novelai", 0.50, "NovelAI"),
-    ("adobe firefly", 0.45, "Adobe Firefly"),
-    ("runway", 0.45, "Runway ML"),
+    # ── AI generators (DEFINITIVE — bumped 2026-04-07 from 0.50 to 0.95) ──
+    # When AI generator software is in EXIF/XMP metadata, the image is almost
+    # certainly synthetic. Edge cases (rare): a real photo passed through an
+    # AI tool for upscaling, where the tool overwrites Software tag. Even
+    # then the user clearly used AI to modify the image, so high risk is
+    # appropriate for fraud detection.
+    ("dall-e", 0.95, "DALL-E"),
+    ("dall·e", 0.95, "DALL-E"),
+    ("dall e", 0.95, "DALL-E"),
+    ("dalle", 0.95, "DALL-E"),
+    ("midjourney", 0.95, "Midjourney"),
+    ("stable diffusion", 0.95, "Stable Diffusion"),
+    ("stable-diffusion", 0.95, "Stable Diffusion"),
+    ("stablediffusion", 0.95, "Stable Diffusion"),
+    ("comfyui", 0.95, "ComfyUI"),
+    ("comfy ui", 0.95, "ComfyUI"),
+    ("automatic1111", 0.95, "Automatic1111"),
+    ("a1111", 0.95, "Automatic1111"),
+    ("invoke ai", 0.95, "InvokeAI"),
+    ("invokeai", 0.95, "InvokeAI"),
+    ("novelai", 0.95, "NovelAI"),
+    ("adobe firefly", 0.95, "Adobe Firefly"),
+    ("firefly", 0.95, "Adobe Firefly"),
+    ("runway", 0.85, "Runway ML"),
+    ("flux.1", 0.95, "Flux.1"),
+    ("flux1", 0.95, "Flux.1"),
+    ("flux dev", 0.95, "Flux.1"),
+    ("flux-dev", 0.95, "Flux.1"),
+    ("flux schnell", 0.95, "Flux.1"),
+    ("imagen", 0.90, "Google Imagen"),
+    ("playground", 0.80, "PlaygroundAI"),
+    ("playgroundai", 0.85, "PlaygroundAI"),
+    ("leonardo.ai", 0.90, "Leonardo.ai"),
+    ("leonardo ai", 0.90, "Leonardo.ai"),
+    ("ideogram", 0.95, "Ideogram"),
+    ("krea.ai", 0.85, "Krea.ai"),
+    ("kandinsky", 0.95, "Kandinsky"),
+    ("ernie-vilg", 0.95, "ERNIE-ViLG"),
+    ("diffusers", 0.85, "HuggingFace Diffusers"),
+    ("huggingface diffusers", 0.85, "HuggingFace Diffusers"),
+    # Adobe Generative Fill / AI features inside Photoshop (specific markers)
+    ("generative fill", 0.85, "Adobe Generative Fill"),
+    ("generative expand", 0.85, "Adobe Generative Expand"),
+    ("photoshop ai", 0.85, "Photoshop AI"),
 ]
 
 # ExifTool tag keys for software detection (colon-separated group:tag)
@@ -144,6 +179,12 @@ class MetadataAnalyzer(BaseAnalyzer):
 
             # 1. Magic byte / MIME validation
             self._check_magic_bytes(image_bytes, filename, findings)
+
+            # 1b. PNG text chunk parsing — Stable Diffusion / ComfyUI / Auto1111
+            #     leak prompts and generation parameters into PNG iTXt/tEXt
+            #     chunks (e.g. tEXt "parameters", tEXt "prompt", iTXt "workflow").
+            #     This is a definitive AI signal even when EXIF Software is empty.
+            self._check_png_text_chunks(image_bytes, findings)
 
             # 2. Extract metadata (ExifTool or exifread fallback)
             metadata = self._extract_metadata(image_bytes, filename)
@@ -248,6 +289,207 @@ class MetadataAnalyzer(BaseAnalyzer):
                         evidence={"extension": ext, "detected_mime": detected_mime},
                     )
                 )
+
+    # ------------------------------------------------------------------
+    # PNG text chunk parsing (Stable Diffusion / ComfyUI / Auto1111 etc.)
+    # ------------------------------------------------------------------
+    #
+    # PNG files have tEXt, zTXt, and iTXt chunks for storing arbitrary
+    # text. AI generation tools heavily abuse these:
+    #
+    #   Auto1111 / Forge / Vladmandic:
+    #     tEXt "parameters" → "<prompt>\nNegative prompt: <neg>\nSteps: 20,
+    #         Sampler: Euler a, CFG scale: 7, Seed: 12345, Size: 512x512,
+    #         Model hash: abcd, Model: anything-v3, ..."
+    #
+    #   ComfyUI:
+    #     tEXt "prompt" → JSON of the prompt graph
+    #     tEXt "workflow" → JSON of the full ComfyUI workflow
+    #
+    #   InvokeAI:
+    #     tEXt "Dream" / tEXt "sd-metadata" / tEXt "invokeai_metadata"
+    #
+    #   NovelAI:
+    #     tEXt "Software" → "NovelAI"
+    #     tEXt "Comment" → JSON with prompt and steps
+    #
+    #   Diffusers (HuggingFace):
+    #     tEXt "Software" → "Diffusers <version>"
+    #
+    # All of these are DEFINITIVE AI signals — no real camera or photo
+    # editor produces these chunks.
+
+    # Recognized PNG text chunk keys that indicate AI generation
+    _PNG_AI_TEXT_KEYS: tuple[tuple[bytes, str, float], ...] = (
+        # (chunk key, generator name, risk score)
+        (b"parameters",        "Stable Diffusion (Auto1111/Forge)", 0.95),
+        (b"prompt",            "ComfyUI / SD",                       0.95),
+        (b"workflow",          "ComfyUI",                            0.95),
+        (b"Dream",             "InvokeAI",                           0.95),
+        (b"sd-metadata",       "InvokeAI (legacy)",                  0.95),
+        (b"invokeai_metadata", "InvokeAI",                           0.95),
+        (b"sd_metadata",       "Stable Diffusion",                   0.95),
+        (b"NovelAI",           "NovelAI",                            0.95),
+        (b"NAI Generated",     "NovelAI",                            0.95),
+    )
+
+    # Substrings inside PNG text chunk VALUES that indicate AI generation
+    # (caught when the key itself is generic e.g. "Software" or "Comment")
+    _PNG_AI_VALUE_PATTERNS: tuple[tuple[bytes, str, float], ...] = (
+        (b"stable-diffusion",  "Stable Diffusion",  0.95),
+        (b"stable diffusion",  "Stable Diffusion",  0.95),
+        (b"stablediffusion",   "Stable Diffusion",  0.95),
+        (b"automatic1111",     "Automatic1111",     0.95),
+        (b"comfyui",           "ComfyUI",           0.95),
+        (b"invokeai",          "InvokeAI",          0.95),
+        (b"novelai",           "NovelAI",           0.95),
+        (b"diffusers",         "HuggingFace Diffusers", 0.85),
+        (b"flux.1",            "Flux.1",            0.95),
+        (b"flux schnell",      "Flux.1 Schnell",    0.95),
+        (b"flux dev",          "Flux.1 Dev",        0.95),
+        (b"midjourney",        "Midjourney",        0.95),
+        (b"dall-e",            "DALL-E",            0.95),
+        (b"firefly",           "Adobe Firefly",     0.95),
+        (b"adobe ai",          "Adobe AI",          0.85),
+        (b"generative fill",   "Adobe Generative Fill", 0.85),
+        (b"generative expand", "Adobe Generative Expand", 0.85),
+    )
+
+    def _check_png_text_chunks(
+        self, image_bytes: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Parse PNG tEXt/zTXt/iTXt chunks for AI generator markers.
+
+        Reads the file structure directly so we don't depend on Pillow's
+        chunk handling (which strips most text chunks on save).
+        """
+        # PNG signature: 8 bytes \x89PNG\r\n\x1a\n
+        if len(image_bytes) < 8 or image_bytes[:8] != b"\x89PNG\r\n\x1a\n":
+            return  # Not a PNG, nothing to do
+
+        # Walk chunks: 4-byte length, 4-byte type, payload, 4-byte CRC
+        offset = 8
+        scanned_chunks = 0
+        max_chunks = 200  # Defensive cap against malformed files
+        try:
+            while offset + 8 <= len(image_bytes) and scanned_chunks < max_chunks:
+                length = int.from_bytes(image_bytes[offset:offset + 4], "big")
+                chunk_type = image_bytes[offset + 4:offset + 8]
+                payload_start = offset + 8
+                payload_end = payload_start + length
+
+                if payload_end + 4 > len(image_bytes):
+                    break  # Truncated chunk
+
+                if chunk_type in (b"tEXt", b"zTXt", b"iTXt"):
+                    payload = image_bytes[payload_start:payload_end]
+                    self._scan_png_text_payload(chunk_type, payload, findings)
+
+                # IEND ends the file
+                if chunk_type == b"IEND":
+                    break
+
+                offset = payload_end + 4  # +4 for CRC
+                scanned_chunks += 1
+        except Exception as e:
+            logger.debug("PNG chunk walk aborted at offset=%d: %s", offset, e)
+
+    def _scan_png_text_payload(
+        self, chunk_type: bytes, payload: bytes, findings: list[AnalyzerFinding]
+    ) -> None:
+        """Inspect a single PNG text chunk payload for AI markers."""
+        # tEXt: keyword \x00 text
+        # zTXt: keyword \x00 compression_method (1 byte) compressed_text
+        # iTXt: keyword \x00 compression_flag compression_method language \x00
+        #       translated_keyword \x00 text (text may be UTF-8)
+        if b"\x00" not in payload:
+            return
+        try:
+            keyword, _, rest = payload.partition(b"\x00")
+            if chunk_type == b"zTXt":
+                if not rest:
+                    return
+                # rest = comp_method (1 byte) + zlib data
+                import zlib
+                try:
+                    text = zlib.decompress(rest[1:])
+                except Exception:
+                    return
+            elif chunk_type == b"iTXt":
+                # rest = comp_flag(1) + comp_method(1) + lang \x00 trans_kw \x00 text
+                if len(rest) < 4:
+                    return
+                comp_flag = rest[0]
+                comp_method = rest[1]
+                # Skip language and translated_keyword (each \x00-terminated)
+                tail = rest[2:]
+                _lang, _, tail = tail.partition(b"\x00")
+                _trans, _, tail = tail.partition(b"\x00")
+                text = tail
+                if comp_flag == 1:
+                    import zlib
+                    try:
+                        text = zlib.decompress(text)
+                    except Exception:
+                        return
+            else:  # tEXt
+                text = rest
+        except Exception:
+            return
+
+        keyword_lower = keyword.lower()
+
+        # 1) Check known AI keys (definitive, regardless of content)
+        for ai_key, generator, risk in self._PNG_AI_TEXT_KEYS:
+            if ai_key.lower() == keyword_lower:
+                # Limit text snippet for evidence
+                snippet = text[:300].decode("utf-8", errors="replace")
+                findings.append(
+                    AnalyzerFinding(
+                        code="META_PNG_AI_PARAMS",
+                        title=f"PNG metapodaci sadrze AI parametre: {generator}",
+                        description=(
+                            f"PNG datoteka sadrzi text chunk '{keyword.decode('latin-1', errors='replace')}' "
+                            f"karakteristican za AI generator {generator}. "
+                            f"Ovo je definitivni signal sintetickog sadrzaja."
+                        ),
+                        risk_score=risk,
+                        confidence=0.99,
+                        evidence={
+                            "chunk_type": chunk_type.decode("ascii"),
+                            "chunk_key": keyword.decode("latin-1", errors="replace"),
+                            "generator": generator,
+                            "snippet": snippet,
+                        },
+                    )
+                )
+                return  # Single finding per chunk is enough
+
+        # 2) Generic key (e.g. "Software" / "Comment") — scan VALUE for markers
+        text_lower = text.lower()[:8192]  # cap to avoid pathological scans
+        for marker, generator, risk in self._PNG_AI_VALUE_PATTERNS:
+            if marker in text_lower:
+                snippet = text[:300].decode("utf-8", errors="replace")
+                findings.append(
+                    AnalyzerFinding(
+                        code="META_PNG_AI_VALUE",
+                        title=f"PNG metapodaci spominju AI generator: {generator}",
+                        description=(
+                            f"PNG text chunk '{keyword.decode('latin-1', errors='replace')}' "
+                            f"sadrzi referencu na AI generator {generator}. "
+                            f"Vrlo vjerojatno sinteticki sadrzaj."
+                        ),
+                        risk_score=risk,
+                        confidence=0.95,
+                        evidence={
+                            "chunk_type": chunk_type.decode("ascii"),
+                            "chunk_key": keyword.decode("latin-1", errors="replace"),
+                            "generator": generator,
+                            "snippet": snippet,
+                        },
+                    )
+                )
+                return
 
     # ------------------------------------------------------------------
     # Metadata extraction (ExifTool preferred, exifread fallback)
@@ -1067,6 +1309,10 @@ class MetadataAnalyzer(BaseAnalyzer):
                             )
 
             if ai_actions:
+                # 2026-04-07: bumped 0.40 → 0.95. C2PA AI assertion is a
+                # cryptographically signed claim by the generator that the
+                # image is AI-created. There is no scenario where this is
+                # a false positive on real photos — it's a definitive signal.
                 findings.append(
                     AnalyzerFinding(
                         code="META_C2PA_AI_GENERATED",
@@ -1076,8 +1322,8 @@ class MetadataAnalyzer(BaseAnalyzer):
                             f"({', '.join(ai_actions)}). Slika nije fotografija "
                             "stvarnog dogadaja."
                         ),
-                        risk_score=0.40,
-                        confidence=0.95,
+                        risk_score=0.95,
+                        confidence=0.99,
                         evidence={"ai_actions": ai_actions},
                     )
                 )
